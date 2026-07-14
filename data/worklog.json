@@ -4,5 +4,21 @@
     "title": "Sprint View",
     "docketState": "concept"
   },
-  "workItems": []
+  "workItems": [
+    {
+      "id": "EPIC-1",
+      "title": "Office Work",
+      "description": "",
+      "category": "enhancement",
+      "type": "epic",
+      "priority": "info",
+      "parentId": "storyRoot",
+      "openQueue": false,
+      "assignee": "",
+      "sprint": "Sprint View",
+      "docketState": "concept",
+      "createdAt": "2026-07-14T19:09:13.936Z",
+      "updatedAt": "2026-07-14T19:09:13.936Z"
+    }
+  ]
 }
