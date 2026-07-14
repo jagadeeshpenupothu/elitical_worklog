@@ -24,6 +24,10 @@ import {
 } from "./utils/worklogModel";
 import { loadLegacyStoryViewState } from "./utils/storage";
 import {
+  loadCache,
+  saveCache,
+} from "./utils/cache";
+import {
   loadWorklogSnapshot,
   saveWorklogSnapshot,
 } from "./services/worklogApi";
@@ -1202,16 +1206,37 @@ function WorkItemModal({
 }
 
 function App() {
-  const [storyState, setStoryState] = useState(null);
+  const cachedRecord = useMemo(() => loadCache(), []);
+  const cachedSnapshot = useMemo(() => {
+    if (!cachedRecord?.snapshot) return null;
+
+    try {
+      return normalizeLoadedSnapshot(cachedRecord.snapshot);
+    } catch {
+      return null;
+    }
+  }, [cachedRecord]);
+  const [storyState, setStoryState] = useState(
+    cachedSnapshot?.state || null
+  );
   const [selectedId, setSelectedId] = useState(null);
   const [modal, setModal] = useState(null);
   const [message, setMessage] = useState("");
   const [layoutNonce, setLayoutNonce] = useState(1);
   const [viewRootId, setViewRootId] = useState(null);
-  const [loadState, setLoadState] = useState("loading");
+  const [loadState, setLoadState] = useState(
+    cachedSnapshot ? "ready" : "loading"
+  );
+  const [syncState, setSyncState] = useState(
+    cachedSnapshot ? "syncing" : "loading"
+  );
   const [saveState, setSaveState] = useState("idle");
-  const [baseSha, setBaseSha] = useState("");
-  const [baselineSnapshot, setBaselineSnapshot] = useState(null);
+  const [baseSha, setBaseSha] = useState(
+    cachedSnapshot ? cachedRecord.sha : ""
+  );
+  const [baselineSnapshot, setBaselineSnapshot] = useState(
+    cachedSnapshot?.snapshot || null
+  );
   const [legacyState, setLegacyState] = useState(null);
   const [showLegacyNotice, setShowLegacyNotice] = useState(false);
 
@@ -1223,6 +1248,8 @@ function App() {
   const workItemsRef = useRef(workItems);
   const storyStateRef = useRef(storyState);
   const saveRequestIdRef = useRef(0);
+  const hasCheckedLegacyRef = useRef(false);
+  const initialSyncStartedRef = useRef(false);
   const currentSnapshot = useMemo(
     () => (storyState ? snapshotFromState(storyState) : null),
     [storyState]
@@ -1233,7 +1260,11 @@ function App() {
       !snapshotEquals(currentSnapshot, baselineSnapshot)
   );
   const canSave =
-    loadState === "ready" && dirty && !saveState.startsWith("saving") && baseSha;
+    loadState === "ready" &&
+    dirty &&
+    syncState !== "offline" &&
+    !saveState.startsWith("saving") &&
+    baseSha;
   const totals = useMemo(
     () => calculateStoryPoints(workItems),
     [workItems]
@@ -1258,7 +1289,30 @@ function App() {
     storyStateRef.current = storyState;
   }, [storyState, workItems]);
 
-  const applyLoadedSnapshot = useCallback(({ snapshot, baseSha: nextSha }) => {
+  const checkLegacyState = useCallback((remoteSnapshot) => {
+    if (hasCheckedLegacyRef.current) return;
+
+    hasCheckedLegacyRef.current = true;
+
+    const legacy = loadLegacyStoryViewState();
+
+    if (legacy) {
+      const legacySnapshot = snapshotFromState(legacy);
+      const differs = !snapshotEquals(legacySnapshot, remoteSnapshot);
+
+      if (differs) {
+        setLegacyState(legacy);
+        setShowLegacyNotice(true);
+      }
+    }
+  }, []);
+
+  const applyLoadedSnapshot = useCallback(({
+    snapshot,
+    baseSha: nextSha,
+    cache = true,
+    message: nextMessage = "Synced",
+  }) => {
     const normalized = normalizeLoadedSnapshot(snapshot);
 
     setStoryState(normalized.state);
@@ -1269,39 +1323,79 @@ function App() {
     setViewRootId(null);
     setModal(null);
     setLoadState("ready");
+    setSyncState("synced");
     setSaveState("idle");
-    setMessage("Saved");
+    setMessage(nextMessage);
     setLayoutNonce((value) => value + 1);
+    if (cache) {
+      saveCache({
+        snapshot: normalized.snapshot,
+        sha: nextSha,
+      });
+    }
     return normalized.snapshot;
   }, []);
 
-  const loadRemoteSnapshot = useCallback(async () => {
-    setLoadState("loading");
-    setMessage("Loading worklog...");
+  const loadRemoteSnapshot = useCallback(async ({ block = false } = {}) => {
+    if (block) {
+      setLoadState("loading");
+      setSyncState("loading");
+      setMessage("Loading worklog...");
+    } else {
+      setSyncState("syncing");
+    }
 
     try {
       const result = await loadWorklogSnapshot();
-      const remoteSnapshot = applyLoadedSnapshot(result);
-      const legacy = loadLegacyStoryViewState();
+      const remoteSha = result.baseSha;
 
-      if (legacy) {
-        const legacySnapshot = snapshotFromState(legacy);
-        const differs = !snapshotEquals(legacySnapshot, remoteSnapshot);
-
-        if (differs) {
-          setLegacyState(legacy);
-          setShowLegacyNotice(true);
-        }
+      if (!block && baseSha && remoteSha === baseSha) {
+        const normalized = normalizeLoadedSnapshot(result.snapshot);
+        setBaselineSnapshot(normalized.snapshot);
+        setBaseSha(remoteSha);
+        setLoadState("ready");
+        setSyncState("synced");
+        setMessage((current) =>
+          current === "Offline (using cached data)" || current === "Syncing..."
+            ? "Synced"
+            : current || "Synced"
+        );
+        saveCache({
+          snapshot: normalized.snapshot,
+          sha: remoteSha,
+        });
+        checkLegacyState(normalized.snapshot);
+        return;
       }
+
+      const remoteSnapshot = applyLoadedSnapshot({
+        ...result,
+        message: "Synced",
+      });
+      checkLegacyState(remoteSnapshot);
     } catch (error) {
-      setLoadState("error");
-      setMessage(error.message || "Unable to load remote worklog.");
+      setSyncState("offline");
+      setMessage("Offline (using cached data)");
+
+      if (block) {
+        setLoadState("error");
+        setMessage(error.message || "Unable to load remote worklog.");
+      } else {
+        setLoadState("ready");
+      }
     }
-  }, [applyLoadedSnapshot]);
+  }, [applyLoadedSnapshot, baseSha, checkLegacyState]);
 
   useEffect(() => {
-    queueMicrotask(loadRemoteSnapshot);
-  }, [loadRemoteSnapshot]);
+    if (initialSyncStartedRef.current) return;
+
+    initialSyncStartedRef.current = true;
+    queueMicrotask(() => {
+      loadRemoteSnapshot({
+        block: !cachedSnapshot,
+      });
+    });
+  }, [cachedSnapshot, loadRemoteSnapshot]);
 
   useEffect(() => {
     if (!dirty) return undefined;
@@ -1535,6 +1629,11 @@ function App() {
 
       setBaseSha(result.baseSha);
       setBaselineSnapshot(normalized.snapshot);
+      saveCache({
+        snapshot: normalized.snapshot,
+        sha: result.baseSha,
+      });
+      setSyncState("synced");
       setSaveState("idle");
 
       const latestSnapshot = snapshotFromState(storyStateRef.current);
@@ -1544,6 +1643,7 @@ function App() {
       setMessage(stillDirty ? "Unsaved Changes" : "Saved");
     } catch (error) {
       setSaveState(error.status === 409 ? "conflict" : "failed");
+      setSyncState(error.status === 409 ? "synced" : "offline");
       setMessage(
         error.status === 409
           ? "Remote worklog changed since you loaded it."
@@ -1583,7 +1683,7 @@ function App() {
     }
 
     setSaveState("idle");
-    await loadRemoteSnapshot();
+    await loadRemoteSnapshot({ block: false });
   }, [dirty, loadRemoteSnapshot]);
 
   const handleUseSampleLocally = useCallback(() => {
@@ -1619,6 +1719,17 @@ function App() {
     setShowLegacyNotice(false);
   }, []);
 
+  const statusLabel =
+    saveState === "failed"
+      ? "Save failed"
+      : saveState === "saving"
+      ? "Syncing..."
+      : syncState === "offline"
+      ? "Offline"
+      : syncState === "syncing" || syncState === "loading"
+      ? "Syncing..."
+      : "Synced";
+
   if (loadState === "loading") {
     return (
       <div className="app-container app-state-screen">
@@ -1637,7 +1748,10 @@ function App() {
           <h1>Unable to load worklog</h1>
           <p>{message}</p>
           <div className="state-actions">
-            <button type="button" onClick={loadRemoteSnapshot}>
+            <button
+              type="button"
+              onClick={() => loadRemoteSnapshot({ block: true })}
+            >
               Retry
             </button>
             <button type="button" onClick={handleUseSampleLocally}>
@@ -1675,6 +1789,10 @@ function App() {
               : message}
           </span>
         )}
+
+        <span className={`sync-status ${syncState}`}>
+          {statusLabel}
+        </span>
 
         <button
           type="button"

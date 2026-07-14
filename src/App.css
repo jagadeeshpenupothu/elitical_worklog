@@ -86,6 +86,37 @@
   white-space: nowrap;
 }
 
+.sync-status {
+  flex: 0 0 auto;
+  border: 1px solid #303746;
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: #cbd5e1;
+  background: #151a22;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.sync-status.syncing,
+.sync-status.loading {
+  border-color: #0a73d9;
+  color: #cfe1ff;
+  background: #111d34;
+}
+
+.sync-status.synced {
+  border-color: #20d989;
+  color: #c9fbe1;
+  background: #10251d;
+}
+
+.sync-status.offline {
+  border-color: #ff9f0a;
+  color: #ffe1ad;
+  background: #241b0d;
+}
+
 .app-state-screen {
   display: grid;
   place-items: center;
