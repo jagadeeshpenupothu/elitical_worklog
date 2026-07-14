@@ -1,0 +1,38 @@
+DES-11:
+  title: Office Works
+  type: Epic
+
+  sprint: Sprint 1
+
+  startDate: 2026-06-01
+  endDate: 2026-06-30
+
+  assignee: Jagadeesh Penupothu
+  status: In Progress
+
+  children:
+
+    DES-635:
+      title: Photoshoot
+      type: Story
+
+      sprint: Sprint 1
+
+      startDate: 2026-06-02
+      endDate: 2026-06-07
+
+      assignee: Jagadeesh Penupothu
+      status: In Progress
+
+      children:
+
+        JOB-1:
+          title: Employee Group Photo
+          type: Job
+
+          sprint: Sprint 1
+
+          startDate: 2026-06-03
+          endDate: 2026-06-04
+
+          storyPoints: 5
