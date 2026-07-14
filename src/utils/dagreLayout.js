@@ -47,8 +47,12 @@ export function getRankYs(nodes, rootY = 64, rankGap = RANK_GAP, rankForNode = g
   const rankYs = {
     0: rootY,
   };
+  const maxRank = Math.max(
+    3,
+    ...Object.keys(maxHeightsByRank).map((rank) => Number(rank))
+  );
 
-  for (let rank = 1; rank <= 3; rank += 1) {
+  for (let rank = 1; rank <= maxRank; rank += 1) {
     const previousHeight = maxHeightsByRank[rank - 1] || 58;
     rankYs[rank] = rankYs[rank - 1] + previousHeight + rankGap;
   }
@@ -130,7 +134,7 @@ export function getLayoutedElements(nodes, edges, rootId = "storyRoot") {
     if (!node) return;
 
     const size = getNodeSize(node);
-    const rank = getNodeRank(node);
+    const rank = ranksById.get(id) ?? getNodeRank(node);
     const childIds = childrenByParent[id] || [];
 
     positions[id] = {

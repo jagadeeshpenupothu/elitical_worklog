@@ -16,6 +16,28 @@ export const WORK_ITEM_TYPES = [
   "job",
 ];
 
+export const GENERIC_WORK_ITEM_TYPES = [
+  "workspace",
+  "sprint",
+  "epic",
+  "story",
+  "task",
+  "bug",
+  "feature",
+  "research",
+  "job",
+];
+
+export const RELATIONSHIP_TYPES = [
+  "parent",
+  "child",
+  "assigned_to_sprint",
+  "depends_on",
+  "blocks",
+  "related_to",
+  "duplicate_of",
+];
+
 export const PRIORITIES = [
   "info",
   "minor",
@@ -41,7 +63,11 @@ const RELATIONSHIPS = {
 };
 
 const DEFAULT_ROOT_TITLE = "Sprint View";
-export const SNAPSHOT_SCHEMA_VERSION = 1;
+const DEFAULT_MAIN_TITLE = "Genesis";
+export const SNAPSHOT_SCHEMA_VERSION = 2;
+const LEGACY_SNAPSHOT_SCHEMA_VERSION = 1;
+const WORKSPACE_ID = "workspace";
+const DEFAULT_TIMESTAMP = "1970-01-01T00:00:00.000Z";
 
 function nowIso() {
   return new Date().toISOString();
@@ -142,6 +168,64 @@ function normalizeDocketState(value) {
     .toLowerCase();
 
   return DOCKET_STATES.includes(normalized) ? normalized : "concept";
+}
+
+function makeRelationshipId(sourceId, targetId, relationshipType) {
+  return `${relationshipType}:${sourceId}:${targetId}`;
+}
+
+function makeSprintAssignmentId(sprintId, workItemId) {
+  return `sprint-assignment:${sprintId}:${workItemId}`;
+}
+
+function normalizeGenericType(type) {
+  const normalized = String(type || "").trim().toLowerCase();
+
+  return GENERIC_WORK_ITEM_TYPES.includes(normalized) ? normalized : "task";
+}
+
+function normalizeRelationshipType(type) {
+  const normalized = String(type || "").trim().toLowerCase();
+
+  return RELATIONSHIP_TYPES.includes(normalized) ? normalized : "related_to";
+}
+
+function normalizeSprint(input, fallbackId = ROOT_ID) {
+  const id = String(input?.id || fallbackId || "").trim();
+  const title = String(input?.title || DEFAULT_ROOT_TITLE).trim();
+
+  return {
+    id: id || fallbackId,
+    title: title || DEFAULT_ROOT_TITLE,
+    docketState: normalizeDocketState(input?.docketState),
+  };
+}
+
+function normalizeSprints(input, rootTitle, rootDocketState) {
+  const source = Array.isArray(input) ? input : [];
+  const seenIds = new Set([ROOT_ID]);
+  const normalized = source
+    .map((entry) => normalizeSprint(entry))
+    .filter((entry) => {
+      if (!entry.id || !entry.title || seenIds.has(entry.id)) return false;
+
+      seenIds.add(entry.id);
+      return true;
+    });
+  const byId = new Map(normalized.map((entry) => [entry.id, entry]));
+  const rootSprint = {
+    ...normalizeSprint(byId.get(ROOT_ID), ROOT_ID),
+    id: ROOT_ID,
+    title: rootTitle,
+    docketState: normalizeDocketState(rootDocketState),
+  };
+
+  byId.set(ROOT_ID, rootSprint);
+
+  return [
+    rootSprint,
+    ...normalized.filter((entry) => entry.id !== ROOT_ID),
+  ];
 }
 
 function makeWorkItem(input, fallbackParentId = ROOT_ID) {
@@ -325,8 +409,10 @@ export function normalizeSeedData(yamlText) {
 
   return {
     rootTitle: DEFAULT_ROOT_TITLE,
+    mainTitle: DEFAULT_MAIN_TITLE,
     rootDocketState: "concept",
     rootPosition: null,
+    sprints: normalizeSprints([], DEFAULT_ROOT_TITLE, "concept"),
     workItems: validItems,
   };
 }
@@ -338,6 +424,10 @@ export function normalizeSavedState(input) {
       : DEFAULT_ROOT_TITLE;
   const rootTitle =
     savedRootTitle === "Story View" ? DEFAULT_ROOT_TITLE : savedRootTitle;
+  const mainTitle =
+    typeof input?.mainTitle === "string" && input.mainTitle.trim()
+      ? input.mainTitle.trim()
+      : DEFAULT_MAIN_TITLE;
 
   const sourceItems = Array.isArray(input?.workItems)
     ? input.workItems
@@ -360,8 +450,14 @@ export function normalizeSavedState(input) {
     valid: true,
     state: {
       rootTitle,
+      mainTitle,
       rootDocketState: normalizeDocketState(input?.rootDocketState),
       rootPosition: normalizePosition(input?.rootPosition),
+      sprints: normalizeSprints(
+        input?.sprints,
+        rootTitle,
+        input?.rootDocketState
+      ),
       workItems,
     },
   };
@@ -397,6 +493,254 @@ function canonicalWorkItem(item) {
   return canonical;
 }
 
+function canonicalGraphWorkItem(item) {
+  const base = {
+    id: String(item.id || "").trim(),
+    title: String(item.title || item.id || "Untitled").trim(),
+    description: String(item.description || ""),
+    type: normalizeGenericType(item.type),
+    status: normalizeDocketState(item.status || item.docketState),
+    priority: normalizeEnum(item.priority, PRIORITIES, "info"),
+    storyPoints: normalizeStoryPoints(item.storyPoints),
+    estimatedTime: normalizeTimeMinutes(item.estimatedTime ?? item.timeMinutes),
+    loggedTime: normalizeTimeMinutes(item.loggedTime ?? item.timeMinutes),
+    parentId: item.parentId || "",
+    category: normalizeEnum(item.category, CATEGORIES, "feature"),
+    openQueue: Boolean(item.openQueue),
+    assignee: String(item.assignee || ""),
+    sprint: String(item.sprint || ""),
+    createdAt: item.createdAt || nowIso(),
+    updatedAt: item.updatedAt || item.createdAt || nowIso(),
+  };
+
+  if (Array.isArray(item.worklogs)) {
+    base.worklogs = normalizeWorklogs(
+      item.worklogs,
+      base.updatedAt,
+      base.description,
+      base.loggedTime
+    );
+    base.loggedTime = worklogTotalMinutes(base.worklogs);
+  }
+
+  return base;
+}
+
+function canonicalRelationship(input) {
+  const sourceId = String(input?.sourceId || "").trim();
+  const targetId = String(input?.targetId || "").trim();
+  const relationshipType = normalizeRelationshipType(input?.relationshipType);
+
+  return {
+    id: String(input?.id || makeRelationshipId(sourceId, targetId, relationshipType)),
+    sourceId,
+    targetId,
+    relationshipType,
+  };
+}
+
+function canonicalSprintAssignment(input) {
+  const sprintId = String(input?.sprintId || "").trim();
+  const workItemId = String(input?.workItemId || "").trim();
+
+  return {
+    id: String(input?.id || makeSprintAssignmentId(sprintId, workItemId)),
+    sprintId,
+    workItemId,
+    plannedHours: normalizeTimeMinutes(input?.plannedHours),
+    loggedHours: normalizeTimeMinutes(input?.loggedHours),
+    status: normalizeDocketState(input?.status),
+    assignedDate: isValidDate(input?.assignedDate)
+      ? new Date(input.assignedDate).toISOString()
+      : nowIso(),
+  };
+}
+
+function isValidDate(value) {
+  return !Number.isNaN(new Date(value).getTime());
+}
+
+function uniqueById(items) {
+  const seen = new Set();
+
+  return items.filter((item) => {
+    if (!item.id || seen.has(item.id)) return false;
+
+    seen.add(item.id);
+    return true;
+  });
+}
+
+function legacyStateToGraphSnapshot(state) {
+  const sprints = normalizeSprints(
+    state.sprints,
+    state.rootTitle,
+    state.rootDocketState
+  );
+  const sprintByTitle = new Map(sprints.map((sprint) => [sprint.title, sprint]));
+  const relationships = [];
+  const sprintAssignments = [];
+  const latestUpdatedAt = state.workItems.reduce((latest, item) => {
+    const itemTime = new Date(item.updatedAt || item.createdAt || 0).getTime();
+    const latestTime = new Date(latest || 0).getTime();
+
+    return itemTime > latestTime ? item.updatedAt || item.createdAt : latest;
+  }, DEFAULT_TIMESTAMP);
+  const graphItems = [
+    canonicalGraphWorkItem({
+      id: WORKSPACE_ID,
+      title: state.mainTitle || DEFAULT_MAIN_TITLE,
+      type: "workspace",
+      status: "concept",
+      createdAt: DEFAULT_TIMESTAMP,
+      updatedAt: latestUpdatedAt,
+    }),
+    ...sprints.map((sprint) =>
+      canonicalGraphWorkItem({
+        id: sprint.id,
+        title: sprint.title,
+        type: "sprint",
+        status: sprint.docketState,
+        parentId: WORKSPACE_ID,
+        createdAt: DEFAULT_TIMESTAMP,
+        updatedAt: latestUpdatedAt,
+      })
+    ),
+    ...state.workItems.map((item) => {
+      const canonical = canonicalWorkItem(item);
+
+      return canonicalGraphWorkItem({
+        ...canonical,
+        status: canonical.docketState,
+        loggedTime: canonical.timeMinutes,
+      });
+    }),
+  ];
+
+  sprints.forEach((sprint) => {
+    relationships.push(canonicalRelationship({
+      sourceId: WORKSPACE_ID,
+      targetId: sprint.id,
+      relationshipType: "parent",
+    }));
+  });
+
+  state.workItems.forEach((item) => {
+    if (item.parentId && item.parentId !== ROOT_ID) {
+      relationships.push(canonicalRelationship({
+        sourceId: item.parentId,
+        targetId: item.id,
+        relationshipType: "parent",
+      }));
+    }
+
+    const sprint = sprintByTitle.get(item.sprint) || sprints[0];
+
+    if (sprint) {
+      const assignment = canonicalSprintAssignment({
+        sprintId: sprint.id,
+        workItemId: item.id,
+        plannedHours: item.timeMinutes || 0,
+        loggedHours: item.timeMinutes || 0,
+        status: item.docketState,
+        assignedDate: item.createdAt || nowIso(),
+      });
+
+      sprintAssignments.push(assignment);
+      relationships.push(canonicalRelationship({
+        sourceId: sprint.id,
+        targetId: item.id,
+        relationshipType: "assigned_to_sprint",
+      }));
+    }
+  });
+
+  return {
+    schemaVersion: SNAPSHOT_SCHEMA_VERSION,
+    workspace: {
+      id: WORKSPACE_ID,
+      title: state.mainTitle || DEFAULT_MAIN_TITLE,
+      rootSprintId: ROOT_ID,
+    },
+    views: [
+      { id: "main", title: "Main View", type: "main" },
+      { id: "sprint", title: state.rootTitle, type: "sprint", sprintId: ROOT_ID },
+      { id: "epic", title: "Epic View", type: "epic" },
+      { id: "story", title: "Story View", type: "story" },
+      { id: "timeline", title: "Timeline View", type: "timeline" },
+      { id: "dependencies", title: "Dependencies View", type: "dependencies" },
+      { id: "backlog", title: "Backlog View", type: "backlog" },
+      { id: "completed", title: "Completed View", type: "completed" },
+    ],
+    workItems: uniqueById(graphItems),
+    relationships: uniqueById(relationships),
+    sprintAssignments: uniqueById(sprintAssignments),
+    settings: {
+      defaultViewId: "main",
+      legacyRootId: ROOT_ID,
+    },
+  };
+}
+
+function graphSnapshotToLegacyState(snapshot) {
+  const graphItems = Array.isArray(snapshot.workItems) ? snapshot.workItems : [];
+  const relationships = Array.isArray(snapshot.relationships)
+    ? snapshot.relationships.map(canonicalRelationship)
+    : [];
+  const sprintAssignments = Array.isArray(snapshot.sprintAssignments)
+    ? snapshot.sprintAssignments.map(canonicalSprintAssignment)
+    : [];
+  const parentByTarget = new Map(
+    relationships
+      .filter((relationship) => relationship.relationshipType === "parent")
+      .map((relationship) => [relationship.targetId, relationship.sourceId])
+  );
+  const sprints = graphItems
+    .filter((item) => normalizeGenericType(item.type) === "sprint")
+    .map((item) => ({
+      id: item.id,
+      title: item.title,
+      docketState: normalizeDocketState(item.status || item.docketState),
+    }));
+  const rootSprint =
+    sprints.find((sprint) => sprint.id === snapshot.workspace?.rootSprintId) ||
+    sprints.find((sprint) => sprint.id === ROOT_ID) ||
+    normalizeSprint(null, ROOT_ID);
+  const sprintById = new Map(sprints.map((sprint) => [sprint.id, sprint]));
+  const firstAssignmentByItem = new Map();
+
+  sprintAssignments.forEach((assignment) => {
+    if (!firstAssignmentByItem.has(assignment.workItemId)) {
+      firstAssignmentByItem.set(assignment.workItemId, assignment);
+    }
+  });
+
+  const workItems = graphItems
+    .filter((item) => WORK_ITEM_TYPES.includes(normalizeGenericType(item.type)))
+    .map((item) => {
+      const assignment = firstAssignmentByItem.get(item.id);
+      const sprint = sprintById.get(assignment?.sprintId) || rootSprint;
+      const parentId = parentByTarget.get(item.id) || ROOT_ID;
+
+      return makeWorkItem({
+        ...item,
+        type: normalizeType(item.type),
+        docketState: item.status || item.docketState,
+        parentId: parentId === WORKSPACE_ID ? ROOT_ID : parentId,
+        sprint: sprint.title,
+        timeMinutes: item.loggedTime,
+      }, ROOT_ID);
+    });
+
+  return normalizeSavedState({
+    mainTitle: snapshot.workspace?.title || DEFAULT_MAIN_TITLE,
+    rootTitle: rootSprint.title,
+    rootDocketState: rootSprint.docketState,
+    sprints,
+    workItems,
+  });
+}
+
 export function buildWorklogSnapshot(state) {
   const normalized = normalizeSavedState(state);
 
@@ -411,18 +755,35 @@ export function buildWorklogSnapshot(state) {
   return {
     valid: true,
     error: "",
-    snapshot: {
-      schemaVersion: SNAPSHOT_SCHEMA_VERSION,
-      root: {
-        title: normalized.state.rootTitle,
-        docketState: normalizeDocketState(normalized.state.rootDocketState),
-      },
-      workItems: normalized.state.workItems.map(canonicalWorkItem),
-    },
+    snapshot: legacyStateToGraphSnapshot(normalized.state),
   };
 }
 
 export function normalizeWorklogSnapshot(snapshot) {
+  if (snapshot?.schemaVersion === LEGACY_SNAPSHOT_SCHEMA_VERSION) {
+    const root = snapshot.root || {};
+    const normalized = normalizeSavedState({
+      rootTitle: root.title,
+      mainTitle: root.mainTitle,
+      rootDocketState: root.docketState,
+      sprints: root.sprints,
+      workItems: snapshot.workItems,
+    });
+
+    if (!normalized.valid) {
+      return normalized;
+    }
+
+    const canonical = buildWorklogSnapshot(normalized.state);
+
+    return {
+      valid: canonical.valid,
+      error: canonical.error,
+      state: normalized.state,
+      snapshot: canonical.snapshot,
+    };
+  }
+
   if (snapshot?.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
     return {
       valid: false,
@@ -430,12 +791,7 @@ export function normalizeWorklogSnapshot(snapshot) {
     };
   }
 
-  const root = snapshot.root || {};
-  const normalized = normalizeSavedState({
-    rootTitle: root.title,
-    rootDocketState: root.docketState,
-    workItems: snapshot.workItems,
-  });
+  const normalized = graphSnapshotToLegacyState(snapshot);
 
   if (!normalized.valid) {
     return normalized;
@@ -453,6 +809,124 @@ export function normalizeWorklogSnapshot(snapshot) {
 
 export function stableSnapshotString(snapshot) {
   return JSON.stringify(snapshot);
+}
+
+export function getRelationshipsByType(snapshot, relationshipType) {
+  const normalizedType = normalizeRelationshipType(relationshipType);
+
+  return (snapshot.relationships || []).filter(
+    (relationship) => relationship.relationshipType === normalizedType
+  );
+}
+
+export function getSprintAssignments(snapshot, sprintId) {
+  return (snapshot.sprintAssignments || []).filter(
+    (assignment) => !sprintId || assignment.sprintId === sprintId
+  );
+}
+
+export function createRelationship(sourceId, targetId, relationshipType) {
+  return canonicalRelationship({
+    sourceId,
+    targetId,
+    relationshipType,
+  });
+}
+
+export function createSprintAssignment({
+  sprintId,
+  workItemId,
+  plannedHours = 0,
+  loggedHours = 0,
+  status = "concept",
+  assignedDate = nowIso(),
+}) {
+  return canonicalSprintAssignment({
+    sprintId,
+    workItemId,
+    plannedHours,
+    loggedHours,
+    status,
+    assignedDate,
+  });
+}
+
+export function generateViewGraph(snapshot, view) {
+  const normalizedSnapshot =
+    snapshot.schemaVersion === SNAPSHOT_SCHEMA_VERSION
+      ? snapshot
+      : normalizeWorklogSnapshot(snapshot).snapshot;
+  const workItems = normalizedSnapshot.workItems || [];
+  const itemById = new Map(workItems.map((item) => [item.id, item]));
+  const relationships = normalizedSnapshot.relationships || [];
+  const sprintAssignments = normalizedSnapshot.sprintAssignments || [];
+  const viewType = typeof view === "string" ? view : view?.type;
+
+  if (viewType === "sprint") {
+    const sprintId = typeof view === "string" ? ROOT_ID : view?.sprintId || ROOT_ID;
+    const assignedIds = new Set(
+      sprintAssignments
+        .filter((assignment) => assignment.sprintId === sprintId)
+        .map((assignment) => assignment.workItemId)
+    );
+
+    return {
+      nodes: workItems.filter((item) => item.id === sprintId || assignedIds.has(item.id)),
+      edges: relationships.filter(
+        (relationship) =>
+          relationship.sourceId === sprintId ||
+          assignedIds.has(relationship.sourceId) ||
+          assignedIds.has(relationship.targetId)
+      ),
+    };
+  }
+
+  if (viewType === "dependencies") {
+    const dependencyRelationships = relationships.filter((relationship) =>
+      ["depends_on", "blocks"].includes(relationship.relationshipType)
+    );
+    const ids = new Set(
+      dependencyRelationships.flatMap((relationship) => [
+        relationship.sourceId,
+        relationship.targetId,
+      ])
+    );
+
+    return {
+      nodes: Array.from(ids).map((id) => itemById.get(id)).filter(Boolean),
+      edges: dependencyRelationships,
+    };
+  }
+
+  if (viewType === "backlog") {
+    const assignedIds = new Set(
+      sprintAssignments.map((assignment) => assignment.workItemId)
+    );
+
+    return {
+      nodes: workItems.filter(
+        (item) => item.type !== "workspace" && item.type !== "sprint" && !assignedIds.has(item.id)
+      ),
+      edges: [],
+    };
+  }
+
+  if (viewType === "completed") {
+    const completed = workItems.filter((item) => item.status === "closed");
+    const ids = new Set(completed.map((item) => item.id));
+
+    return {
+      nodes: completed,
+      edges: relationships.filter(
+        (relationship) => ids.has(relationship.sourceId) && ids.has(relationship.targetId)
+      ),
+    };
+  }
+
+  return {
+    nodes: workItems,
+    edges: relationships,
+  };
 }
 
 export function createWorkItem(items, input) {
@@ -700,6 +1174,19 @@ export function generateWorkItemId(items, type) {
   while (existingIds.has(id)) {
     index += 1;
     id = `${prefix}-${index}`;
+  }
+
+  return id;
+}
+
+export function generateSprintId(sprints) {
+  const existingIds = new Set((sprints || []).map((sprint) => sprint.id));
+  let index = existingIds.size + 1;
+  let id = `sprint-${index}`;
+
+  while (existingIds.has(id)) {
+    index += 1;
+    id = `sprint-${index}`;
   }
 
   return id;

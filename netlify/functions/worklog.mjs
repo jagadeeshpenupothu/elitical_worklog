@@ -1,6 +1,27 @@
-const SNAPSHOT_SCHEMA_VERSION = 1;
+const SNAPSHOT_SCHEMA_VERSION = 2;
+const LEGACY_SNAPSHOT_SCHEMA_VERSION = 1;
 const MAX_BODY_BYTES = 1_000_000;
 const TYPES = ["epic", "story", "task", "job"];
+const GENERIC_TYPES = [
+  "workspace",
+  "sprint",
+  "epic",
+  "story",
+  "task",
+  "bug",
+  "feature",
+  "research",
+  "job",
+];
+const RELATIONSHIP_TYPES = [
+  "parent",
+  "child",
+  "assigned_to_sprint",
+  "depends_on",
+  "blocks",
+  "related_to",
+  "duplicate_of",
+];
 const CATEGORIES = ["feature", "enhancement", "defect", "escalation"];
 const PRIORITIES = ["info", "minor", "major", "critical", "blocker"];
 const DOCKET_STATES = ["concept", "design", "review", "closed", "artifact"];
@@ -103,12 +124,168 @@ function validateWorklog(entry, index, itemId) {
   return "";
 }
 
+function validateGraphSnapshot(snapshot) {
+  if (!snapshot.workspace || typeof snapshot.workspace !== "object") {
+    return { valid: false, error: "Workspace is required." };
+  }
+
+  if (
+    typeof snapshot.workspace.id !== "string" ||
+    !snapshot.workspace.id.trim() ||
+    typeof snapshot.workspace.title !== "string" ||
+    !snapshot.workspace.title.trim()
+  ) {
+    return { valid: false, error: "Workspace needs an ID and title." };
+  }
+
+  if (!Array.isArray(snapshot.workItems)) {
+    return { valid: false, error: "Work items must be an array." };
+  }
+
+  if (!Array.isArray(snapshot.relationships)) {
+    return { valid: false, error: "Relationships must be an array." };
+  }
+
+  if (!Array.isArray(snapshot.sprintAssignments)) {
+    return { valid: false, error: "Sprint assignments must be an array." };
+  }
+
+  const itemIds = new Set();
+
+  for (const item of snapshot.workItems) {
+    if (!item || typeof item !== "object") {
+      return { valid: false, error: "Every work item must be an object." };
+    }
+
+    if (typeof item.id !== "string" || !item.id.trim()) {
+      return { valid: false, error: "Every work item needs an ID." };
+    }
+
+    if (itemIds.has(item.id)) {
+      return { valid: false, error: "Duplicate work item IDs are not allowed." };
+    }
+
+    itemIds.add(item.id);
+
+    if (typeof item.title !== "string" || !item.title.trim()) {
+      return { valid: false, error: `${item.id} needs a title.` };
+    }
+
+    if (!GENERIC_TYPES.includes(String(item.type || "").toLowerCase())) {
+      return { valid: false, error: `${item.id} has an invalid type.` };
+    }
+
+    if (
+      item.status !== undefined &&
+      !DOCKET_STATES.includes(String(item.status).toLowerCase())
+    ) {
+      return { valid: false, error: `${item.id} has an invalid status.` };
+    }
+
+    if (
+      item.priority !== undefined &&
+      !PRIORITIES.includes(normalizeEnum(item.priority, PRIORITIES, ""))
+    ) {
+      return { valid: false, error: `${item.id} has an invalid priority.` };
+    }
+
+    if (item.storyPoints !== undefined && normalizeNumber(item.storyPoints) === null) {
+      return { valid: false, error: `${item.id} has invalid story points.` };
+    }
+
+    if (item.estimatedTime !== undefined && normalizeNumber(item.estimatedTime) === null) {
+      return { valid: false, error: `${item.id} has invalid estimated time.` };
+    }
+
+    if (item.loggedTime !== undefined && normalizeNumber(item.loggedTime) === null) {
+      return { valid: false, error: `${item.id} has invalid logged time.` };
+    }
+
+    if (item.createdAt !== undefined && !isValidIsoDate(item.createdAt)) {
+      return { valid: false, error: `${item.id} has invalid createdAt.` };
+    }
+
+    if (item.updatedAt !== undefined && !isValidIsoDate(item.updatedAt)) {
+      return { valid: false, error: `${item.id} has invalid updatedAt.` };
+    }
+
+    if (item.worklogs) {
+      if (!Array.isArray(item.worklogs)) {
+        return { valid: false, error: `${item.id} worklogs must be an array.` };
+      }
+
+      for (let index = 0; index < item.worklogs.length; index += 1) {
+        const error = validateWorklog(item.worklogs[index], index, item.id);
+        if (error) return { valid: false, error };
+      }
+    }
+  }
+
+  for (const relationship of snapshot.relationships) {
+    if (!relationship || typeof relationship !== "object") {
+      return { valid: false, error: "Every relationship must be an object." };
+    }
+
+    if (
+      typeof relationship.sourceId !== "string" ||
+      typeof relationship.targetId !== "string" ||
+      !relationship.sourceId.trim() ||
+      !relationship.targetId.trim()
+    ) {
+      return { valid: false, error: "Relationships need source and target IDs." };
+    }
+
+    if (!RELATIONSHIP_TYPES.includes(String(relationship.relationshipType || "").toLowerCase())) {
+      return { valid: false, error: "Relationship type is invalid." };
+    }
+
+    if (!itemIds.has(relationship.sourceId) || !itemIds.has(relationship.targetId)) {
+      return { valid: false, error: "Relationship points to a missing work item." };
+    }
+  }
+
+  for (const assignment of snapshot.sprintAssignments) {
+    if (!assignment || typeof assignment !== "object") {
+      return { valid: false, error: "Every sprint assignment must be an object." };
+    }
+
+    if (!itemIds.has(assignment.sprintId) || !itemIds.has(assignment.workItemId)) {
+      return { valid: false, error: "Sprint assignment points to a missing work item." };
+    }
+
+    if (assignment.plannedHours !== undefined && normalizeNumber(assignment.plannedHours) === null) {
+      return { valid: false, error: "Sprint assignment has invalid planned hours." };
+    }
+
+    if (assignment.loggedHours !== undefined && normalizeNumber(assignment.loggedHours) === null) {
+      return { valid: false, error: "Sprint assignment has invalid logged hours." };
+    }
+
+    if (
+      assignment.status !== undefined &&
+      !DOCKET_STATES.includes(String(assignment.status).toLowerCase())
+    ) {
+      return { valid: false, error: "Sprint assignment status is invalid." };
+    }
+
+    if (assignment.assignedDate !== undefined && !isValidIsoDate(assignment.assignedDate)) {
+      return { valid: false, error: "Sprint assignment date is invalid." };
+    }
+  }
+
+  return { valid: true, error: "" };
+}
+
 function validateSnapshot(snapshot) {
   if (!snapshot || typeof snapshot !== "object") {
     return { valid: false, error: "Snapshot must be an object." };
   }
 
-  if (snapshot.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
+  if (snapshot.schemaVersion === SNAPSHOT_SCHEMA_VERSION) {
+    return validateGraphSnapshot(snapshot);
+  }
+
+  if (snapshot.schemaVersion !== LEGACY_SNAPSHOT_SCHEMA_VERSION) {
     return { valid: false, error: "Unsupported snapshot schema version." };
   }
 

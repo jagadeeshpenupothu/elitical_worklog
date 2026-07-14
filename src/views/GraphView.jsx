@@ -3,10 +3,10 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
 } from "react";
 import ReactFlow, {
   Background,
-  Controls,
   useNodesState,
 } from "reactflow";
 
@@ -28,6 +28,7 @@ const edgeTypes = {
   parentBranch: ParentBranchEdge,
 };
 
+const MAIN_ROOT_ID = "mainRoot";
 const CONNECTOR_STROKE_WIDTH = 1.8;
 const CONNECTOR_CORNER_RADIUS = 10;
 
@@ -111,6 +112,24 @@ function edgeColorFor(item) {
   return DOCKET_STATE_COLORS[item.docketState || "concept"];
 }
 
+function itemForNode(id, node, itemById) {
+  if (id === ROOT_ID || id === MAIN_ROOT_ID) {
+    return node?.data || {};
+  }
+
+  return itemById.get(id) || {};
+}
+
+function visualParentIdForItem(item, includeMainRoot, sprints = []) {
+  if (!includeMainRoot || item.parentId !== ROOT_ID) return item.parentId;
+
+  const sprint = sprints.find(
+    (entry) => entry.id !== ROOT_ID && entry.title === item.sprint
+  );
+
+  return sprint?.id || ROOT_ID;
+}
+
 function ParentBranchEdge({ data }) {
   return (
     <g className="react-flow__edge branch-connector-edge">
@@ -130,19 +149,47 @@ function ParentBranchEdge({ data }) {
   );
 }
 
-function buildLayoutEdges(workItems, includeRootNode) {
+function buildLayoutEdges(
+  workItems,
+  includeRootNode,
+  includeMainRoot = false,
+  sprints = []
+) {
   const visibleIds = new Set(workItems.map((item) => item.id));
-  return workItems
+  const extraSprintIds = sprints
+    .filter((sprint) => sprint.id !== ROOT_ID)
+    .map((sprint) => sprint.id);
+  const workEdges = workItems
     .filter(
       (item) =>
         visibleIds.has(item.parentId) ||
         (includeRootNode && item.parentId === ROOT_ID)
     )
-    .map((item) => ({
-      id: `${item.parentId}-${item.id}`,
-      source: item.parentId,
-      target: item.id,
-    }));
+    .map((item) => {
+      const source = visualParentIdForItem(item, includeMainRoot, sprints);
+
+      return {
+        id: `${source}-${item.id}`,
+        source,
+        target: item.id,
+      };
+    });
+
+  return includeMainRoot
+    ? [
+        {
+          id: `${MAIN_ROOT_ID}-${ROOT_ID}`,
+          source: MAIN_ROOT_ID,
+          target: ROOT_ID,
+        },
+        ...extraSprintIds.map((id) => ({
+          id: `${MAIN_ROOT_ID}-${id}`,
+          source: MAIN_ROOT_ID,
+          target: id,
+        })),
+        ...workEdges,
+      ]
+    : workEdges;
 }
 
 function getNodeCenterX(node) {
@@ -189,25 +236,45 @@ function connectorPathForChild(parent, child, branchY) {
   ]);
 }
 
-function buildBranchConnectorEdges(nodes, workItems, includeRootNode, rootNodeId) {
+function buildBranchConnectorEdges(
+  nodes,
+  workItems,
+  includeRootNode,
+  rootNodeId,
+  sprints = []
+) {
   const workNodes = nodes.filter(isWorkNode);
   const nodeById = new Map(workNodes.map((node) => [node.id, node]));
   const itemById = new Map(workItems.map((item) => [item.id, item]));
+  const extraSprintIds = sprints
+    .filter((sprint) => sprint.id !== ROOT_ID)
+    .map((sprint) => sprint.id);
   const visibleIds = new Set(workItems.map((item) => item.id));
   const childrenByParent = workItems.reduce((acc, item) => {
     if (
       visibleIds.has(item.parentId) ||
       (includeRootNode && item.parentId === ROOT_ID)
     ) {
-      if (!acc[item.parentId]) acc[item.parentId] = [];
-      acc[item.parentId].push(item.id);
+      const parentId = visualParentIdForItem(item, includeRootNode, sprints);
+
+      if (!acc[parentId]) acc[parentId] = [];
+      acc[parentId].push(item.id);
     }
 
     return acc;
   }, {});
 
+  if (includeRootNode && nodeById.has(MAIN_ROOT_ID) && nodeById.has(ROOT_ID)) {
+    childrenByParent[MAIN_ROOT_ID] = [ROOT_ID, ...extraSprintIds];
+  }
+
   return Array.from(
-    new Set([rootNodeId, ...workItems.map((item) => item.parentId)])
+    new Set([
+      rootNodeId,
+      ...(includeRootNode ? [MAIN_ROOT_ID, ROOT_ID] : []),
+      ...extraSprintIds,
+      ...workItems.map((item) => item.parentId),
+    ])
   ).flatMap((parentId) => {
     const parent = nodeById.get(parentId);
     const childIds = childrenByParent[parentId] || [];
@@ -231,7 +298,7 @@ function buildBranchConnectorEdges(nodes, workItems, includeRootNode, rootNodeId
 
     if (children.length === 1) {
       const child = children[0];
-      const childItem = itemById.get(child.id);
+      const childItem = itemForNode(child.id, child, itemById);
 
       return [
         {
@@ -325,7 +392,7 @@ function buildBranchConnectorEdges(nodes, workItems, includeRootNode, rootNodeId
     const middleStemSegments = children.slice(1, -1).map((child) => {
       const childCenterX = getNodeCenterX(child);
       return {
-        color: edgeColorFor(itemById.get(child.id) || {}),
+        color: edgeColorFor(itemForNode(child.id, child, itemById)),
         path: straightPath(
           {
             x: childCenterX,
@@ -338,7 +405,7 @@ function buildBranchConnectorEdges(nodes, workItems, includeRootNode, rootNodeId
         ),
       };
     });
-    const parentItem = itemById.get(parentId);
+    const parentItem = itemForNode(parentId, parent, itemById);
 
     return [
       {
@@ -353,12 +420,12 @@ function buildBranchConnectorEdges(nodes, workItems, includeRootNode, rootNodeId
               path: trunkPath,
             },
             {
-              color: edgeColorFor(itemById.get(leftChild.id) || {}),
+              color: edgeColorFor(itemForNode(leftChild.id, leftChild, itemById)),
               path: leftArmPath,
             },
             ...middleStemSegments,
             {
-              color: edgeColorFor(itemById.get(rightChild.id) || {}),
+              color: edgeColorFor(itemForNode(rightChild.id, rightChild, itemById)),
               path: rightArmPath,
             },
           ],
@@ -460,15 +527,28 @@ function mergeBounds(bounds) {
   );
 }
 
-function buildSeparatorGuides(nodes, workItems, rootNodeId) {
+function buildSeparatorGuides(nodes, workItems, rootNodeId, sprints = []) {
   const workNodes = nodes.filter(isWorkNode);
   const byId = new Map(workNodes.map((node) => [node.id, node]));
   const itemById = new Map(workItems.map((item) => [item.id, item]));
+  const extraSprintIds = sprints
+    .filter((sprint) => sprint.id !== ROOT_ID)
+    .map((sprint) => sprint.id);
   const childrenByParent = workItems.reduce((acc, item) => {
-    if (!acc[item.parentId]) acc[item.parentId] = [];
-    acc[item.parentId].push(item.id);
+    const parentId = visualParentIdForItem(
+      item,
+      byId.has(MAIN_ROOT_ID),
+      sprints
+    );
+
+    if (!acc[parentId]) acc[parentId] = [];
+    acc[parentId].push(item.id);
     return acc;
   }, {});
+
+  if (byId.has(MAIN_ROOT_ID) && byId.has(ROOT_ID)) {
+    childrenByParent[MAIN_ROOT_ID] = [ROOT_ID, ...extraSprintIds];
+  }
   const subtreeBounds = new Map();
 
   function getSubtreeBounds(id) {
@@ -490,11 +570,19 @@ function buildSeparatorGuides(nodes, workItems, rootNodeId) {
   getSubtreeBounds(rootNodeId);
 
   return Array.from(
-    new Set([rootNodeId, ...workItems.map((item) => item.id)])
+    new Set([
+      rootNodeId,
+      ...(byId.has(MAIN_ROOT_ID) ? [ROOT_ID] : []),
+      ...extraSprintIds,
+      ...workItems.map((item) => item.id),
+    ])
   ).flatMap(
     (parentId) => {
       const parentNode = byId.get(parentId);
       const parentType =
+        parentId === MAIN_ROOT_ID
+          ? "main-root"
+          :
         parentId === ROOT_ID
           ? "story-root"
           : itemById.get(parentId)?.type;
@@ -503,7 +591,7 @@ function buildSeparatorGuides(nodes, workItems, rootNodeId) {
       if (
         !parentNode ||
         childIds.length < 2 ||
-        !["story-root", "epic"].includes(parentType)
+        !["main-root", "story-root", "epic"].includes(parentType)
       ) {
         return [];
       }
@@ -534,12 +622,13 @@ function buildSeparatorGuides(nodes, workItems, rootNodeId) {
   );
 }
 
-function withSeparatorGuideNodes(nodes, workItems, rootNodeId) {
+function withSeparatorGuideNodes(nodes, workItems, rootNodeId, sprints = []) {
   const workNodes = nodes.filter(isWorkNode);
   const guideNodes = buildSeparatorGuides(
     workNodes,
     workItems,
-    rootNodeId
+    rootNodeId,
+    sprints
   ).map(
     (guide) => ({
       id: `separator:${guide.id}`,
@@ -582,10 +671,13 @@ function displayDateForItem(item) {
 
 function toFlowNodes({
   workItems,
+  mainTitle,
   rootTitle,
   rootDocketState,
+  sprints = [],
   storyPointTotals,
   viewRootId,
+  viewMode,
   selectedId,
   existingPositions,
   actions,
@@ -597,6 +689,36 @@ function toFlowNodes({
     return itemTime > latestTime ? item.updatedAt || item.createdAt : latest;
   }, "");
 
+  const mainRootNode =
+    viewMode === "main" && !viewRootId
+      ? [
+          {
+            id: MAIN_ROOT_ID,
+            type: "jiraNode",
+            position: existingPositions[MAIN_ROOT_ID] || {
+              x: 0,
+              y: 64,
+            },
+            data: {
+              id: MAIN_ROOT_ID,
+              title: mainTitle || "Genesis",
+              type: "main-root",
+              docketState: rootDocketState || "concept",
+              updatedAt: rootUpdatedAt,
+              position: existingPositions[MAIN_ROOT_ID] || {
+                x: 0,
+                y: 64,
+              },
+              calculatedStoryPoints: storyPointTotals.rootTotal,
+              calculatedTimeMinutes: storyPointTotals.rootTimeMinutes,
+              selected: false,
+              isRoot: true,
+              isVirtual: true,
+              ...actions,
+            },
+          },
+        ]
+      : [];
   const rootNode = viewRootId
     ? []
     : [
@@ -625,9 +747,41 @@ function toFlowNodes({
           },
         },
       ];
+  const extraSprintNodes =
+    viewMode === "main" && !viewRootId
+      ? sprints
+          .filter((sprint) => sprint.id !== ROOT_ID)
+          .map((sprint) => ({
+            id: sprint.id,
+            type: "jiraNode",
+            position: existingPositions[sprint.id] || {
+              x: 0,
+              y: 64,
+            },
+            data: {
+              id: sprint.id,
+              title: sprint.title,
+              type: "story-root",
+              docketState: sprint.docketState || "concept",
+              updatedAt: rootUpdatedAt,
+              position: existingPositions[sprint.id] || {
+                x: 0,
+                y: 64,
+              },
+              calculatedStoryPoints: 0,
+              calculatedTimeMinutes: 0,
+              selected: false,
+              isRoot: true,
+              isVirtual: true,
+              ...actions,
+            },
+          }))
+      : [];
 
   const baseNodes = [
+    ...mainRootNode,
     ...rootNode,
+    ...extraSprintNodes,
     ...workItems.map((item) => {
       return {
         id: item.id,
@@ -657,38 +811,51 @@ function toFlowNodes({
 
 export default function GraphView({
   workItems,
+  mainTitle,
   rootTitle,
   rootDocketState,
+  sprints = [],
   storyPointTotals,
   viewRootId,
+  viewMode,
   selectedId,
   onSelect,
   onOpenDetails,
   onStartChild,
+  onStartSprint,
   layoutNonce,
 }) {
   const reactFlowRef = useRef(null);
   const initialViewCenteredRef = useRef(false);
-  const rootNodeId = viewRootId || ROOT_ID;
+  const [canvasLocked, setCanvasLocked] = useState(false);
+  const showMainRoot = viewMode === "main" && !viewRootId;
+  const rootNodeId = viewRootId || (showMainRoot ? MAIN_ROOT_ID : ROOT_ID);
   const appliedLayoutKeyRef = useRef("");
   const layoutStructureKey = useMemo(
     () =>
       JSON.stringify({
         layoutNonce,
         rootNodeId,
+        viewMode,
+        sprints: sprints.map((sprint) => [
+          sprint.id,
+          sprint.title,
+          sprint.docketState,
+        ]),
         workItems: workItems.map((item) => [
           item.id,
           item.parentId,
           item.type,
         ]),
       }),
-    [layoutNonce, rootNodeId, workItems]
+    [layoutNonce, rootNodeId, viewMode, sprints, workItems]
   );
   const actions = useMemo(
     () => ({
       onStartChild,
+      onStartSprint,
     }),
-    [onStartChild]
+    [onStartChild, onStartSprint]
   );
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const connectorEdges = useMemo(
@@ -697,9 +864,10 @@ export default function GraphView({
         nodes,
         workItems,
         !viewRootId,
-        rootNodeId
+        rootNodeId,
+        sprints
       ),
-    [nodes, rootNodeId, viewRootId, workItems]
+    [nodes, rootNodeId, viewRootId, sprints, workItems]
   );
 
   const centerInitialViewOnRoot = useCallback(
@@ -748,26 +916,32 @@ export default function GraphView({
 
       const nextNodes = withSeparatorGuideNodes(toFlowNodes({
         workItems,
+        mainTitle,
         rootTitle,
         rootDocketState,
+        sprints,
         storyPointTotals,
         viewRootId,
+        viewMode,
         selectedId,
         existingPositions,
         actions,
-      }), workItems, rootNodeId);
+      }), workItems, rootNodeId, sprints);
 
       return reconcileNodes(currentNodes, nextNodes);
     });
   }, [
     actions,
     rootDocketState,
+    mainTitle,
     rootTitle,
     rootNodeId,
+    sprints,
     selectedId,
     setNodes,
     storyPointTotals,
     viewRootId,
+    viewMode,
     workItems,
   ]);
 
@@ -788,10 +962,13 @@ export default function GraphView({
       );
       const baseNodes = toFlowNodes({
         workItems,
+        mainTitle,
         rootTitle,
         rootDocketState,
+        sprints,
         storyPointTotals,
         viewRootId,
+        viewMode,
         selectedId,
         existingPositions,
         actions,
@@ -809,7 +986,7 @@ export default function GraphView({
       });
       const layout = getLayoutedElements(
         baseNodes,
-        buildLayoutEdges(workItems, !viewRootId),
+        buildLayoutEdges(workItems, !viewRootId, showMainRoot, sprints),
         rootNodeId
       );
       const nextNodes = withSeparatorGuideNodes(layout.nodes.map((node) => ({
@@ -818,7 +995,7 @@ export default function GraphView({
           ...node.data,
           position: node.position,
         },
-      })), workItems, rootNodeId);
+      })), workItems, rootNodeId, sprints);
       const reconciledNodes = reconcileNodes(
         currentNodes,
         nextNodes
@@ -831,12 +1008,16 @@ export default function GraphView({
     layoutStructureKey,
     layoutNonce,
     rootDocketState,
+    mainTitle,
     rootTitle,
     rootNodeId,
+    sprints,
     selectedId,
     setNodes,
     storyPointTotals,
     viewRootId,
+    viewMode,
+    showMainRoot,
     workItems,
   ]);
 
@@ -864,6 +1045,23 @@ export default function GraphView({
     onSelect(null);
   }, [onSelect]);
 
+  const handleFitView = useCallback(() => {
+    reactFlowRef.current?.fitView({
+      padding: 0.18,
+      duration: 180,
+    });
+  }, []);
+
+  const handleFullscreen = useCallback(() => {
+    const element = document.querySelector(".app-container");
+
+    if (!document.fullscreenElement) {
+      element?.requestFullscreen?.();
+    } else {
+      document.exitFullscreen?.();
+    }
+  }, []);
+
   return (
     <div className="graph-view">
       <ReactFlow
@@ -877,17 +1075,63 @@ export default function GraphView({
         onPaneClick={handlePaneClick}
         nodesDraggable={false}
         nodesConnectable={false}
+        panOnDrag={!canvasLocked}
+        zoomOnScroll={!canvasLocked}
+        zoomOnPinch={!canvasLocked}
         zoomOnDoubleClick={false}
         deleteKeyCode={null}
         minZoom={0.25}
+        proOptions={{ hideAttribution: true }}
         onInit={(instance) => {
           reactFlowRef.current = instance;
           centerInitialViewOnRoot(nodes);
         }}
       >
-        <Controls />
-        <Background color="#242b38" gap={22} size={1} />
+        <Background color="rgba(148, 163, 184, 0.16)" gap={24} size={1} />
       </ReactFlow>
+      <div className="canvas-controls" aria-label="Canvas controls">
+        <button
+          type="button"
+          onClick={() => reactFlowRef.current?.zoomIn({ duration: 150 })}
+          aria-label="Zoom in"
+          title="Zoom in"
+        >
+          +
+        </button>
+        <button
+          type="button"
+          onClick={() => reactFlowRef.current?.zoomOut({ duration: 150 })}
+          aria-label="Zoom out"
+          title="Zoom out"
+        >
+          -
+        </button>
+        <button
+          type="button"
+          onClick={handleFitView}
+          aria-label="Fit view"
+          title="Fit view"
+        >
+          Fit
+        </button>
+        <button
+          type="button"
+          onClick={() => setCanvasLocked((locked) => !locked)}
+          aria-pressed={canvasLocked}
+          aria-label="Lock canvas"
+          title="Lock canvas"
+        >
+          {canvasLocked ? "Locked" : "Lock"}
+        </button>
+        <button
+          type="button"
+          onClick={handleFullscreen}
+          aria-label="Fullscreen"
+          title="Fullscreen"
+        >
+          Full
+        </button>
+      </div>
     </div>
   );
 }

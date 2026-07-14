@@ -1,6 +1,5 @@
-import { memo, useState } from "react";
+import { memo } from "react";
 import { Handle, Position } from "reactflow";
-import { ROOT_ID } from "../utils/worklogModel";
 
 function stopCanvasEvent(event) {
   event.stopPropagation();
@@ -10,6 +9,7 @@ function hasStoryPoints(data) {
   return (
     data.type === "story" ||
     data.type === "epic" ||
+    data.type === "main-root" ||
     data.type === "story-root"
   );
 }
@@ -55,8 +55,9 @@ function formatShortDate(value) {
 }
 
 function childTypes(data) {
-  if (data.id === ROOT_ID) return ["epic"];
-  if (data.type === "epic") return ["story", "task"];
+  if (data.type === "main-root") return ["sprint"];
+  if (data.type === "story-root") return ["epic"];
+  if (data.type === "epic") return ["story"];
   if (data.type === "story") return ["job"];
   return [];
 }
@@ -110,14 +111,16 @@ function nodeIcon(data) {
 }
 
 function JiraNode({ data }) {
-  const [menuOpen, setMenuOpen] = useState(false);
   const availableChildTypes = childTypes(data);
   const showSp = hasStoryPoints(data);
   const timeValue = data.calculatedTimeMinutes || 0;
 
   function startChild(type, event) {
     stopCanvasEvent(event);
-    setMenuOpen(false);
+    if (type === "sprint") {
+      data.onStartSprint?.();
+      return;
+    }
     data.onStartChild(type, data.id);
   }
 
@@ -156,58 +159,17 @@ function JiraNode({ data }) {
 
       {availableChildTypes.length > 0 && (
         <div className="node-child-action">
-          {availableChildTypes.length === 1 ? (
-            <button
-              type="button"
-              className="add-child-button nodrag nopan"
-              onPointerDown={stopCanvasEvent}
-              onClick={(event) =>
-                startChild(availableChildTypes[0], event)
-              }
-              aria-label="Add child"
-            >
-              +
-            </button>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="add-child-button nodrag nopan"
-                onPointerDown={stopCanvasEvent}
-                onClick={(event) => {
-                  stopCanvasEvent(event);
-                  setMenuOpen((open) => !open);
-                }}
-                aria-label="Add child"
-              >
-                +
-              </button>
-              {menuOpen && (
-                <div
-                  className="child-menu nodrag nopan"
-                  onPointerDown={stopCanvasEvent}
-                  onClick={stopCanvasEvent}
-                >
-                  <button
-                    type="button"
-                    onClick={(event) =>
-                      startChild("story", event)
-                    }
-                  >
-                    Add Story
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(event) =>
-                      startChild("task", event)
-                    }
-                  >
-                    Add Task
-                  </button>
-                </div>
-              )}
-            </>
-          )}
+          <button
+            type="button"
+            className="add-child-button nodrag nopan"
+            onPointerDown={stopCanvasEvent}
+            onClick={(event) =>
+              startChild(availableChildTypes[0], event)
+            }
+            aria-label="Add child"
+          >
+            +
+          </button>
         </div>
       )}
 

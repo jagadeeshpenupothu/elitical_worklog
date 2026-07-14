@@ -17,6 +17,7 @@ import {
   createWorkItem,
   deleteWorkItem,
   generateWorkItemId,
+  generateSprintId,
   normalizeSeedData,
   normalizeWorklogSnapshot,
   stableSnapshotString,
@@ -33,7 +34,10 @@ import {
 } from "./services/worklogApi";
 import "./App.css";
 
+const MAIN_ROOT_ID = "mainRoot";
+
 function formatType(type) {
+  if (type === "main-root") return "Main";
   if (type === "story-root") return "Sprint";
   return `${type.charAt(0).toUpperCase()}${type.slice(1)}`;
 }
@@ -373,6 +377,19 @@ function formatTimestamp(value) {
   }).format(date);
 }
 
+function formatRelativeSync(value) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "Not synced";
+
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+
+  if (elapsedSeconds < 60) return "Just now";
+  if (elapsedSeconds < 3600) return `${Math.floor(elapsedSeconds / 60)} min ago`;
+  if (elapsedSeconds < 86400) return `${Math.floor(elapsedSeconds / 3600)}h ago`;
+  return formatDateLabel(value);
+}
+
 function formatDateLabel(value) {
   const date = new Date(value);
 
@@ -383,6 +400,60 @@ function formatDateLabel(value) {
     month: "short",
     year: "numeric",
   }).format(date);
+}
+
+function itemMatchesQuery(item, query) {
+  const normalized = query.trim().toLowerCase();
+
+  if (!normalized) return true;
+
+  return [
+    item.title,
+    item.description,
+    item.type,
+    item.category,
+    item.priority,
+    item.docketState,
+    item.sprint,
+    item.id,
+  ].some((value) => String(value || "").toLowerCase().includes(normalized));
+}
+
+function sprintMatchesQuery(sprint, query) {
+  const normalized = query.trim().toLowerCase();
+
+  if (!normalized) return true;
+
+  return [
+    sprint.id,
+    sprint.title,
+    sprint.docketState,
+    "sprint",
+  ].some((value) => String(value || "").toLowerCase().includes(normalized));
+}
+
+function filterWorkItemsForSearch(items, query) {
+  const normalized = query.trim().toLowerCase();
+
+  if (!normalized) return items;
+
+  const itemById = new Map(items.map((item) => [item.id, item]));
+  const visibleIds = new Set();
+
+  items.forEach((item) => {
+    if (!itemMatchesQuery(item, normalized)) return;
+
+    visibleIds.add(item.id);
+
+    let parentId = item.parentId;
+
+    while (parentId && parentId !== ROOT_ID) {
+      visibleIds.add(parentId);
+      parentId = itemById.get(parentId)?.parentId;
+    }
+  });
+
+  return items.filter((item) => visibleIds.has(item.id));
 }
 
 function primaryWorklogDate(item) {
@@ -565,12 +636,16 @@ function SelectField({ label, value, options, onChange }) {
 
 function WorkItemModal({
   modal,
+  mainTitle,
   rootTitle,
   rootDocketState,
+  sprints,
   workItems,
   totals,
   onClose,
+  onSaveMain,
   onSaveRoot,
+  onSaveSprint,
   onSaveItem,
   onCreateItem,
   onDeleteItem,
@@ -580,30 +655,51 @@ function WorkItemModal({
     modal.kind === "create" ? "edit" : "view"
   );
   const [editingField, setEditingField] = useState(null);
-  const activeItem =
+  const isMainRoot =
+    modal.kind === "details" && modal.id === MAIN_ROOT_ID;
+  const activeSprint =
     modal.kind === "details" && modal.id !== ROOT_ID
+      ? sprints.find((sprint) => sprint.id === modal.id)
+      : null;
+  const activeItem =
+    modal.kind === "details" &&
+    modal.id !== ROOT_ID &&
+    modal.id !== MAIN_ROOT_ID &&
+    !activeSprint
       ? workItems.find((item) => item.id === modal.id)
       : null;
   const isRoot =
     modal.kind === "details" && modal.id === ROOT_ID;
-  const itemType = isRoot
+  const isSprint = isRoot || Boolean(activeSprint);
+  const itemType = isMainRoot
+    ? "main-root"
+    : isSprint
     ? "story-root"
     : modal.kind === "create"
     ? modal.type
     : activeItem?.type;
   const sprintParentId =
     modal.kind === "create" ? modal.parentId : activeItem?.parentId;
-  const fallbackSprint = isRoot
+  const fallbackSprint = isSprint || isMainRoot
     ? rootTitle
     : inheritedSprint(sprintParentId, workItems, rootTitle);
-  const fallbackDocketState = isRoot
+  const fallbackDocketState = isSprint
     ? rootDocketState || "concept"
+    : isMainRoot
+    ? "concept"
     : inheritedDocketState(sprintParentId, workItems, rootDocketState);
   const initialDraft =
     modal.kind === "create"
       ? makeCreateDraft(modal.type, fallbackSprint, fallbackDocketState)
+      : isMainRoot
+      ? { title: mainTitle || "Genesis" }
       : isRoot
       ? { title: rootTitle, docketState: rootDocketState || "concept" }
+      : activeSprint
+      ? {
+          title: activeSprint.title,
+          docketState: activeSprint.docketState || "concept",
+        }
       : activeItem
       ? makeEditDraft(activeItem, fallbackSprint)
       : null;
@@ -616,15 +712,21 @@ function WorkItemModal({
   const currentPriority = activeItem?.priority || draft?.priority || "info";
   const currentDocketState = isRoot
     ? rootDocketState || "concept"
+    : activeSprint
+    ? activeSprint.docketState || "concept"
+    : isMainRoot
+    ? "concept"
     : activeItem?.docketState || draft?.docketState || "concept";
-  const currentSprint = isRoot
+  const currentSprint = isSprint || isMainRoot
     ? rootTitle
     : activeItem?.sprint || draft?.sprint || fallbackSprint;
   const hasWorklog = acceptsTime(itemType);
   const contextLabel =
     modal.kind === "create"
       ? `Create ${formatType(itemType)}`
-      : isRoot
+      : isMainRoot
+      ? "Main"
+      : isSprint
       ? "Sprint"
       : `${formatType(activeItem?.type).toUpperCase()} · ${formatLabel(
           currentCategory
@@ -639,7 +741,15 @@ function WorkItemModal({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
-  if (!draft || (modal.kind === "details" && !isRoot && !activeItem)) {
+  if (
+    !draft ||
+    (
+      modal.kind === "details" &&
+      !isMainRoot &&
+      !isSprint &&
+      !activeItem
+    )
+  ) {
     return null;
   }
 
@@ -685,8 +795,24 @@ function WorkItemModal({
       return;
     }
 
-    if (isRoot) {
-      const result = onSaveRoot({
+    if (isMainRoot) {
+      const result = onSaveMain({
+        title: draft.title,
+      });
+      if (result.ok) {
+        setMode("view");
+        setEditingField(null);
+      } else {
+        setError(result.error);
+      }
+      return;
+    }
+
+    if (isSprint) {
+      const result = isRoot ? onSaveRoot({
+        title: draft.title,
+        docketState: draft.docketState,
+      }) : onSaveSprint(activeSprint.id, {
         title: draft.title,
         docketState: draft.docketState,
       });
@@ -746,8 +872,15 @@ function WorkItemModal({
     }
 
     setDraft(
-      isRoot
+      isMainRoot
+        ? { title: mainTitle || "Genesis" }
+        : isRoot
         ? { title: rootTitle, docketState: rootDocketState || "concept" }
+        : activeSprint
+        ? {
+            title: activeSprint.title,
+            docketState: activeSprint.docketState || "concept",
+          }
         : makeEditDraft(activeItem, fallbackSprint)
     );
     setError("");
@@ -775,19 +908,23 @@ function WorkItemModal({
     if (result?.ok !== false) onClose();
   }
 
-  const calculatedSp = isRoot
+  const calculatedSp = isSprint || isMainRoot
     ? totals.rootTotal
     : activeItem?.type === "epic"
     ? totals.byId[activeItem.id] || 0
     : null;
-  const calculatedTime = isRoot
+  const calculatedTime = isSprint || isMainRoot
     ? totals.rootTimeMinutes || 0
     : activeItem
     ? totals.timeById[activeItem.id] || 0
     : 0;
   const headerSummary = modal.kind === "create"
     ? `${formatType(itemType)} · ${parentLabel(parentId, workItems)}`
-    : isRoot
+    : isMainRoot
+    ? `${sprints.length} Sprint${sprints.length === 1 ? "" : "s"} · ${
+        totals.rootTotal
+      } SP · ${formatWorkTime(totals.rootTimeMinutes || 0)}`
+    : isSprint
     ? `${formatDocketState(currentDocketState)} · ${
         totals.rootTotal
       } SP · ${formatWorkTime(totals.rootTimeMinutes || 0)}`
@@ -811,14 +948,18 @@ function WorkItemModal({
             <h2>
               {modal.kind === "create"
                 ? "New work item"
+                : isMainRoot
+                ? mainTitle || "Genesis"
                 : isRoot
                 ? rootTitle
+                : activeSprint
+                ? activeSprint.title
                 : activeItem.title}
             </h2>
             <p>{headerSummary}</p>
           </div>
           <div className="modal-header-actions">
-            {modal.kind === "details" && !isRoot && (
+            {modal.kind === "details" && activeItem && (
               <button
                 type="button"
                 onClick={() => {
@@ -841,7 +982,7 @@ function WorkItemModal({
         </header>
 
         <div className="modal-body">
-          {modal.kind === "details" && (
+          {modal.kind === "details" && !isMainRoot && (
             <label className="docket-state-control">
               <span>Docket State</span>
               <select
@@ -862,7 +1003,38 @@ function WorkItemModal({
 
           {!isEditing ? (
             <div className="modal-sections">
-              {isRoot ? (
+              {isMainRoot ? (
+                <>
+                  <ModalSection title="Basic Information">
+                    <InlineField
+                      label="Title"
+                      field="title"
+                      value={draft.title}
+                      editingField={editingField}
+                      onEdit={startInlineEdit}
+                      onChange={(value) => updateDraft("title", value)}
+                      wide
+                    />
+                  </ModalSection>
+                  <ModalSection title="Rollup">
+                    <ReadOnlyField
+                      label="Sprints"
+                      value={String(sprints.length)}
+                      badge
+                    />
+                    <ReadOnlyField
+                      label="Calculated Story Points"
+                      value={`${totals.rootTotal} SP`}
+                      badge
+                    />
+                    <ReadOnlyField
+                      label="Calculated Time"
+                      value={formatWorkTime(totals.rootTimeMinutes || 0)}
+                      badge
+                    />
+                  </ModalSection>
+                </>
+              ) : isSprint ? (
                 <>
                   <ModalSection title="Basic Information">
                     <InlineField
@@ -1028,7 +1200,7 @@ function WorkItemModal({
                   onChange={(value) => updateDraft("title", value)}
                 />
 
-                {!isRoot && (
+                {!isSprint && !isMainRoot && (
                   <TextAreaField
                     label="Description"
                     value={draft.description}
@@ -1037,7 +1209,7 @@ function WorkItemModal({
                 )}
               </ModalSection>
 
-              {!isRoot && hasWorklog && (
+              {!isSprint && !isMainRoot && hasWorklog && (
                 <ModalSection title="Worklog">
                   <TextField
                     label="Date"
@@ -1062,41 +1234,43 @@ function WorkItemModal({
                 </ModalSection>
               )}
 
-              <ModalSection title="Workflow">
-                {isRoot ? (
-                  <SelectField
-                    label="Docket State"
-                    value={draft.docketState || "concept"}
-                    options={DOCKET_STATES}
-                    onChange={(value) => updateDraft("docketState", value)}
-                  />
-                ) : (
-                  <>
-                    <SelectField
-                      label="Category"
-                      value={draft.category}
-                      options={CATEGORIES}
-                      onChange={(value) => updateDraft("category", value)}
-                    />
-
-                    <SelectField
-                      label="Priority"
-                      value={draft.priority}
-                      options={PRIORITIES}
-                      onChange={(value) => updateDraft("priority", value)}
-                    />
-
+              {!isMainRoot && (
+                <ModalSection title="Workflow">
+                  {isSprint ? (
                     <SelectField
                       label="Docket State"
                       value={draft.docketState || "concept"}
                       options={DOCKET_STATES}
                       onChange={(value) => updateDraft("docketState", value)}
                     />
-                  </>
-                )}
-              </ModalSection>
+                  ) : (
+                    <>
+                      <SelectField
+                        label="Category"
+                        value={draft.category}
+                        options={CATEGORIES}
+                        onChange={(value) => updateDraft("category", value)}
+                      />
 
-              {!isRoot && (
+                      <SelectField
+                        label="Priority"
+                        value={draft.priority}
+                        options={PRIORITIES}
+                        onChange={(value) => updateDraft("priority", value)}
+                      />
+
+                      <SelectField
+                        label="Docket State"
+                        value={draft.docketState || "concept"}
+                        options={DOCKET_STATES}
+                        onChange={(value) => updateDraft("docketState", value)}
+                      />
+                    </>
+                  )}
+                </ModalSection>
+              )}
+
+              {!isSprint && !isMainRoot && (
                 <ModalSection title="Hierarchy">
                   <ReadOnlyField label="Type" value={formatType(itemType)} />
                   <ReadOnlyField
@@ -1131,14 +1305,14 @@ function WorkItemModal({
 
                   {modal.kind !== "create" && (
                     <>
-                      {isRoot && (
+                      {(isSprint || isMainRoot) && (
                         <ReadOnlyField
                           label="Calculated Story Points"
                           value={`${totals.rootTotal} SP`}
                           badge
                         />
                       )}
-                      {!isRoot && activeItem.type === "epic" && (
+                      {!isSprint && !isMainRoot && activeItem.type === "epic" && (
                         <ReadOnlyField
                           label="Calculated Story Points"
                           value={`${calculatedSp} SP`}
@@ -1155,7 +1329,7 @@ function WorkItemModal({
                 </ModalSection>
               ) : null}
 
-              {modal.kind !== "create" && !isRoot && (
+              {modal.kind !== "create" && !isSprint && !isMainRoot && (
                 <ModalSection title="System Information">
                   <ReadOnlyField
                     label="Created At"
@@ -1176,7 +1350,7 @@ function WorkItemModal({
         {showFooter && (
           <footer className="modal-footer">
             <div className="modal-footer-danger">
-              {modal.kind === "details" && !isRoot && (
+              {modal.kind === "details" && activeItem && (
                 <button
                   type="button"
                   className="danger-button"
@@ -1223,7 +1397,11 @@ function App() {
   const [modal, setModal] = useState(null);
   const [message, setMessage] = useState("");
   const [layoutNonce, setLayoutNonce] = useState(1);
+  const [viewMode, setViewMode] = useState("sprint");
   const [viewRootId, setViewRootId] = useState(null);
+  const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [loadState, setLoadState] = useState(
     cachedSnapshot ? "ready" : "loading"
   );
@@ -1237,12 +1415,17 @@ function App() {
   const [baselineSnapshot, setBaselineSnapshot] = useState(
     cachedSnapshot?.snapshot || null
   );
+  const [lastSyncedAt, setLastSyncedAt] = useState(
+    cachedRecord?.lastSyncedAt || ""
+  );
   const [legacyState, setLegacyState] = useState(null);
   const [showLegacyNotice, setShowLegacyNotice] = useState(false);
 
   const {
+    mainTitle = "Genesis",
     rootTitle = "",
     rootDocketState = "concept",
+    sprints = [],
     workItems = [],
   } = storyState || {};
   const workItemsRef = useRef(workItems);
@@ -1273,16 +1456,36 @@ function App() {
     () => descendantsIncluding(workItems, viewRootId),
     [viewRootId, workItems]
   );
-  const visibleTotals = useMemo(
-    () => calculateStoryPoints(visibleWorkItems),
-    [visibleWorkItems]
+  const searchedWorkItems = useMemo(
+    () => filterWorkItemsForSearch(visibleWorkItems, searchQuery),
+    [searchQuery, visibleWorkItems]
+  );
+  const searchedSprints = useMemo(() => {
+    if (viewMode !== "main" || !searchQuery.trim()) return sprints;
+
+    return sprints.filter((sprint) => sprintMatchesQuery(sprint, searchQuery));
+  }, [searchQuery, sprints, viewMode]);
+  const displayedTotals = useMemo(
+    () => calculateStoryPoints(searchedWorkItems),
+    [searchedWorkItems]
   );
   const viewRootItem = viewRootId
     ? workItems.find((item) => item.id === viewRootId)
     : null;
-  const displayedToolbarSp = viewRootId
-    ? visibleTotals.byId[viewRootId] || 0
-    : totals.rootTotal;
+  const contextTitle =
+    viewMode === "main"
+      ? "Main View"
+      : viewRootItem
+      ? `${viewRootItem.title} View`
+      : "Sprint View";
+  const contextItemCount =
+    searchedWorkItems.length + (viewMode === "main" ? searchedSprints.length : 1);
+  const contextStoryPoints =
+    viewRootId ? displayedTotals.byId[viewRootId] || 0 : displayedTotals.rootTotal;
+  const contextTimeMinutes =
+    viewRootId
+      ? displayedTotals.timeById[viewRootId] || 0
+      : displayedTotals.rootTimeMinutes || 0;
 
   useEffect(() => {
     workItemsRef.current = workItems;
@@ -1314,23 +1517,27 @@ function App() {
     message: nextMessage = "Synced",
   }) => {
     const normalized = normalizeLoadedSnapshot(snapshot);
+    const syncedAt = new Date().toISOString();
 
     setStoryState(normalized.state);
     workItemsRef.current = normalized.state.workItems;
     setBaselineSnapshot(normalized.snapshot);
     setBaseSha(nextSha);
     setSelectedId(null);
+    setViewMode("sprint");
     setViewRootId(null);
     setModal(null);
     setLoadState("ready");
     setSyncState("synced");
     setSaveState("idle");
     setMessage(nextMessage);
+    setLastSyncedAt(syncedAt);
     setLayoutNonce((value) => value + 1);
     if (cache) {
       saveCache({
         snapshot: normalized.snapshot,
         sha: nextSha,
+        lastSyncedAt: syncedAt,
       });
     }
     return normalized.snapshot;
@@ -1351,10 +1558,12 @@ function App() {
 
       if (!block && baseSha && remoteSha === baseSha) {
         const normalized = normalizeLoadedSnapshot(result.snapshot);
+        const syncedAt = new Date().toISOString();
         setBaselineSnapshot(normalized.snapshot);
         setBaseSha(remoteSha);
         setLoadState("ready");
         setSyncState("synced");
+        setLastSyncedAt(syncedAt);
         setMessage((current) =>
           current === "Offline (using cached data)" || current === "Syncing..."
             ? "Synced"
@@ -1363,6 +1572,7 @@ function App() {
         saveCache({
           snapshot: normalized.snapshot,
           sha: remoteSha,
+          lastSyncedAt: syncedAt,
         });
         checkLegacyState(normalized.snapshot);
         return;
@@ -1409,14 +1619,123 @@ function App() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [dirty]);
 
-  const openCreateModal = useCallback((type, parentId) => {
-    setModal({
-      kind: "create",
-      type,
-      parentId,
-    });
-    setMessage("");
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearchOpen(true);
+      }
+
+      if (event.key === "Escape") {
+        setSearchOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  const handleSelectNode = useCallback((id) => {
+    setSelectedId(id);
+
+    if (id) {
+      setModal({
+        kind: "details",
+        id,
+      });
+    } else {
+      setModal(null);
+    }
+  }, []);
+
+  const handleStartSprint = useCallback(() => {
+    const currentSprints = storyStateRef.current?.sprints || [];
+    const id = generateSprintId(currentSprints);
+    const title = `Sprint ${currentSprints.length + 1}`;
+
+    setStoryState((current) => ({
+      ...current,
+      sprints: [
+        ...(current?.sprints || []),
+        {
+          id,
+          title,
+          docketState: "concept",
+        },
+      ],
+    }));
+    setMessage("Unsaved Changes");
+    setLayoutNonce((value) => value + 1);
+  }, []);
+
+  const createItem = useCallback((payload) => {
+    const currentWorkItems = workItemsRef.current;
+    const id = generateWorkItemId(currentWorkItems, payload.type);
+    const result = createWorkItem(currentWorkItems, {
+      ...payload,
+      id,
+    });
+
+    if (!result.ok) {
+      setMessage(result.error);
+      return result;
+    }
+
+    const normalized = normalizeArtifactRollup(
+      result.items,
+      rootDocketState
+    );
+
+    setStoryState((current) => ({
+      ...current,
+      rootDocketState: normalized.rootDocketState,
+      workItems: normalized.workItems,
+    }));
+    workItemsRef.current = normalized.workItems;
+    setSelectedId(result.item.id);
+    setMessage("Unsaved Changes");
+    setLayoutNonce((value) => value + 1);
+
+    return result;
+  }, [rootDocketState]);
+
+  const handleStartChild = useCallback((type, parentId) => {
+    const currentWorkItems = workItemsRef.current;
+    const sprintParent = sprints.find((sprint) => sprint.id === parentId);
+    const actualParentId =
+      type === "epic" && sprintParent ? ROOT_ID : parentId;
+    const fallbackSprint = sprintParent
+      ? sprintParent.title
+      : inheritedSprint(actualParentId, currentWorkItems, rootTitle);
+    const fallbackDocketState = inheritedDocketState(
+      actualParentId,
+      currentWorkItems,
+      sprintParent?.docketState || rootDocketState
+    );
+    const typeLabel = formatType(type);
+
+    createItem({
+      title: `New ${typeLabel}`,
+      description: "",
+      category: "feature",
+      priority: "info",
+      sprint: fallbackSprint,
+      docketState: fallbackDocketState,
+      type,
+      parentId: actualParentId,
+      storyPoints: type === "story" ? 0 : undefined,
+      timeMinutes: acceptsTime(type) ? 0 : undefined,
+      worklogs: acceptsTime(type)
+        ? [
+            {
+              date: new Date().toISOString(),
+              description: "",
+              timeMinutes: 0,
+            },
+          ]
+        : undefined,
+    });
+  }, [createItem, rootDocketState, rootTitle, sprints]);
 
   const openDetailsModal = useCallback((id) => {
     setModal({
@@ -1427,14 +1746,26 @@ function App() {
   }, []);
 
   const setFocusedView = useCallback((id) => {
+    setViewMode("focused");
     setViewRootId(id);
     setSelectedId(id);
+    setViewMenuOpen(false);
     setLayoutNonce((value) => value + 1);
   }, []);
 
   const showSprintView = useCallback(() => {
+    setViewMode("sprint");
     setViewRootId(null);
     setSelectedId(null);
+    setViewMenuOpen(false);
+    setLayoutNonce((value) => value + 1);
+  }, []);
+
+  const showMainView = useCallback(() => {
+    setViewMode("main");
+    setViewRootId(null);
+    setSelectedId(null);
+    setViewMenuOpen(false);
     setLayoutNonce((value) => value + 1);
   }, []);
 
@@ -1472,9 +1803,70 @@ function App() {
       ...current,
       rootTitle: trimmed,
       rootDocketState: normalized.rootDocketState,
+      sprints: (current?.sprints || []).map((sprint) =>
+        sprint.id === ROOT_ID
+          ? {
+              ...sprint,
+              title: trimmed,
+              docketState: normalized.rootDocketState,
+            }
+          : sprint
+      ),
       workItems: normalized.workItems,
     }));
     workItemsRef.current = normalized.workItems;
+    setMessage("Unsaved Changes");
+
+    return {
+      ok: true,
+    };
+  }, []);
+
+  const saveMainTitle = useCallback((updates) => {
+    const trimmed = updates.title.trim();
+
+    if (!trimmed) {
+      setMessage("Main title is required.");
+      return {
+        ok: false,
+        error: "Main title is required.",
+      };
+    }
+
+    setStoryState((current) => ({
+      ...current,
+      mainTitle: trimmed,
+    }));
+    setMessage("Unsaved Changes");
+
+    return {
+      ok: true,
+    };
+  }, []);
+
+  const saveSprint = useCallback((id, updates) => {
+    const trimmed = updates.title.trim();
+
+    if (!trimmed) {
+      setMessage("Sprint title is required.");
+      return {
+        ok: false,
+        error: "Sprint title is required.",
+      };
+    }
+
+    setStoryState((current) => ({
+      ...current,
+      sprints: (current?.sprints || []).map((sprint) =>
+        sprint.id === id
+          ? {
+              ...sprint,
+              title: trimmed,
+              docketState: updates.docketState || "concept",
+            }
+          : sprint
+      ),
+    }));
     setMessage("Unsaved Changes");
 
     return {
@@ -1525,37 +1917,6 @@ function App() {
     return result;
   }, [rootDocketState]);
 
-  const createItem = useCallback((payload) => {
-    const currentWorkItems = workItemsRef.current;
-    const id = generateWorkItemId(currentWorkItems, payload.type);
-    const result = createWorkItem(currentWorkItems, {
-      ...payload,
-      id,
-    });
-
-    if (!result.ok) {
-      setMessage(result.error);
-      return result;
-    }
-
-    const normalized = normalizeArtifactRollup(
-      result.items,
-      rootDocketState
-    );
-
-    setStoryState((current) => ({
-      ...current,
-      rootDocketState: normalized.rootDocketState,
-      workItems: normalized.workItems,
-    }));
-    workItemsRef.current = normalized.workItems;
-    setSelectedId(result.item.id);
-    setMessage("Unsaved Changes");
-    setLayoutNonce((value) => value + 1);
-
-    return result;
-  }, [rootDocketState]);
-
   const removeWorkItem = useCallback((item) => {
     const result = deleteWorkItem(workItemsRef.current, item.id);
 
@@ -1585,27 +1946,6 @@ function App() {
     return result;
   }, [rootDocketState, viewRootId]);
 
-  const handleReset = useCallback(() => {
-    if (
-      !window.confirm(
-        "Reset the working copy to the YAML sample? This will not save to GitHub until you click Save Changes."
-      )
-    ) {
-      return;
-    }
-
-    const seedState = normalizeStoryStateArtifactRollup(
-      normalizeSeedData(yamlText)
-    );
-    setStoryState(seedState);
-    workItemsRef.current = seedState.workItems;
-    setSelectedId(null);
-    setViewRootId(null);
-    setModal(null);
-    setMessage("Unsaved Changes");
-    setLayoutNonce((value) => value + 1);
-  }, []);
-
   const handleSaveChanges = useCallback(async () => {
     if (!canSave || !currentSnapshot) return;
 
@@ -1624,6 +1964,7 @@ function App() {
         commitMessage: `worklog: save snapshot ${new Date().toISOString()}`,
       });
       const normalized = normalizeLoadedSnapshot(result.snapshot);
+      const syncedAt = new Date().toISOString();
 
       if (saveRequestIdRef.current !== requestId) return;
 
@@ -1632,7 +1973,9 @@ function App() {
       saveCache({
         snapshot: normalized.snapshot,
         sha: result.baseSha,
+        lastSyncedAt: syncedAt,
       });
+      setLastSyncedAt(syncedAt);
       setSyncState("synced");
       setSaveState("idle");
 
@@ -1667,6 +2010,7 @@ function App() {
     setStoryState(normalized.state);
     workItemsRef.current = normalized.state.workItems;
     setSelectedId(null);
+    setViewMode("sprint");
     setViewRootId(null);
     setModal(null);
     setSaveState("idle");
@@ -1696,6 +2040,7 @@ function App() {
     setSaveState("idle");
     setMessage("Unsaved local sample data");
     setSelectedId(null);
+    setViewMode("sprint");
     setViewRootId(null);
     setModal(null);
     setLayoutNonce((value) => value + 1);
@@ -1710,6 +2055,7 @@ function App() {
     setShowLegacyNotice(false);
     setMessage("Unsaved Changes");
     setSelectedId(null);
+    setViewMode("sprint");
     setViewRootId(null);
     setModal(null);
     setLayoutNonce((value) => value + 1);
@@ -1766,78 +2112,117 @@ function App() {
   return (
     <div className="app-container">
       <header className="top-toolbar">
-        <div className="toolbar-title">
-          <strong>Jira Flow</strong>
-          <span>
-            {viewRootItem ? `${viewRootItem.title} View` : "Sprint View"}
-          </span>
-          <span className="toolbar-sp">
-            {displayedToolbarSp} SP
-          </span>
+        <div className="toolbar-left">
+          <div className="app-logo" aria-label="Jira Flow">
+            JF
+          </div>
+          <div className="view-selector">
+            <button
+              type="button"
+              className="view-selector-button"
+              onClick={() => setViewMenuOpen((open) => !open)}
+              aria-expanded={viewMenuOpen}
+              aria-haspopup="listbox"
+            >
+              <span>
+                {viewMode === "main"
+                  ? "Main View"
+                  : viewRootItem
+                  ? `${viewRootItem.title} View`
+                  : "Sprint View"}
+              </span>
+              <span className="view-selector-caret" aria-hidden="true">
+                v
+              </span>
+            </button>
+            {viewMenuOpen && (
+              <div className="view-selector-menu" role="listbox">
+                <button
+                  type="button"
+                  className={viewMode === "main" ? "selected" : ""}
+                  onClick={showMainView}
+                  role="option"
+                  aria-selected={viewMode === "main"}
+                >
+                  Main View
+                </button>
+                <button
+                  type="button"
+                  className={viewMode === "sprint" ? "selected" : ""}
+                  onClick={showSprintView}
+                  role="option"
+                  aria-selected={viewMode === "sprint"}
+                >
+                  Sprint View
+                </button>
+                {viewRootItem && (
+                  <button
+                    type="button"
+                    className="selected"
+                    onClick={() => setViewMenuOpen(false)}
+                    role="option"
+                    aria-selected="true"
+                  >
+                    {viewRootItem.title} View
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
-        {message && (
-          <span className="toolbar-message">
-            {saveState === "conflict"
-              ? "Conflict"
-              : saveState === "failed"
-              ? "Save Failed"
-              : saveState === "saving"
-              ? "Saving..."
-              : dirty
-              ? "Unsaved Changes"
-              : message}
+        <div className="toolbar-context" aria-label="Current view summary">
+          <strong>{contextTitle}</strong>
+          <span>{contextItemCount} Items</span>
+          <span>{contextStoryPoints} SP</span>
+          <span>{formatWorkTime(contextTimeMinutes)} Logged</span>
+          <span>Last synced {formatRelativeSync(lastSyncedAt)}</span>
+        </div>
+
+        <div className="toolbar-actions">
+          <button
+            type="button"
+            className="search-trigger"
+            onClick={() => setSearchOpen(true)}
+          >
+            Search
+            <span>Ctrl K</span>
+          </button>
+          <span className={`sync-status ${syncState}`}>
+            {statusLabel}
           </span>
-        )}
 
-        <span className={`sync-status ${syncState}`}>
-          {statusLabel}
-        </span>
-
-        <button
-          type="button"
-          onClick={handleSaveChanges}
-          disabled={!canSave}
-        >
-          {saveState === "saving" ? "Saving..." : "Save Changes"}
-        </button>
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={handleDiscardChanges}
-          disabled={!dirty || saveState === "saving"}
-        >
-          Discard Changes
-        </button>
-        {saveState === "conflict" && (
-          <button type="button" onClick={handleReloadRemote}>
-            Reload Remote
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() =>
-            openCreateModal("epic", ROOT_ID)
-          }
-        >
-          + New Work Item
-        </button>
-        {viewRootId && (
-          <button type="button" onClick={showSprintView}>
-            Sprint View
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() =>
-            setLayoutNonce((value) => value + 1)
-          }
-        >
-          Re-layout
-        </button>
-        <button type="button" onClick={handleReset}>
-          Reset to Sample
-        </button>
+          {dirty && (
+            <>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={handleSaveChanges}
+                disabled={!canSave}
+              >
+                {saveState === "saving" ? "Saving..." : "Save Changes"}
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={handleDiscardChanges}
+                disabled={saveState === "saving"}
+              >
+                Discard Changes
+              </button>
+            </>
+          )}
+          {saveState === "conflict" && (
+            <button type="button" onClick={handleReloadRemote}>
+              Reload Remote
+            </button>
+          )}
+          {viewRootId && (
+            <button type="button" onClick={showSprintView}>
+              Sprint View
+            </button>
+          )}
+        </div>
       </header>
 
       {showLegacyNotice && (
@@ -1852,28 +2237,66 @@ function App() {
         </div>
       )}
 
+      {searchOpen && (
+        <div className="search-overlay" onMouseDown={() => setSearchOpen(false)}>
+          <section
+            className="search-panel"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <label>
+              <span>Search workspace</span>
+              <input
+                autoFocus
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search epics, stories, tasks, jobs, sprints..."
+              />
+            </label>
+            <div className="search-results">
+              <span>{searchedWorkItems.length} work items</span>
+              <span>{searchedSprints.length} sprints</span>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {searchedWorkItems.length === 0 && viewMode !== "main" && (
+        <div className="empty-canvas-state">
+          <h2>Create your first work item</h2>
+          <p>Use the plus button on the Sprint View box to begin.</p>
+        </div>
+      )}
+
       <GraphView
-        workItems={visibleWorkItems}
+        workItems={searchedWorkItems}
+        mainTitle={mainTitle}
         rootTitle={rootTitle}
         rootDocketState={rootDocketState}
-        storyPointTotals={viewRootId ? visibleTotals : totals}
+        sprints={searchedSprints}
+        storyPointTotals={displayedTotals}
         viewRootId={viewRootId}
+        viewMode={viewMode}
         selectedId={selectedId}
-        onSelect={setSelectedId}
+        onSelect={handleSelectNode}
         onOpenDetails={openDetailsModal}
-        onStartChild={openCreateModal}
+        onStartChild={handleStartChild}
+        onStartSprint={handleStartSprint}
         layoutNonce={layoutNonce}
       />
 
       {modal && (
         <WorkItemModal
           modal={modal}
+          mainTitle={mainTitle}
           rootTitle={rootTitle}
           rootDocketState={rootDocketState}
+          sprints={sprints}
           workItems={workItems}
           totals={totals}
           onClose={() => setModal(null)}
+          onSaveMain={saveMainTitle}
           onSaveRoot={saveRootTitle}
+          onSaveSprint={saveSprint}
           onSaveItem={saveWorkItem}
           onCreateItem={createItem}
           onDeleteItem={removeWorkItem}
