@@ -48,6 +48,35 @@ function safeError(statusCode, error, details) {
   return json(statusCode, details ? { error, details } : { error });
 }
 
+function logWorklogError(stage, error) {
+  const cause = error?.cause;
+  const rootCause = cause?.cause || cause;
+
+  console.error("[worklog]", stage, {
+    message: error?.message || "Unknown error",
+    statusCode: error?.statusCode,
+    cause: rootCause
+      ? {
+          message: rootCause.message,
+          code: rootCause.code,
+          syscall: rootCause.syscall,
+          hostname: rootCause.hostname,
+        }
+      : undefined,
+    stack: error?.stack,
+  });
+}
+
+function githubFetchError(error) {
+  return Object.assign(
+    new Error("GitHub is unavailable. Continue using cached worklog data."),
+    {
+      statusCode: 503,
+      cause: error,
+    }
+  );
+}
+
 function requiredEnv() {
   const config = {
     token: process.env.GITHUB_TOKEN,
@@ -418,9 +447,16 @@ function validateSnapshot(snapshot) {
 }
 
 async function getGitHubFile(config) {
-  const response = await fetch(`${githubFileUrl(config)}?ref=${encodeURIComponent(config.branch)}`, {
-    headers: githubHeaders(config.token),
-  });
+  let response;
+
+  try {
+    response = await fetch(`${githubFileUrl(config)}?ref=${encodeURIComponent(config.branch)}`, {
+      headers: githubHeaders(config.token),
+    });
+  } catch (error) {
+    throw githubFetchError(error);
+  }
+
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
@@ -513,19 +549,26 @@ async function saveSnapshot(event, config) {
   }
 
   const content = `${JSON.stringify(body.snapshot, null, 2)}\n`;
-  const response = await fetch(githubFileUrl(config), {
-    method: "PUT",
-    headers: {
-      ...githubHeaders(config.token),
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      message: body.commitMessage || "worklog: save snapshot",
-      content: encodeBase64(content),
-      sha: current.sha,
-      branch: config.branch,
-    }),
-  });
+  let response;
+
+  try {
+    response = await fetch(githubFileUrl(config), {
+      method: "PUT",
+      headers: {
+        ...githubHeaders(config.token),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        message: body.commitMessage || "worklog: save snapshot",
+        content: encodeBase64(content),
+        sha: current.sha,
+        branch: config.branch,
+      }),
+    });
+  } catch (error) {
+    throw githubFetchError(error);
+  }
+
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
@@ -567,6 +610,7 @@ export async function handler(event) {
 
     return safeError(405, "Method not allowed.");
   } catch (error) {
+    logWorklogError(`${event.httpMethod || "UNKNOWN"} /.netlify/functions/worklog`, error);
     return safeError(error.statusCode || 500, error.message || "Worklog request failed.");
   }
 }

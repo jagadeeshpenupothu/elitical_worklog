@@ -6,7 +6,14 @@ import {
   useState,
 } from "react";
 import GraphView from "./views/GraphView";
+import PlanningView from "./views/PlanningView";
+import ProfilePanel from "./components/settings/ProfilePanel";
 import yamlText from "./data/jira.yaml?raw";
+import { buildTimeGraph } from "./utils/planningGraph";
+import {
+  CONNECTION_STATES,
+  eliticalSyncManager,
+} from "./services/elitical";
 import {
   CATEGORIES,
   DOCKET_STATES,
@@ -35,6 +42,28 @@ import {
 import "./App.css";
 
 const MAIN_ROOT_ID = "mainRoot";
+const PLANNING_VIEWS = [
+  { id: "backlog", label: "Backlog View" },
+  { id: "timeline", label: "Timeline View" },
+  { id: "calendar", label: "Calendar View" },
+  { id: "month", label: "Month View" },
+  { id: "week", label: "Week View" },
+  { id: "day", label: "Day View" },
+  { id: "range", label: "Custom Date Range" },
+  { id: "worklog", label: "Work Log View" },
+];
+const PLANNING_VIEW_IDS = new Set(PLANNING_VIEWS.map((view) => view.id));
+const GRAPH_TIME_VIEW_IDS = new Set(["day", "week", "month", "range", "timeline"]);
+
+function diagnosticError(error) {
+  return {
+    name: error?.name || "",
+    message: error?.message || String(error),
+    status: error?.status || "",
+    code: error?.code || "",
+    stack: error?.stack || "",
+  };
+}
 
 function formatType(type) {
   if (type === "main-root") return "Main";
@@ -291,9 +320,10 @@ function normalizeStoryStateArtifactRollup(state) {
   };
 }
 
-function snapshotFromState(state) {
+function snapshotFromState(state, previousSnapshot = null) {
   const result = buildWorklogSnapshot(
-    normalizeStoryStateArtifactRollup(state)
+    normalizeStoryStateArtifactRollup(state),
+    previousSnapshot
   );
 
   if (!result.valid) {
@@ -476,7 +506,7 @@ function ModalSection({ title, children }) {
 
 function ReadOnlyField({ label, value, badge = false, wide = false }) {
   return (
-    <div className={`modal-field ${wide ? "wide" : ""}`}>
+    <div className={`modal-field readonly-field ${wide ? "wide" : ""}`}>
       <span>{label}</span>
       {badge ? (
         <MetadataBadge>{value}</MetadataBadge>
@@ -491,7 +521,6 @@ function InlineField({
   label,
   value,
   field,
-  editingField,
   onEdit,
   onChange,
   type = "text",
@@ -500,7 +529,6 @@ function InlineField({
   badge = false,
   wide = false,
 }) {
-  const editing = editingField === field;
   const displayValue =
     type === "select"
       ? formatLabel(value)
@@ -510,70 +538,69 @@ function InlineField({
       ? value
       : value;
 
-  if (editing) {
-    if (type === "select") {
-      return (
-        <label className={`modal-field inline-active ${wide ? "wide" : ""}`}>
-          <span>{label}</span>
-          <select
-            className="modal-control inline-control"
-            autoFocus
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-          >
-            {options.map((option) => (
-              <option key={option} value={option}>
-                {formatLabel(option)}
-              </option>
-            ))}
-          </select>
-        </label>
-      );
+  function handleControlKeyDown(event) {
+    if (event.key === "Enter" && type !== "textarea") {
+      event.currentTarget.blur();
     }
 
-    if (type === "textarea") {
-      return (
-        <label className={`modal-field inline-active ${wide ? "wide" : ""}`}>
-          <span>{label}</span>
-          <textarea
-            className="modal-control inline-control"
-            rows="2"
-            autoFocus
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-          />
-        </label>
-      );
+    if (event.key === "Escape") {
+      event.currentTarget.blur();
     }
+  }
 
+  if (type === "select") {
     return (
       <label className={`modal-field inline-active ${wide ? "wide" : ""}`}>
         <span>{label}</span>
-        <input
+        <select
           className="modal-control inline-control"
-          type={type}
-          step={step}
-          autoFocus
           value={value}
           onChange={(event) => onChange(event.target.value)}
+          onFocus={() => onEdit(field)}
+          onKeyDown={handleControlKeyDown}
+        >
+          {options.map((option) => (
+            <option key={option} value={option}>
+              {formatLabel(option)}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+
+  if (type === "textarea") {
+    return (
+      <label className={`modal-field inline-active ${wide ? "wide" : ""}`}>
+        <span>{label}</span>
+        <textarea
+          className="modal-control inline-control compact-description"
+          rows="4"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onFocus={() => onEdit(field)}
+          onKeyDown={handleControlKeyDown}
         />
+        {String(displayValue || "").length > 180 && (
+          <small className="field-expand-hint">Expand with field resize</small>
+        )}
       </label>
     );
   }
 
   return (
-    <div
-      className={`modal-field inline-readable ${wide ? "wide" : ""}`}
-      onDoubleClick={() => onEdit(field)}
-      title="Double-click to edit"
-    >
+    <label className={`modal-field inline-active ${wide ? "wide" : ""}`}>
       <span>{label}</span>
-      {badge ? (
-        <MetadataBadge>{displayValue}</MetadataBadge>
-      ) : (
-        <strong>{displayValue || "-"}</strong>
-      )}
-    </div>
+      <input
+        className="modal-control inline-control"
+        type={type}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onFocus={() => onEdit(field)}
+        onKeyDown={handleControlKeyDown}
+      />
+    </label>
   );
 }
 
@@ -634,6 +661,23 @@ function SelectField({ label, value, options, onChange }) {
   );
 }
 
+function InspectorTypeIcon({ type }) {
+  return (
+    <span className={`inspector-type-icon inspector-type-${type || "item"}`}>
+      {formatType(type || "item").charAt(0)}
+    </span>
+  );
+}
+
+function InspectorSection({ title, children, columns = false }) {
+  return (
+    <section className={`inspector-section ${columns ? "columns" : ""}`}>
+      <h3>{title}</h3>
+      <div className="inspector-section-body">{children}</div>
+    </section>
+  );
+}
+
 function WorkItemModal({
   modal,
   mainTitle,
@@ -649,7 +693,6 @@ function WorkItemModal({
   onSaveItem,
   onCreateItem,
   onDeleteItem,
-  onSetView,
 }) {
   const [mode, setMode] = useState(
     modal.kind === "create" ? "edit" : "view"
@@ -709,7 +752,6 @@ function WorkItemModal({
   const parentId =
     modal.kind === "create" ? modal.parentId : activeItem?.parentId;
   const currentCategory = activeItem?.category || draft?.category || "feature";
-  const currentPriority = activeItem?.priority || draft?.priority || "info";
   const currentDocketState = isRoot
     ? rootDocketState || "concept"
     : activeSprint
@@ -918,19 +960,6 @@ function WorkItemModal({
     : activeItem
     ? totals.timeById[activeItem.id] || 0
     : 0;
-  const headerSummary = modal.kind === "create"
-    ? `${formatType(itemType)} · ${parentLabel(parentId, workItems)}`
-    : isMainRoot
-    ? `${sprints.length} Sprint${sprints.length === 1 ? "" : "s"} · ${
-        totals.rootTotal
-      } SP · ${formatWorkTime(totals.rootTimeMinutes || 0)}`
-    : isSprint
-    ? `${formatDocketState(currentDocketState)} · ${
-        totals.rootTotal
-      } SP · ${formatWorkTime(totals.rootTimeMinutes || 0)}`
-    : `${formatLabel(currentPriority)} · ${formatDocketState(
-        currentDocketState
-      )} · ${formatWorkTime(calculatedTime)}`;
   const showFooter = modal.kind === "create" || modal.kind === "details";
 
   return (
@@ -944,32 +973,26 @@ function WorkItemModal({
       >
         <header className="modal-header">
           <div className="modal-header-main">
-            <span className="modal-kicker">{contextLabel}</span>
-            <h2>
-              {modal.kind === "create"
-                ? "New work item"
-                : isMainRoot
-                ? mainTitle || "Genesis"
-                : isRoot
-                ? rootTitle
-                : activeSprint
-                ? activeSprint.title
-                : activeItem.title}
-            </h2>
-            <p>{headerSummary}</p>
+            <InspectorTypeIcon type={itemType} />
+            <div className="modal-title-stack">
+              <span className="modal-kicker">{contextLabel}</span>
+              <h2>
+                {modal.kind === "create"
+                  ? "New work item"
+                  : isMainRoot
+                  ? mainTitle || "Genesis"
+                  : isRoot
+                  ? rootTitle
+                  : activeSprint
+                  ? activeSprint.title
+                  : activeItem.title}
+              </h2>
+            </div>
+            {!isMainRoot && (
+              <MetadataBadge>{formatDocketState(currentDocketState)}</MetadataBadge>
+            )}
           </div>
           <div className="modal-header-actions">
-            {modal.kind === "details" && activeItem && (
-              <button
-                type="button"
-                onClick={() => {
-                  onSetView(activeItem.id);
-                  onClose();
-                }}
-              >
-                Set View
-              </button>
-            )}
             <button
               type="button"
               className="icon-button"
@@ -982,30 +1005,11 @@ function WorkItemModal({
         </header>
 
         <div className="modal-body">
-          {modal.kind === "details" && !isMainRoot && (
-            <label className="docket-state-control">
-              <span>Docket State</span>
-              <select
-                className="modal-control"
-                value={draft.docketState || currentDocketState}
-                onChange={(event) =>
-                  updateDraft("docketState", event.target.value)
-                }
-              >
-                {DOCKET_STATES.map((state) => (
-                  <option key={state} value={state}>
-                    {formatDocketState(state)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-
           {!isEditing ? (
-            <div className="modal-sections">
+            <div className="inspector-sections">
               {isMainRoot ? (
                 <>
-                  <ModalSection title="Basic Information">
+                  <InspectorSection title="General">
                     <InlineField
                       label="Title"
                       field="title"
@@ -1015,28 +1019,15 @@ function WorkItemModal({
                       onChange={(value) => updateDraft("title", value)}
                       wide
                     />
-                  </ModalSection>
-                  <ModalSection title="Rollup">
-                    <ReadOnlyField
-                      label="Sprints"
-                      value={String(sprints.length)}
-                      badge
-                    />
-                    <ReadOnlyField
-                      label="Calculated Story Points"
-                      value={`${totals.rootTotal} SP`}
-                      badge
-                    />
-                    <ReadOnlyField
-                      label="Calculated Time"
-                      value={formatWorkTime(totals.rootTimeMinutes || 0)}
-                      badge
-                    />
-                  </ModalSection>
+                  </InspectorSection>
+                  <details className="inspector-advanced">
+                    <summary>Advanced</summary>
+                    <ReadOnlyField label="ID" value={MAIN_ROOT_ID} />
+                  </details>
                 </>
               ) : isSprint ? (
                 <>
-                  <ModalSection title="Basic Information">
+                  <InspectorSection title="General">
                     <InlineField
                       label="Title"
                       field="title"
@@ -1046,23 +1037,31 @@ function WorkItemModal({
                       onChange={(value) => updateDraft("title", value)}
                       wide
                     />
-                  </ModalSection>
-                  <ModalSection title="Effort & Time">
-                    <ReadOnlyField
-                      label="Calculated Story Points"
-                      value={`${totals.rootTotal} SP`}
+                  </InspectorSection>
+                  <InspectorSection title="Workflow" columns>
+                    <InlineField
+                      label="Status"
+                      field="docketState"
+                      value={draft.docketState || currentDocketState}
+                      type="select"
+                      options={DOCKET_STATES}
+                      editingField={editingField}
+                      onEdit={startInlineEdit}
+                      onChange={(value) => updateDraft("docketState", value)}
                       badge
                     />
+                  </InspectorSection>
+                  <details className="inspector-advanced">
+                    <summary>Advanced</summary>
                     <ReadOnlyField
-                      label="Calculated Time"
-                      value={formatWorkTime(totals.rootTimeMinutes || 0)}
-                      badge
+                      label="ID"
+                      value={isRoot ? ROOT_ID : activeSprint.id}
                     />
-                  </ModalSection>
+                  </details>
                 </>
               ) : (
                 <>
-                  <ModalSection title="Basic Information">
+                  <InspectorSection title="General">
                     <InlineField
                       label="Title"
                       field="title"
@@ -1081,53 +1080,28 @@ function WorkItemModal({
                       onChange={(value) =>
                         updateDraft("description", value)
                       }
+                      wide
                     />
-                  </ModalSection>
-                  {hasWorklog && (
-                    <ModalSection title="Worklog">
-                      <InlineField
-                        label="Date"
-                        field="worklogDate"
-                        value={draft.worklogDate}
-                        type="date"
-                        editingField={editingField}
-                        onEdit={startInlineEdit}
-                        onChange={(value) => updateDraft("worklogDate", value)}
-                      />
-                      <InlineField
-                        label="Description"
-                        field="worklogDescription"
-                        value={draft.worklogDescription}
-                        type="textarea"
-                        editingField={editingField}
-                        onEdit={startInlineEdit}
-                        onChange={(value) =>
-                          updateDraft("worklogDescription", value)
-                        }
-                        wide
-                      />
-                      <InlineField
-                        label="Time"
-                        field="time"
-                        value={draft.time}
-                        editingField={editingField}
-                        onEdit={startInlineEdit}
-                        onChange={(value) => updateDraft("time", value)}
-                        badge
-                      />
-                    </ModalSection>
-                  )}
-                  <ModalSection title="Workflow">
+                  </InspectorSection>
+                  <InspectorSection title="Workflow" columns>
                     <InlineField
-                      label="Category"
-                      field="category"
-                      value={draft.category}
+                      label="Status"
+                      field="docketState"
+                      value={draft.docketState || currentDocketState}
                       type="select"
-                      options={CATEGORIES}
+                      options={DOCKET_STATES}
                       editingField={editingField}
                       onEdit={startInlineEdit}
-                      onChange={(value) => updateDraft("category", value)}
+                      onChange={(value) => updateDraft("docketState", value)}
                       badge
+                    />
+                    <InlineField
+                      label="Sprint"
+                      field="sprint"
+                      value={draft.sprint || currentSprint}
+                      editingField={editingField}
+                      onEdit={startInlineEdit}
+                      onChange={(value) => updateDraft("sprint", value)}
                     />
                     <InlineField
                       label="Priority"
@@ -1140,54 +1114,33 @@ function WorkItemModal({
                       onChange={(value) => updateDraft("priority", value)}
                       badge
                     />
-                  </ModalSection>
-                  <ModalSection title="Hierarchy">
-                    <ReadOnlyField
-                      label="Type"
-                      value={formatType(activeItem.type)}
-                    />
-                    <ReadOnlyField
-                      label={parentFieldLabel(activeItem.parentId, workItems)}
-                      value={parentLabel(activeItem.parentId, workItems)}
-                    />
-                    <ReadOnlyField label="Sprint" value={currentSprint} />
-                  </ModalSection>
-                  <ModalSection title="Effort & Time">
-                    {activeItem.type === "story" && (
-                      <InlineField
-                        label="Story Points"
-                        field="storyPoints"
-                        value={draft.storyPoints}
-                        type="number"
-                        editingField={editingField}
-                        onEdit={startInlineEdit}
-                        onChange={(value) => updateDraft("storyPoints", value)}
-                        badge
-                      />
-                    )}
-                    {activeItem.type === "epic" && (
-                      <ReadOnlyField
-                        label="Calculated Story Points"
-                        value={`${calculatedSp} SP`}
-                        badge
-                      />
-                    )}
-                    <ReadOnlyField
-                      label="Calculated Time"
-                      value={formatWorkTime(calculatedTime)}
+                    <InlineField
+                      label="Category"
+                      field="category"
+                      value={draft.category}
+                      type="select"
+                      options={CATEGORIES}
+                      editingField={editingField}
+                      onEdit={startInlineEdit}
+                      onChange={(value) => updateDraft("category", value)}
                       badge
                     />
-                  </ModalSection>
-                  <ModalSection title="System Information">
+                  </InspectorSection>
+                  <details className="inspector-advanced">
+                    <summary>Advanced</summary>
                     <ReadOnlyField
-                      label="Created At"
+                      label="ID"
+                      value={activeItem.id}
+                    />
+                    <ReadOnlyField
+                      label="Created"
                       value={formatTimestamp(activeItem.createdAt)}
                     />
                     <ReadOnlyField
-                      label="Updated At"
+                      label="Updated"
                       value={formatTimestamp(activeItem.updatedAt)}
                     />
-                  </ModalSection>
+                  </details>
                 </>
               )}
             </div>
@@ -1400,8 +1353,23 @@ function App() {
   const [viewMode, setViewMode] = useState("sprint");
   const [viewRootId, setViewRootId] = useState(null);
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  const [profilePanelOpen, setProfilePanelOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [eliticalStatus, setEliticalStatus] = useState(
+    CONNECTION_STATES.AUTH_REQUIRED
+  );
+  const [eliticalContext, setEliticalContext] = useState(null);
+  const [eliticalError, setEliticalError] = useState("");
+  const [planningAnchorDate, setPlanningAnchorDate] = useState(
+    formatDateInput(new Date())
+  );
+  const [planningRangeStart, setPlanningRangeStart] = useState(
+    formatDateInput(new Date(new Date().setDate(new Date().getDate() - 7)))
+  );
+  const [planningRangeEnd, setPlanningRangeEnd] = useState(
+    formatDateInput(new Date(new Date().setDate(new Date().getDate() + 14)))
+  );
   const [loadState, setLoadState] = useState(
     cachedSnapshot ? "ready" : "loading"
   );
@@ -1433,9 +1401,10 @@ function App() {
   const saveRequestIdRef = useRef(0);
   const hasCheckedLegacyRef = useRef(false);
   const initialSyncStartedRef = useRef(false);
+  const initialEliticalConnectRef = useRef(false);
   const currentSnapshot = useMemo(
-    () => (storyState ? snapshotFromState(storyState) : null),
-    [storyState]
+    () => (storyState ? snapshotFromState(storyState, baselineSnapshot) : null),
+    [baselineSnapshot, storyState]
   );
   const dirty = Boolean(
     currentSnapshot &&
@@ -1452,9 +1421,10 @@ function App() {
     () => calculateStoryPoints(workItems),
     [workItems]
   );
+  const isGraphTimeView = GRAPH_TIME_VIEW_IDS.has(viewMode);
   const visibleWorkItems = useMemo(
-    () => descendantsIncluding(workItems, viewRootId),
-    [viewRootId, workItems]
+    () => descendantsIncluding(workItems, isGraphTimeView ? null : viewRootId),
+    [isGraphTimeView, viewRootId, workItems]
   );
   const searchedWorkItems = useMemo(
     () => filterWorkItemsForSearch(visibleWorkItems, searchQuery),
@@ -1465,32 +1435,175 @@ function App() {
 
     return sprints.filter((sprint) => sprintMatchesQuery(sprint, searchQuery));
   }, [searchQuery, sprints, viewMode]);
-  const displayedTotals = useMemo(
-    () => calculateStoryPoints(searchedWorkItems),
-    [searchedWorkItems]
+  const timeGraph = useMemo(
+    () =>
+      isGraphTimeView
+        ? buildTimeGraph({
+            viewMode,
+            workItems: searchedWorkItems,
+            sprints,
+            rootTitle,
+            anchorDate: planningAnchorDate,
+            rangeStart: planningRangeStart,
+            rangeEnd: planningRangeEnd,
+          })
+        : null,
+    [
+      isGraphTimeView,
+      planningAnchorDate,
+      planningRangeEnd,
+      planningRangeStart,
+      rootTitle,
+      searchedWorkItems,
+      sprints,
+      viewMode,
+    ]
+  );
+  const graphWorkItems = timeGraph?.workItems || searchedWorkItems;
+  const graphSprints = timeGraph ? [] : searchedSprints;
+  const graphRootId = timeGraph?.rootId || viewRootId;
+  const graphTotals = useMemo(
+    () => calculateStoryPoints(graphWorkItems),
+    [graphWorkItems]
   );
   const viewRootItem = viewRootId
     ? workItems.find((item) => item.id === viewRootId)
     : null;
+  const isPlanningView = PLANNING_VIEW_IDS.has(viewMode);
+  const usesPlanningSurface =
+    isPlanningView && !isGraphTimeView;
+  const planningViewLabel =
+    PLANNING_VIEWS.find((view) => view.id === viewMode)?.label || "";
   const contextTitle =
-    viewMode === "main"
+    isPlanningView
+      ? planningViewLabel
+      : viewMode === "main"
       ? "Main View"
       : viewRootItem
       ? `${viewRootItem.title} View`
       : "Sprint View";
   const contextItemCount =
-    searchedWorkItems.length + (viewMode === "main" ? searchedSprints.length : 1);
+    (timeGraph ? graphWorkItems.length : searchedWorkItems.length) +
+    (!isPlanningView && viewMode === "main" ? searchedSprints.length : 0) +
+    (!isPlanningView && viewMode !== "main" ? 1 : 0);
   const contextStoryPoints =
-    viewRootId ? displayedTotals.byId[viewRootId] || 0 : displayedTotals.rootTotal;
+    graphRootId ? graphTotals.byId[graphRootId] || 0 : graphTotals.rootTotal;
   const contextTimeMinutes =
-    viewRootId
-      ? displayedTotals.timeById[viewRootId] || 0
-      : displayedTotals.rootTimeMinutes || 0;
+    graphRootId
+      ? graphTotals.timeById[graphRootId] || 0
+      : graphTotals.rootTimeMinutes || 0;
 
   useEffect(() => {
     workItemsRef.current = workItems;
     storyStateRef.current = storyState;
   }, [storyState, workItems]);
+
+  const syncEliticalConnection = useCallback(async () => {
+    console.info("[App] syncEliticalConnection() called");
+    setEliticalStatus(CONNECTION_STATES.SYNCING);
+    setEliticalError("");
+
+    try {
+      console.info("[App] calling eliticalSyncManager.loadConnectionContext()");
+      const result = await eliticalSyncManager.loadConnectionContext();
+      console.info("[App] loadConnectionContext() resolved", {
+        status: result.status,
+        hasContext: Boolean(result.context),
+      });
+      setEliticalStatus(result.status);
+      setEliticalContext(result.context);
+    } catch (error) {
+      console.error("[App] loadConnectionContext() caught", diagnosticError(error));
+      setEliticalStatus(
+        error.status === 401 || error.status === 403
+          ? CONNECTION_STATES.SESSION_EXPIRED
+          : navigator.onLine
+          ? CONNECTION_STATES.ERROR
+          : CONNECTION_STATES.OFFLINE
+      );
+      setEliticalError(error.message || "Unable to sync Elitical.");
+    }
+  }, []);
+
+  const syncEliticalOfficialData = useCallback(async () => {
+    console.info("[App] syncEliticalOfficialData() called", {
+      dirty,
+      hasCurrentSnapshot: Boolean(currentSnapshot),
+    });
+
+    if (dirty) {
+      setEliticalStatus(CONNECTION_STATES.ERROR);
+      setEliticalError("Save or discard local changes before syncing Elitical.");
+      return;
+    }
+
+    if (!currentSnapshot) {
+      setEliticalStatus(CONNECTION_STATES.ERROR);
+      setEliticalError("Worklog is not ready for Elitical sync.");
+      return;
+    }
+
+    setEliticalStatus(CONNECTION_STATES.SYNCING);
+    setEliticalError("");
+
+    try {
+      let connection;
+      let officialData;
+
+      console.info("[App] calling live loadConnectionContext() and downloadOfficialData()");
+      [connection, officialData] = await Promise.all([
+        eliticalSyncManager.loadConnectionContext(),
+        eliticalSyncManager.downloadOfficialData(),
+      ]);
+      console.info("[App] live loadConnectionContext() and downloadOfficialData() resolved", {
+        connectionStatus: connection.status,
+        source: officialData?.source || "",
+        docketCount: officialData?.dockets?.length || 0,
+        worklogCount: officialData?.worklogs?.length || 0,
+      });
+
+      const mergedSnapshot = eliticalSyncManager.mergeWithGitHub({
+        officialData,
+        githubSnapshot: currentSnapshot,
+      });
+      const normalized = normalizeLoadedSnapshot(mergedSnapshot);
+
+      setStoryState(normalized.state);
+      workItemsRef.current = normalized.state.workItems;
+      setSelectedId(null);
+      setModal(null);
+      setMessage("Unsaved Changes");
+      setLayoutNonce((value) => value + 1);
+      setEliticalStatus(connection.status);
+      setEliticalContext({
+        ...connection.context,
+        lastSyncedAt: officialData.downloadedAt,
+      });
+    } catch (error) {
+      console.error("[App] syncEliticalOfficialData() caught", diagnosticError(error));
+      setEliticalStatus(
+        error.status === 401 || error.status === 403
+          ? CONNECTION_STATES.SESSION_EXPIRED
+          : navigator.onLine
+          ? CONNECTION_STATES.SYNC_FAILED
+          : CONNECTION_STATES.OFFLINE
+      );
+      setEliticalError(error.message || "Sync Failed");
+    }
+  }, [currentSnapshot, dirty]);
+
+  useEffect(() => {
+    if (initialEliticalConnectRef.current) return;
+
+    if (!currentSnapshot || dirty) return;
+
+    initialEliticalConnectRef.current = true;
+    console.info("[App] initial Elitical effect running");
+    queueMicrotask(() => {
+      setEliticalStatus(CONNECTION_STATES.CONNECTING);
+      syncEliticalOfficialData();
+    });
+  }, [currentSnapshot, dirty, syncEliticalConnection, syncEliticalOfficialData]);
 
   const checkLegacyState = useCallback((remoteSnapshot) => {
     if (hasCheckedLegacyRef.current) return;
@@ -1745,14 +1858,6 @@ function App() {
     setMessage("");
   }, []);
 
-  const setFocusedView = useCallback((id) => {
-    setViewMode("focused");
-    setViewRootId(id);
-    setSelectedId(id);
-    setViewMenuOpen(false);
-    setLayoutNonce((value) => value + 1);
-  }, []);
-
   const showSprintView = useCallback(() => {
     setViewMode("sprint");
     setViewRootId(null);
@@ -1767,6 +1872,16 @@ function App() {
     setSelectedId(null);
     setViewMenuOpen(false);
     setLayoutNonce((value) => value + 1);
+  }, []);
+
+  const showPlanningView = useCallback((nextViewMode) => {
+    setViewMode(nextViewMode);
+    setViewRootId(null);
+    setSelectedId(null);
+    setViewMenuOpen(false);
+    if (GRAPH_TIME_VIEW_IDS.has(nextViewMode)) {
+      setLayoutNonce((value) => value + 1);
+    }
   }, []);
 
   const saveRootTitle = useCallback((updates) => {
@@ -2030,6 +2145,25 @@ function App() {
     await loadRemoteSnapshot({ block: false });
   }, [dirty, loadRemoteSnapshot]);
 
+  const handleConnectElitical = useCallback(async () => {
+    setEliticalStatus(CONNECTION_STATES.CONNECTING);
+    setEliticalError("");
+
+    const result = eliticalSyncManager.connectElitical();
+
+    if (result.redirected) return;
+
+    await syncEliticalOfficialData();
+  }, [syncEliticalOfficialData]);
+
+  const handleDisconnectElitical = useCallback(() => {
+    const result = eliticalSyncManager.disconnectElitical();
+
+    setEliticalStatus(result.status);
+    setEliticalContext(result.context);
+    setEliticalError("");
+  }, []);
+
   const handleUseSampleLocally = useCallback(() => {
     const seedState = normalizeStoryStateArtifactRollup(
       normalizeSeedData(yamlText)
@@ -2075,6 +2209,25 @@ function App() {
       : syncState === "syncing" || syncState === "loading"
       ? "Syncing..."
       : "Synced";
+  const githubRepository =
+    import.meta.env.VITE_GITHUB_DATA_REPOSITORY ||
+    import.meta.env.VITE_GITHUB_DATA_REPO ||
+    "Configured server-side";
+  const githubCard = {
+    repository: githubRepository,
+    lastSync: formatRelativeSync(lastSyncedAt),
+    status: statusLabel,
+    syncing: syncState === "syncing" || syncState === "loading",
+    onSyncNow: () => loadRemoteSnapshot({ block: false }),
+  };
+  const eliticalCard = {
+    status: eliticalStatus,
+    context: eliticalContext,
+    error: eliticalError,
+    onConnect: handleConnectElitical,
+    onDisconnect: handleDisconnectElitical,
+    onSyncNow: syncEliticalOfficialData,
+  };
 
   if (loadState === "loading") {
     return (
@@ -2113,9 +2266,14 @@ function App() {
     <div className="app-container">
       <header className="top-toolbar">
         <div className="toolbar-left">
-          <div className="app-logo" aria-label="Jira Flow">
+          <button
+            type="button"
+            className="app-logo"
+            aria-label="Open profile and settings"
+            onClick={() => setProfilePanelOpen(true)}
+          >
             JF
-          </div>
+          </button>
           <div className="view-selector">
             <button
               type="button"
@@ -2125,7 +2283,9 @@ function App() {
               aria-haspopup="listbox"
             >
               <span>
-                {viewMode === "main"
+                {isPlanningView
+                  ? planningViewLabel
+                  : viewMode === "main"
                   ? "Main View"
                   : viewRootItem
                   ? `${viewRootItem.title} View`
@@ -2155,6 +2315,19 @@ function App() {
                 >
                   Sprint View
                 </button>
+                <div className="view-selector-group">Planning</div>
+                {PLANNING_VIEWS.map((view) => (
+                  <button
+                    key={view.id}
+                    type="button"
+                    className={viewMode === view.id ? "selected" : ""}
+                    onClick={() => showPlanningView(view.id)}
+                    role="option"
+                    aria-selected={viewMode === view.id}
+                  >
+                    {view.label}
+                  </button>
+                ))}
                 {viewRootItem && (
                   <button
                     type="button"
@@ -2178,6 +2351,43 @@ function App() {
           <span>{formatWorkTime(contextTimeMinutes)} Logged</span>
           <span>Last synced {formatRelativeSync(lastSyncedAt)}</span>
         </div>
+
+        {(isGraphTimeView || viewMode === "calendar") && (
+          <div className="time-view-controls">
+            {viewMode === "range" ? (
+              <>
+                <input
+                  type="date"
+                  value={planningRangeStart}
+                  onChange={(event) => {
+                    setPlanningRangeStart(event.target.value);
+                    setLayoutNonce((value) => value + 1);
+                  }}
+                  aria-label="Range start"
+                />
+                <input
+                  type="date"
+                  value={planningRangeEnd}
+                  onChange={(event) => {
+                    setPlanningRangeEnd(event.target.value);
+                    setLayoutNonce((value) => value + 1);
+                  }}
+                  aria-label="Range end"
+                />
+              </>
+            ) : (
+              <input
+                type="date"
+                value={planningAnchorDate}
+                onChange={(event) => {
+                  setPlanningAnchorDate(event.target.value);
+                  setLayoutNonce((value) => value + 1);
+                }}
+                aria-label="Planning date"
+              />
+            )}
+          </div>
+        )}
 
         <div className="toolbar-actions">
           <button
@@ -2237,6 +2447,13 @@ function App() {
         </div>
       )}
 
+      <ProfilePanel
+        open={profilePanelOpen}
+        onClose={() => setProfilePanelOpen(false)}
+        github={githubCard}
+        elitical={eliticalCard}
+      />
+
       {searchOpen && (
         <div className="search-overlay" onMouseDown={() => setSearchOpen(false)}>
           <section
@@ -2260,29 +2477,44 @@ function App() {
         </div>
       )}
 
-      {searchedWorkItems.length === 0 && viewMode !== "main" && (
+      {graphWorkItems.length === 0 && !usesPlanningSurface && viewMode !== "main" && (
         <div className="empty-canvas-state">
           <h2>Create your first work item</h2>
           <p>Use the plus button on the Sprint View box to begin.</p>
         </div>
       )}
 
-      <GraphView
-        workItems={searchedWorkItems}
-        mainTitle={mainTitle}
-        rootTitle={rootTitle}
-        rootDocketState={rootDocketState}
-        sprints={searchedSprints}
-        storyPointTotals={displayedTotals}
-        viewRootId={viewRootId}
-        viewMode={viewMode}
-        selectedId={selectedId}
-        onSelect={handleSelectNode}
-        onOpenDetails={openDetailsModal}
-        onStartChild={handleStartChild}
-        onStartSprint={handleStartSprint}
-        layoutNonce={layoutNonce}
-      />
+      {usesPlanningSurface ? (
+        <PlanningView
+          viewMode={viewMode}
+          workItems={searchedWorkItems}
+          sprints={searchedSprints}
+          onOpenDetails={openDetailsModal}
+          anchorDate={planningAnchorDate}
+          onAnchorDateChange={setPlanningAnchorDate}
+          onOpenDay={(date) => {
+            setPlanningAnchorDate(date);
+            showPlanningView("day");
+          }}
+        />
+      ) : (
+        <GraphView
+          workItems={graphWorkItems}
+          mainTitle={mainTitle}
+          rootTitle={timeGraph?.title || rootTitle}
+          rootDocketState={rootDocketState}
+          sprints={graphSprints}
+          storyPointTotals={graphTotals}
+          viewRootId={graphRootId}
+          viewMode={viewMode}
+          selectedId={selectedId}
+          onSelect={handleSelectNode}
+          onOpenDetails={openDetailsModal}
+          onStartChild={handleStartChild}
+          onStartSprint={handleStartSprint}
+          layoutNonce={layoutNonce}
+        />
+      )}
 
       {modal && (
         <WorkItemModal
@@ -2300,7 +2532,6 @@ function App() {
           onSaveItem={saveWorkItem}
           onCreateItem={createItem}
           onDeleteItem={removeWorkItem}
-          onSetView={setFocusedView}
         />
       )}
     </div>

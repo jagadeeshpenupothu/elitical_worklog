@@ -55,7 +55,7 @@ export const DOCKET_STATES = [
 ];
 
 const RELATIONSHIPS = {
-  [ROOT_ID]: ["epic"],
+  [ROOT_ID]: ["epic", "story", "task", "job"],
   epic: ["story", "task"],
   story: ["job"],
   task: [],
@@ -97,6 +97,22 @@ function normalizeTimeMinutes(value) {
   return Number.isFinite(numberValue) && numberValue >= 0
     ? Math.round(numberValue)
     : 0;
+}
+
+function normalizeHours(value) {
+  const numberValue = Number(value);
+
+  return Number.isFinite(numberValue) && numberValue >= 0
+    ? Number(numberValue.toFixed(2))
+    : 0;
+}
+
+function normalizeOptionalDate(value) {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
 
 function isWorklogType(type) {
@@ -243,6 +259,26 @@ function makeWorkItem(input, fallbackParentId = ROOT_ID) {
     assignee: String(input.assignee || ""),
     sprint: String(input.sprint || ""),
     docketState: normalizeDocketState(input.docketState),
+    plannedStartDate: normalizeOptionalDate(input.plannedStartDate),
+    plannedEndDate: normalizeOptionalDate(input.plannedEndDate),
+    actualStartDate: normalizeOptionalDate(input.actualStartDate),
+    actualEndDate: normalizeOptionalDate(input.actualEndDate),
+    dueDate: normalizeOptionalDate(input.dueDate || input.worklogDate),
+    estimatedHours: normalizeHours(
+      input.estimatedHours ?? input.estimatedTime
+    ),
+    loggedHours: normalizeHours(
+      input.loggedHours ??
+      (input.loggedTime !== undefined
+        ? input.loggedTime
+        : input.timeMinutes !== undefined
+        ? normalizeTimeMinutes(input.timeMinutes) / 60
+        : 0)
+    ),
+    remainingHours: normalizeHours(input.remainingHours),
+    labels: Array.isArray(input.labels)
+      ? input.labels.map((label) => String(label).trim()).filter(Boolean)
+      : [],
     createdAt,
     updatedAt: input.updatedAt || createdAt,
     position: normalizePosition(input.position),
@@ -477,6 +513,15 @@ function canonicalWorkItem(item) {
     assignee: normalized.assignee,
     sprint: normalized.sprint,
     docketState: normalized.docketState,
+    plannedStartDate: normalized.plannedStartDate,
+    plannedEndDate: normalized.plannedEndDate,
+    actualStartDate: normalized.actualStartDate,
+    actualEndDate: normalized.actualEndDate,
+    dueDate: normalized.dueDate,
+    estimatedHours: normalized.estimatedHours,
+    loggedHours: normalized.loggedHours,
+    remainingHours: normalized.remainingHours,
+    labels: normalized.labels,
     createdAt: normalized.createdAt,
     updatedAt: normalized.updatedAt,
   };
@@ -504,6 +549,29 @@ function canonicalGraphWorkItem(item) {
     storyPoints: normalizeStoryPoints(item.storyPoints),
     estimatedTime: normalizeTimeMinutes(item.estimatedTime ?? item.timeMinutes),
     loggedTime: normalizeTimeMinutes(item.loggedTime ?? item.timeMinutes),
+    plannedStartDate: normalizeOptionalDate(item.plannedStartDate),
+    plannedEndDate: normalizeOptionalDate(item.plannedEndDate),
+    actualStartDate: normalizeOptionalDate(item.actualStartDate),
+    actualEndDate: normalizeOptionalDate(item.actualEndDate),
+    dueDate: normalizeOptionalDate(item.dueDate || item.worklogDate),
+    estimatedHours: normalizeHours(
+      item.estimatedHours ??
+      (item.estimatedTime !== undefined
+        ? normalizeTimeMinutes(item.estimatedTime) / 60
+        : 0)
+    ),
+    loggedHours: normalizeHours(
+      item.loggedHours ??
+      (item.loggedTime !== undefined
+        ? normalizeTimeMinutes(item.loggedTime) / 60
+        : item.timeMinutes !== undefined
+        ? normalizeTimeMinutes(item.timeMinutes) / 60
+        : 0)
+    ),
+    remainingHours: normalizeHours(item.remainingHours),
+    labels: Array.isArray(item.labels)
+      ? item.labels.map((label) => String(label).trim()).filter(Boolean)
+      : [],
     parentId: item.parentId || "",
     category: normalizeEnum(item.category, CATEGORIES, "feature"),
     openQueue: Boolean(item.openQueue),
@@ -569,6 +637,80 @@ function uniqueById(items) {
     seen.add(item.id);
     return true;
   });
+}
+
+function graphItemKind(item) {
+  return normalizeGenericType(item?.type);
+}
+
+function legacyVisibleGraphItemIds(snapshot) {
+  return new Set(
+    (snapshot.workItems || [])
+      .filter((item) => {
+        const type = graphItemKind(item);
+        return type === "workspace" ||
+          type === "sprint" ||
+          WORK_ITEM_TYPES.includes(type);
+      })
+      .map((item) => item.id)
+  );
+}
+
+function mergeGraphSnapshot(previousSnapshot, nextSnapshot) {
+  if (!previousSnapshot || previousSnapshot.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
+    return nextSnapshot;
+  }
+
+  const nextItems = (nextSnapshot.workItems || []).map(canonicalGraphWorkItem);
+  const nextItemIds = new Set(nextItems.map((item) => item.id));
+  const previousVisibleIds = legacyVisibleGraphItemIds(previousSnapshot);
+  const preservedItems = (previousSnapshot.workItems || [])
+    .map(canonicalGraphWorkItem)
+    .filter((item) => !nextItemIds.has(item.id) && !previousVisibleIds.has(item.id));
+  const mergedItems = uniqueById([...nextItems, ...preservedItems]);
+  const validIds = new Set(mergedItems.map((item) => item.id));
+  const nextRelationships = (nextSnapshot.relationships || []).map(canonicalRelationship);
+  const generatedParentTargets = new Set(
+    nextRelationships
+      .filter((relationship) => relationship.relationshipType === "parent")
+      .map((relationship) => relationship.targetId)
+  );
+  const previousRelationships = (previousSnapshot.relationships || [])
+    .map(canonicalRelationship)
+    .filter((relationship) => {
+      if (!validIds.has(relationship.sourceId) || !validIds.has(relationship.targetId)) {
+        return false;
+      }
+
+      return !(
+        relationship.relationshipType === "parent" &&
+        generatedParentTargets.has(relationship.targetId)
+      );
+    });
+  const nextAssignments = (nextSnapshot.sprintAssignments || [])
+    .map(canonicalSprintAssignment)
+    .filter((assignment) =>
+      validIds.has(assignment.sprintId) && validIds.has(assignment.workItemId)
+    );
+  const previousAssignments = (previousSnapshot.sprintAssignments || [])
+    .map(canonicalSprintAssignment)
+    .filter((assignment) =>
+      validIds.has(assignment.sprintId) && validIds.has(assignment.workItemId)
+    );
+
+  return {
+    ...nextSnapshot,
+    views: Array.isArray(previousSnapshot.views) && previousSnapshot.views.length > 0
+      ? uniqueById([...nextSnapshot.views, ...previousSnapshot.views])
+      : nextSnapshot.views,
+    workItems: mergedItems,
+    relationships: uniqueById([...nextRelationships, ...previousRelationships]),
+    sprintAssignments: uniqueById([...nextAssignments, ...previousAssignments]),
+    settings: {
+      ...(previousSnapshot.settings || {}),
+      ...(nextSnapshot.settings || {}),
+    },
+  };
 }
 
 function legacyStateToGraphSnapshot(state) {
@@ -668,6 +810,12 @@ function legacyStateToGraphSnapshot(state) {
       { id: "epic", title: "Epic View", type: "epic" },
       { id: "story", title: "Story View", type: "story" },
       { id: "timeline", title: "Timeline View", type: "timeline" },
+      { id: "calendar", title: "Calendar View", type: "calendar" },
+      { id: "month", title: "Month View", type: "month" },
+      { id: "week", title: "Week View", type: "week" },
+      { id: "day", title: "Day View", type: "day" },
+      { id: "range", title: "Custom Date Range", type: "range" },
+      { id: "worklog", title: "Work Log View", type: "worklog" },
       { id: "dependencies", title: "Dependencies View", type: "dependencies" },
       { id: "backlog", title: "Backlog View", type: "backlog" },
       { id: "completed", title: "Completed View", type: "completed" },
@@ -741,7 +889,7 @@ function graphSnapshotToLegacyState(snapshot) {
   });
 }
 
-export function buildWorklogSnapshot(state) {
+export function buildWorklogSnapshot(state, previousSnapshot = null) {
   const normalized = normalizeSavedState(state);
 
   if (!normalized.valid) {
@@ -755,7 +903,10 @@ export function buildWorklogSnapshot(state) {
   return {
     valid: true,
     error: "",
-    snapshot: legacyStateToGraphSnapshot(normalized.state),
+    snapshot: mergeGraphSnapshot(
+      previousSnapshot,
+      legacyStateToGraphSnapshot(normalized.state)
+    ),
   };
 }
 
@@ -797,7 +948,7 @@ export function normalizeWorklogSnapshot(snapshot) {
     return normalized;
   }
 
-  const canonical = buildWorklogSnapshot(normalized.state);
+  const canonical = buildWorklogSnapshot(normalized.state, snapshot);
 
   return {
     valid: canonical.valid,
@@ -833,6 +984,45 @@ export function createRelationship(sourceId, targetId, relationshipType) {
   });
 }
 
+export function addRelationship(snapshot, relationship) {
+  const nextRelationship = canonicalRelationship(relationship);
+  const itemIds = new Set((snapshot.workItems || []).map((item) => item.id));
+
+  if (
+    !itemIds.has(nextRelationship.sourceId) ||
+    !itemIds.has(nextRelationship.targetId)
+  ) {
+    return {
+      ok: false,
+      error: "Relationship points to a missing work item.",
+    };
+  }
+
+  return {
+    ok: true,
+    snapshot: {
+      ...snapshot,
+      relationships: uniqueById([
+        ...(snapshot.relationships || []),
+        nextRelationship,
+      ]),
+    },
+    relationship: nextRelationship,
+  };
+}
+
+export function removeRelationship(snapshot, relationshipId) {
+  return {
+    ok: true,
+    snapshot: {
+      ...snapshot,
+      relationships: (snapshot.relationships || []).filter(
+        (relationship) => relationship.id !== relationshipId
+      ),
+    },
+  };
+}
+
 export function createSprintAssignment({
   sprintId,
   workItemId,
@@ -851,6 +1041,71 @@ export function createSprintAssignment({
   });
 }
 
+export function addSprintAssignment(snapshot, assignment) {
+  const nextAssignment = canonicalSprintAssignment(assignment);
+  const itemById = new Map((snapshot.workItems || []).map((item) => [item.id, item]));
+  const sprint = itemById.get(nextAssignment.sprintId);
+
+  if (
+    normalizeGenericType(sprint?.type) !== "sprint" ||
+    !itemById.has(nextAssignment.workItemId)
+  ) {
+    return {
+      ok: false,
+      error: "Sprint assignment points to a missing sprint or work item.",
+    };
+  }
+
+  const relationship = createRelationship(
+    nextAssignment.sprintId,
+    nextAssignment.workItemId,
+    "assigned_to_sprint"
+  );
+
+  return {
+    ok: true,
+    snapshot: {
+      ...snapshot,
+      sprintAssignments: uniqueById([
+        ...(snapshot.sprintAssignments || []),
+        nextAssignment,
+      ]),
+      relationships: uniqueById([
+        ...(snapshot.relationships || []),
+        relationship,
+      ]),
+    },
+    assignment: nextAssignment,
+  };
+}
+
+export function removeSprintAssignment(snapshot, assignmentId) {
+  const assignment = (snapshot.sprintAssignments || []).find(
+    (entry) => entry.id === assignmentId
+  );
+
+  return {
+    ok: true,
+    snapshot: {
+      ...snapshot,
+      sprintAssignments: (snapshot.sprintAssignments || []).filter(
+        (entry) => entry.id !== assignmentId
+      ),
+      relationships: assignment
+        ? (snapshot.relationships || []).filter(
+            (relationship) =>
+              relationship.id !==
+              makeRelationshipId(
+                assignment.sprintId,
+                assignment.workItemId,
+                "assigned_to_sprint"
+              )
+          )
+        : snapshot.relationships || [],
+    },
+  };
+}
+
 export function generateViewGraph(snapshot, view) {
   const normalizedSnapshot =
     snapshot.schemaVersion === SNAPSHOT_SCHEMA_VERSION
@@ -861,6 +1116,46 @@ export function generateViewGraph(snapshot, view) {
   const relationships = normalizedSnapshot.relationships || [];
   const sprintAssignments = normalizedSnapshot.sprintAssignments || [];
   const viewType = typeof view === "string" ? view : view?.type;
+  const parentRelationships = relationships.filter(
+    (relationship) => relationship.relationshipType === "parent"
+  );
+  const childIdsByParent = parentRelationships.reduce((acc, relationship) => {
+    if (!acc.has(relationship.sourceId)) acc.set(relationship.sourceId, []);
+    acc.get(relationship.sourceId).push(relationship.targetId);
+    return acc;
+  }, new Map());
+
+  function descendantsFrom(rootIds, allowedTypes = null) {
+    const visibleIds = new Set(rootIds);
+    const queue = [...rootIds];
+
+    while (queue.length > 0) {
+      const parentId = queue.shift();
+      const childIds = childIdsByParent.get(parentId) || [];
+
+      childIds.forEach((childId) => {
+        const child = itemById.get(childId);
+        if (!child || visibleIds.has(childId)) return;
+        if (allowedTypes && !allowedTypes.has(normalizeGenericType(child.type))) return;
+
+        visibleIds.add(childId);
+        queue.push(childId);
+      });
+    }
+
+    return visibleIds;
+  }
+
+  function graphForIds(ids, edgeTypes = null) {
+    return {
+      nodes: Array.from(ids).map((id) => itemById.get(id)).filter(Boolean),
+      edges: relationships.filter((relationship) => {
+        if (edgeTypes && !edgeTypes.has(relationship.relationshipType)) return false;
+
+        return ids.has(relationship.sourceId) && ids.has(relationship.targetId);
+      }),
+    };
+  }
 
   if (viewType === "sprint") {
     const sprintId = typeof view === "string" ? ROOT_ID : view?.sprintId || ROOT_ID;
@@ -877,6 +1172,75 @@ export function generateViewGraph(snapshot, view) {
           relationship.sourceId === sprintId ||
           assignedIds.has(relationship.sourceId) ||
           assignedIds.has(relationship.targetId)
+      ),
+    };
+  }
+
+  if (viewType === "epic") {
+    const rootEpicId = typeof view === "string" ? null : view?.epicId;
+    const epicIds = workItems
+      .filter((item) =>
+        normalizeGenericType(item.type) === "epic" &&
+        (!rootEpicId || item.id === rootEpicId)
+      )
+      .map((item) => item.id);
+    const ids = descendantsFrom(
+      epicIds,
+      new Set(["story", "task", "job", "bug", "feature", "research"])
+    );
+
+    return graphForIds(ids, new Set(["parent", "child"]));
+  }
+
+  if (viewType === "story") {
+    const rootStoryId = typeof view === "string" ? null : view?.storyId;
+    const storyIds = workItems
+      .filter((item) =>
+        normalizeGenericType(item.type) === "story" &&
+        (!rootStoryId || item.id === rootStoryId)
+      )
+      .map((item) => item.id);
+    const ids = descendantsFrom(
+      storyIds,
+      new Set(["task", "job", "bug", "feature", "research"])
+    );
+
+    return graphForIds(ids, new Set(["parent", "child"]));
+  }
+
+  if (viewType === "timeline") {
+    return {
+      nodes: workItems
+        .filter((item) => item.type !== "workspace")
+        .slice()
+        .sort((a, b) =>
+          new Date(a.updatedAt || a.createdAt || 0).getTime() -
+          new Date(b.updatedAt || b.createdAt || 0).getTime()
+        ),
+      edges: [],
+    };
+  }
+
+  if (["calendar", "month", "week", "day", "range", "worklog"].includes(viewType)) {
+    const scheduled = workItems.filter((item) =>
+      item.type !== "workspace" &&
+      item.type !== "sprint" &&
+      (
+        item.plannedStartDate ||
+        item.plannedEndDate ||
+        item.actualStartDate ||
+        item.actualEndDate ||
+        item.dueDate ||
+        (Array.isArray(item.worklogs) && item.worklogs.length > 0)
+      )
+    );
+    const ids = new Set(scheduled.map((item) => item.id));
+
+    return {
+      nodes: scheduled,
+      edges: relationships.filter(
+        (relationship) =>
+          ids.has(relationship.sourceId) && ids.has(relationship.targetId)
       ),
     };
   }
@@ -1112,6 +1476,16 @@ export function calculateStoryPoints(items) {
     timeFor(item);
   });
 
+  function storyPointsFor(item) {
+    if (byId[item.id] !== undefined) return byId[item.id];
+
+    byId[item.id] = (childrenByParent[item.id] || []).reduce(
+      (total, child) => total + storyPointsFor(child),
+      0
+    );
+    return byId[item.id];
+  }
+
   items
     .filter((item) => item.type === "epic")
     .forEach((epic) => {
@@ -1124,9 +1498,12 @@ export function calculateStoryPoints(items) {
         );
     });
 
+  items.forEach((item) => {
+    storyPointsFor(item);
+  });
+
   byId[ROOT_ID] = (childrenByParent[ROOT_ID] || [])
-    .filter((child) => child.type === "epic")
-    .reduce((total, epic) => total + (byId[epic.id] || 0), 0);
+    .reduce((total, child) => total + (byId[child.id] || 0), 0);
   timeById[ROOT_ID] = (childrenByParent[ROOT_ID] || []).reduce(
     (total, child) => total + timeFor(child),
     0

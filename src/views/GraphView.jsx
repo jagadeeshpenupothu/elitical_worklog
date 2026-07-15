@@ -101,11 +101,11 @@ function roundedCornerBranchPath(points) {
 }
 
 const DOCKET_STATE_COLORS = {
-  concept: "#20d989",
-  design: "#0a73d9",
-  review: "#ff9f0a",
-  closed: "#7c3aed",
-  artifact: "#8b949e",
+  concept: "#22C55E",
+  artifact: "#6B7280",
+  design: "#EAB308",
+  review: "#F97316",
+  closed: "#1E3A8A",
 };
 
 function edgeColorFor(item) {
@@ -405,7 +405,7 @@ function buildBranchConnectorEdges(
         ),
       };
     });
-    const parentItem = itemForNode(parentId, parent, itemById);
+    const firstChildItem = itemForNode(leftChild.id, leftChild, itemById);
 
     return [
       {
@@ -416,11 +416,11 @@ function buildBranchConnectorEdges(
         data: {
           segments: [
             {
-              color: edgeColorFor(parentItem || {}),
+              color: edgeColorFor(firstChildItem || {}),
               path: trunkPath,
             },
             {
-              color: edgeColorFor(itemForNode(leftChild.id, leftChild, itemById)),
+              color: edgeColorFor(firstChildItem),
               path: leftArmPath,
             },
             ...middleStemSegments,
@@ -1036,7 +1036,8 @@ export default function GraphView({
     (event, node) => {
       event.preventDefault();
       event.stopPropagation();
-      onOpenDetails(node.id);
+      if (node.data?.isVirtual) return;
+      onOpenDetails(node.data?.sourceId || node.id);
     },
     [onOpenDetails]
   );

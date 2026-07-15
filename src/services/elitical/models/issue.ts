@@ -1,0 +1,31 @@
+export interface Issue {
+  id?: string;
+  docketId?: string;
+  dktId?: string;
+  cx?: string;
+  type?: string;
+  docketType?: string;
+  dktType?: string;
+  docketTypeName?: string;
+  dktTypeName?: string;
+  issueType?: string;
+  workItemType?: string;
+  title?: string;
+  name?: string;
+  docketTitle?: string;
+  description?: string;
+  descr?: string;
+  status?: string;
+  docketState?: string;
+  dktState?: string;
+  priority?: string;
+  category?: string;
+  sprintId?: string;
+  sprintName?: string;
+  parentId?: string;
+  parentDocketId?: string;
+  storyPoints?: number;
+  estimatedStoryPoints?: number;
+  updatedAt?: string;
+  updatedTime?: string;
+}

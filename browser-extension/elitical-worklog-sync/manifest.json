@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Elitical Worklog Sync",
+  "version": "0.1.0",
+  "description": "Synchronizes the currently authenticated user's Elitical work data into Worklog.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Elitical Worklog Sync"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://elitical.sayukth.com/*"],
+      "js": ["page-bridge.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://elitical.sayukth.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "world": "ISOLATED"
+    }
+  ],
+  "host_permissions": [
+    "https://elitical.sayukth.com/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "web_accessible_resources": [
+    {
+      "resources": ["page-bridge.js"],
+      "matches": ["https://elitical.sayukth.com/*"]
+    }
+  ]
+}

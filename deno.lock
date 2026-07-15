@@ -21,9 +21,11 @@
         "npm:eslint@^10.3.0",
         "npm:globals@^17.6.0",
         "npm:js-yaml@^4.2.0",
+        "npm:playwright@^1.61.1",
         "npm:react-dom@^19.2.6",
         "npm:react@^19.2.6",
         "npm:reactflow@^11.11.4",
+        "npm:tsx@^4.23.1",
         "npm:vite@^8.0.12"
       ]
     }

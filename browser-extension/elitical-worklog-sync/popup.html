@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Elitical Worklog Sync</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="popup-shell">
+      <header class="popup-header">
+        <div>
+          <p class="eyebrow">Elitical</p>
+          <h1>Worklog Sync</h1>
+        </div>
+        <span id="status" class="status">Disconnected</span>
+      </header>
+
+      <section class="summary">
+        <label>Employee</label>
+        <strong id="employeeName">Not connected</strong>
+        <label>Project</label>
+        <span id="projectName">-</span>
+        <label>Sprint</label>
+        <span id="sprintName">-</span>
+        <label>Hierarchy</label>
+        <span id="hierarchyFound">0 items</span>
+        <label>Worklogs</label>
+        <span id="worklogsFound">0 found</span>
+        <label>Last sync</label>
+        <span id="lastSync">Never</span>
+        <p id="error" class="error" hidden></p>
+      </section>
+
+      <footer class="actions">
+        <button id="syncNow" type="button">Sync Now</button>
+        <button id="openWorklog" type="button" class="secondary">
+          Open Elitical
+        </button>
+      </footer>
+    </main>
+
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>

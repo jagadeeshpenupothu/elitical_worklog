@@ -11,6 +11,10 @@ dist/
 .env
 .env.*
 !.env.example
+.elitical/
+*.pem
+*.key
+storage-state.json
 
 # Logs
 *.log

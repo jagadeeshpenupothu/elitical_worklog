@@ -1,0 +1,1 @@
+export { unsupportedOperation } from "./unsupportedOperation";

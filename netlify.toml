@@ -3,6 +3,14 @@
   publish = "dist"
   functions = "netlify/functions"
 
+[functions]
+  external_node_modules = ["playwright", "playwright-core", "chromium-bidi"]
+
+[[redirects]]
+  from = "/api/elitical/*"
+  to = "/.netlify/functions/elitical/:splat"
+  status = 200
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
