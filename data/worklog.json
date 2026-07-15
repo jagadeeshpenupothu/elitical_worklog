@@ -1,24 +1,274 @@
 {
-  "schemaVersion": 1,
-  "root": {
-    "title": "Sprint View",
-    "docketState": "concept"
+  "schemaVersion": 2,
+  "workspace": {
+    "id": "workspace",
+    "title": "Genesis",
+    "rootSprintId": "storyRoot"
   },
+  "views": [
+    {
+      "id": "main",
+      "title": "Main View",
+      "type": "main"
+    },
+    {
+      "id": "sprint",
+      "title": "Sprint View",
+      "type": "sprint",
+      "sprintId": "storyRoot"
+    },
+    {
+      "id": "epic",
+      "title": "Epic View",
+      "type": "epic"
+    },
+    {
+      "id": "story",
+      "title": "Story View",
+      "type": "story"
+    },
+    {
+      "id": "timeline",
+      "title": "Timeline View",
+      "type": "timeline"
+    },
+    {
+      "id": "dependencies",
+      "title": "Dependencies View",
+      "type": "dependencies"
+    },
+    {
+      "id": "backlog",
+      "title": "Backlog View",
+      "type": "backlog"
+    },
+    {
+      "id": "completed",
+      "title": "Completed View",
+      "type": "completed"
+    }
+  ],
   "workItems": [
+    {
+      "id": "workspace",
+      "title": "Genesis",
+      "description": "",
+      "type": "workspace",
+      "status": "concept",
+      "priority": "info",
+      "storyPoints": 0,
+      "estimatedTime": 0,
+      "loggedTime": 0,
+      "parentId": "",
+      "category": "feature",
+      "openQueue": false,
+      "assignee": "",
+      "sprint": "",
+      "createdAt": "1970-01-01T00:00:00.000Z",
+      "updatedAt": "2026-07-15T12:49:46.345Z"
+    },
+    {
+      "id": "storyRoot",
+      "title": "Sprint View",
+      "description": "",
+      "type": "sprint",
+      "status": "concept",
+      "priority": "info",
+      "storyPoints": 0,
+      "estimatedTime": 0,
+      "loggedTime": 0,
+      "parentId": "workspace",
+      "category": "feature",
+      "openQueue": false,
+      "assignee": "",
+      "sprint": "",
+      "createdAt": "1970-01-01T00:00:00.000Z",
+      "updatedAt": "2026-07-15T12:49:46.345Z"
+    },
     {
       "id": "EPIC-1",
       "title": "Office Work",
       "description": "",
-      "category": "enhancement",
       "type": "epic",
+      "status": "concept",
       "priority": "info",
+      "storyPoints": 0,
+      "estimatedTime": 0,
+      "loggedTime": 0,
       "parentId": "storyRoot",
+      "category": "enhancement",
       "openQueue": false,
       "assignee": "",
       "sprint": "Sprint View",
-      "docketState": "concept",
       "createdAt": "2026-07-14T19:09:13.936Z",
       "updatedAt": "2026-07-14T19:09:13.936Z"
+    },
+    {
+      "id": "STORY-2",
+      "title": "New Story",
+      "description": "",
+      "type": "story",
+      "status": "concept",
+      "priority": "info",
+      "storyPoints": 0,
+      "estimatedTime": 0,
+      "loggedTime": 0,
+      "parentId": "EPIC-1",
+      "category": "feature",
+      "openQueue": false,
+      "assignee": "",
+      "sprint": "Sprint View",
+      "createdAt": "2026-07-15T12:49:44.046Z",
+      "updatedAt": "2026-07-15T12:49:44.046Z",
+      "worklogs": [
+        {
+          "date": "2026-07-15T12:49:44.046Z",
+          "description": "",
+          "timeMinutes": 0
+        }
+      ]
+    },
+    {
+      "id": "JOB-3",
+      "title": "New Job",
+      "description": "",
+      "type": "job",
+      "status": "concept",
+      "priority": "info",
+      "storyPoints": 0,
+      "estimatedTime": 0,
+      "loggedTime": 0,
+      "parentId": "STORY-2",
+      "category": "feature",
+      "openQueue": false,
+      "assignee": "",
+      "sprint": "Sprint View",
+      "createdAt": "2026-07-15T12:49:45.111Z",
+      "updatedAt": "2026-07-15T12:49:45.111Z",
+      "worklogs": [
+        {
+          "date": "2026-07-15T12:49:45.111Z",
+          "description": "",
+          "timeMinutes": 0
+        }
+      ]
+    },
+    {
+      "id": "JOB-4",
+      "title": "New Job",
+      "description": "",
+      "type": "job",
+      "status": "concept",
+      "priority": "info",
+      "storyPoints": 0,
+      "estimatedTime": 0,
+      "loggedTime": 0,
+      "parentId": "STORY-2",
+      "category": "feature",
+      "openQueue": false,
+      "assignee": "",
+      "sprint": "Sprint View",
+      "createdAt": "2026-07-15T12:49:46.345Z",
+      "updatedAt": "2026-07-15T12:49:46.345Z",
+      "worklogs": [
+        {
+          "date": "2026-07-15T12:49:46.345Z",
+          "description": "",
+          "timeMinutes": 0
+        }
+      ]
     }
-  ]
+  ],
+  "relationships": [
+    {
+      "id": "parent:workspace:storyRoot",
+      "sourceId": "workspace",
+      "targetId": "storyRoot",
+      "relationshipType": "parent"
+    },
+    {
+      "id": "assigned_to_sprint:storyRoot:EPIC-1",
+      "sourceId": "storyRoot",
+      "targetId": "EPIC-1",
+      "relationshipType": "assigned_to_sprint"
+    },
+    {
+      "id": "parent:EPIC-1:STORY-2",
+      "sourceId": "EPIC-1",
+      "targetId": "STORY-2",
+      "relationshipType": "parent"
+    },
+    {
+      "id": "assigned_to_sprint:storyRoot:STORY-2",
+      "sourceId": "storyRoot",
+      "targetId": "STORY-2",
+      "relationshipType": "assigned_to_sprint"
+    },
+    {
+      "id": "parent:STORY-2:JOB-3",
+      "sourceId": "STORY-2",
+      "targetId": "JOB-3",
+      "relationshipType": "parent"
+    },
+    {
+      "id": "assigned_to_sprint:storyRoot:JOB-3",
+      "sourceId": "storyRoot",
+      "targetId": "JOB-3",
+      "relationshipType": "assigned_to_sprint"
+    },
+    {
+      "id": "parent:STORY-2:JOB-4",
+      "sourceId": "STORY-2",
+      "targetId": "JOB-4",
+      "relationshipType": "parent"
+    },
+    {
+      "id": "assigned_to_sprint:storyRoot:JOB-4",
+      "sourceId": "storyRoot",
+      "targetId": "JOB-4",
+      "relationshipType": "assigned_to_sprint"
+    }
+  ],
+  "sprintAssignments": [
+    {
+      "id": "sprint-assignment:storyRoot:EPIC-1",
+      "sprintId": "storyRoot",
+      "workItemId": "EPIC-1",
+      "plannedHours": 0,
+      "loggedHours": 0,
+      "status": "concept",
+      "assignedDate": "2026-07-14T19:09:13.936Z"
+    },
+    {
+      "id": "sprint-assignment:storyRoot:STORY-2",
+      "sprintId": "storyRoot",
+      "workItemId": "STORY-2",
+      "plannedHours": 0,
+      "loggedHours": 0,
+      "status": "concept",
+      "assignedDate": "2026-07-15T12:49:44.046Z"
+    },
+    {
+      "id": "sprint-assignment:storyRoot:JOB-3",
+      "sprintId": "storyRoot",
+      "workItemId": "JOB-3",
+      "plannedHours": 0,
+      "loggedHours": 0,
+      "status": "concept",
+      "assignedDate": "2026-07-15T12:49:45.111Z"
+    },
+    {
+      "id": "sprint-assignment:storyRoot:JOB-4",
+      "sprintId": "storyRoot",
+      "workItemId": "JOB-4",
+      "plannedHours": 0,
+      "loggedHours": 0,
+      "status": "concept",
+      "assignedDate": "2026-07-15T12:49:46.345Z"
+    }
+  ],
+  "settings": {
+    "defaultViewId": "main",
+    "legacyRootId": "storyRoot"
+  }
 }
