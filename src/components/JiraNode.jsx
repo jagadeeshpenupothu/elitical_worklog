@@ -54,7 +54,15 @@ function formatShortDate(value) {
   ].join("/");
 }
 
+function formatDocketState(value) {
+  return String(value || "concept")
+    .split("-")
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
 function childTypes(data) {
+  if (Array.isArray(data.addChildTypes)) return data.addChildTypes;
   if (data.type === "main-root") return ["sprint"];
   if (data.type === "story-root") return ["epic"];
   if (data.type === "epic") return ["story"];
@@ -111,7 +119,9 @@ function nodeIcon(data) {
 }
 
 function JiraNode({ data }) {
-  const availableChildTypes = childTypes(data);
+  const availableChildTypes = data.isVirtual && !data.allowChildActions
+    ? []
+    : childTypes(data);
   const showSp = hasStoryPoints(data);
   const timeValue = data.calculatedTimeMinutes || 0;
 
@@ -121,7 +131,9 @@ function JiraNode({ data }) {
       data.onStartSprint?.();
       return;
     }
-    data.onStartChild(type, data.id);
+    data.onStartChild(type, data.childParentId || data.sourceId || data.id, {
+      worklogDate: data.childWorklogDate,
+    });
   }
 
   return (
@@ -143,6 +155,9 @@ function JiraNode({ data }) {
         </div>
 
         <div className="node-meta">
+          <div className="node-meta-pill node-state-badge">
+            {formatDocketState(data.docketState)}
+          </div>
           {showSp && (
             <div className="node-meta-pill">
               {storyPointValue(data)} SP

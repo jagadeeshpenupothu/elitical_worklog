@@ -6,7 +6,14 @@ import {
   useState,
 } from "react";
 import GraphView from "./views/GraphView";
+import PlanningView from "./views/PlanningView";
+import {
+  CREATE_NEW_EPIC_ID,
+  PREDEFINED_EPICS,
+} from "./data/predefinedEpics";
+import { PREDEFINED_SPRINTS } from "./data/predefinedSprints";
 import yamlText from "./data/jira.yaml?raw";
+import { buildTimeGraph } from "./utils/planningGraph";
 import {
   CATEGORIES,
   DOCKET_STATES,
@@ -35,6 +42,64 @@ import {
 import "./App.css";
 
 const MAIN_ROOT_ID = "mainRoot";
+const PLANNING_VIEWS = [
+  { id: "backlog", label: "Backlog View" },
+  { id: "timeline", label: "Timeline View" },
+  { id: "calendar", label: "Calendar View" },
+  { id: "month", label: "Month View" },
+  { id: "week", label: "Week View" },
+  { id: "day", label: "Day View" },
+  { id: "range", label: "Custom Date Range" },
+  { id: "worklog", label: "Work Log View" },
+];
+const PLANNING_VIEW_IDS = new Set(PLANNING_VIEWS.map((view) => view.id));
+const GRAPH_TIME_VIEW_IDS = new Set(["day", "week", "month", "range", "timeline"]);
+const EPIC_PRESET_OPTIONS = [
+  CREATE_NEW_EPIC_ID,
+  ...PREDEFINED_EPICS.map((epic) => epic.id),
+];
+const PREDEFINED_SPRINT_IDS = new Set(PREDEFINED_SPRINTS.map((sprint) => sprint.id));
+
+function epicPresetLabel(id) {
+  if (id === CREATE_NEW_EPIC_ID) return "Create New Epic";
+
+  const epic = PREDEFINED_EPICS.find((entry) => entry.id === id);
+  return epic ? `${epic.id} · ${epic.title}` : id;
+}
+
+function epicPresetDraft(id, fallbackSprint, fallbackDocketState) {
+  const epic = PREDEFINED_EPICS.find((entry) => entry.id === id);
+
+  if (!epic) {
+    return {
+      id: undefined,
+      title: "",
+      description: "",
+      category: "feature",
+      sprint: fallbackSprint,
+      docketState: fallbackDocketState,
+      assignee: "",
+      createdBy: "",
+      createdAt: undefined,
+      updatedBy: "",
+      updatedAt: undefined,
+    };
+  }
+
+  return {
+    id: epic.id,
+    title: epic.title,
+    description: "",
+    category: epic.category,
+    sprint: epic.sprint || fallbackSprint,
+    docketState: epic.docketState,
+    assignee: epic.assignee,
+    createdBy: epic.createdBy,
+    createdAt: epic.createdAt,
+    updatedBy: epic.updatedBy,
+    updatedAt: epic.updatedAt || epic.createdAt,
+  };
+}
 
 function formatType(type) {
   if (type === "main-root") return "Main";
@@ -57,6 +122,27 @@ function makeCreateDraft(type, sprint, docketState) {
     storyPoints: 0,
     time: "00:00",
     type,
+    epicPresetId: type === "epic" ? CREATE_NEW_EPIC_ID : undefined,
+  };
+}
+
+function makeSprintDraft(sprint, rootTitle, rootDocketState) {
+  return {
+    code: sprint?.code || "",
+    title: sprint?.title || rootTitle || "New Sprint",
+    sprintStartDate: sprint?.sprintStartDate
+      ? formatDateInput(sprint.sprintStartDate)
+      : "",
+    sprintEndDate: sprint?.sprintEndDate
+      ? formatDateInput(sprint.sprintEndDate)
+      : "",
+    sprintState: sprint?.sprintState || "",
+    state: sprint?.state || "",
+    createdBy: sprint?.createdBy || "",
+    createdAt: sprint?.createdAt ? formatDateTimeLocalInput(sprint.createdAt) : "",
+    updatedBy: sprint?.updatedBy || "",
+    updatedAt: sprint?.updatedAt ? formatDateTimeLocalInput(sprint.updatedAt) : "",
+    docketState: sprint?.docketState || rootDocketState || "concept",
   };
 }
 
@@ -144,6 +230,34 @@ function dateInputToIso(value, fallback) {
   date.setFullYear(year, month - 1, day);
 
   return date.toISOString();
+}
+
+function formatDateTimeLocalInput(value) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "";
+
+  return [
+    formatDateInput(date),
+    [
+      String(date.getHours()).padStart(2, "0"),
+      String(date.getMinutes()).padStart(2, "0"),
+    ].join(":"),
+  ].join("T");
+}
+
+function dateTimeInputToIso(value) {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
+function optionalDateInputToIso(value) {
+  if (!value) return "";
+
+  return dateInputToIso(value, value);
 }
 
 function formatWorkTime(minutes) {
@@ -291,9 +405,33 @@ function normalizeStoryStateArtifactRollup(state) {
   };
 }
 
+function withRealSprints(state) {
+  const existingSprints = Array.isArray(state?.sprints) ? state.sprints : [];
+  const rootSprint = existingSprints.find((sprint) => sprint.id === ROOT_ID) || {
+    id: ROOT_ID,
+    title: state?.rootTitle || "Sprint View",
+    docketState: state?.rootDocketState || "concept",
+  };
+  const customSprints = existingSprints.filter(
+    (sprint) =>
+      sprint.id !== ROOT_ID &&
+      !PREDEFINED_SPRINT_IDS.has(sprint.id) &&
+      !/^sprint-\d+$/i.test(sprint.id)
+  );
+
+  return {
+    ...state,
+    sprints: [
+      rootSprint,
+      ...PREDEFINED_SPRINTS,
+      ...customSprints,
+    ],
+  };
+}
+
 function snapshotFromState(state) {
   const result = buildWorklogSnapshot(
-    normalizeStoryStateArtifactRollup(state)
+    normalizeStoryStateArtifactRollup(withRealSprints(state))
   );
 
   if (!result.valid) {
@@ -311,8 +449,8 @@ function normalizeLoadedSnapshot(snapshot) {
   }
 
   return {
-    state: normalizeStoryStateArtifactRollup(result.state),
-    snapshot: result.snapshot,
+    state: normalizeStoryStateArtifactRollup(withRealSprints(result.state)),
+    snapshot: snapshotFromState(result.state),
   };
 }
 
@@ -465,9 +603,9 @@ function MetadataBadge({ children }) {
   return <span className="metadata-badge">{children || "-"}</span>;
 }
 
-function ModalSection({ title, children }) {
+function ModalSection({ title, children, className = "" }) {
   return (
-    <section className="modal-section">
+    <section className={`modal-section ${className}`}>
       <h3>{title}</h3>
       <div className="modal-section-grid">{children}</div>
     </section>
@@ -476,12 +614,104 @@ function ModalSection({ title, children }) {
 
 function ReadOnlyField({ label, value, badge = false, wide = false }) {
   return (
-    <div className={`modal-field ${wide ? "wide" : ""}`}>
+    <div className={`modal-field readonly-disabled ${wide ? "wide" : ""}`}>
       <span>{label}</span>
       {badge ? (
         <MetadataBadge>{value}</MetadataBadge>
       ) : (
         <strong>{value || "-"}</strong>
+      )}
+    </div>
+  );
+}
+
+function CustomSelectField({
+  label,
+  value,
+  options,
+  onChange,
+  onOpen,
+  wide = false,
+  getOptionLabel = formatLabel,
+}) {
+  const [open, setOpen] = useState(false);
+  const fieldRef = useRef(null);
+  const selectedLabel = getOptionLabel(value);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    function handlePointerDown(event) {
+      if (!fieldRef.current?.contains(event.target)) {
+        setOpen(false);
+      }
+    }
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") setOpen(false);
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  function toggleOpen() {
+    onOpen?.();
+    setOpen((current) => !current);
+  }
+
+  function selectOption(option) {
+    onChange(option);
+    setOpen(false);
+  }
+
+  return (
+    <div
+      ref={fieldRef}
+      className={`modal-field custom-select-field custom-select-value-${value || "empty"} ${
+        open ? "open" : ""
+      } ${wide ? "wide" : ""}`}
+    >
+      <span>{label}</span>
+      <button
+        type="button"
+        className="custom-select-trigger"
+        onClick={toggleOpen}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span>{selectedLabel || "-"}</span>
+        <span className="custom-select-caret" aria-hidden="true">⌄</span>
+      </button>
+      {open && (
+        <div className="custom-select-menu" role="listbox">
+          {options.map((option) => {
+            const selected = option === value;
+
+            return (
+              <button
+                key={option}
+                type="button"
+                className={`custom-select-option custom-select-value-${option} ${
+                  selected ? "selected" : ""
+                }`}
+                onClick={() => selectOption(option)}
+                role="option"
+                aria-selected={selected}
+              >
+                <span className="custom-select-check" aria-hidden="true">
+                  {selected ? "✓" : ""}
+                </span>
+                <span>{getOptionLabel(option)}</span>
+              </button>
+            );
+          })}
+        </div>
       )}
     </div>
   );
@@ -499,6 +729,7 @@ function InlineField({
   step,
   badge = false,
   wide = false,
+  onCommit,
 }) {
   const editing = editingField === field;
   const displayValue =
@@ -510,27 +741,20 @@ function InlineField({
       ? value
       : value;
 
-  if (editing) {
-    if (type === "select") {
-      return (
-        <label className={`modal-field inline-active ${wide ? "wide" : ""}`}>
-          <span>{label}</span>
-          <select
-            className="modal-control inline-control"
-            autoFocus
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-          >
-            {options.map((option) => (
-              <option key={option} value={option}>
-                {formatLabel(option)}
-              </option>
-            ))}
-          </select>
-        </label>
-      );
-    }
+  if (type === "select") {
+    return (
+      <CustomSelectField
+        label={label}
+        value={value}
+        options={options}
+        onOpen={() => onEdit(field)}
+        onChange={onChange}
+        wide={wide}
+      />
+    );
+  }
 
+  if (editing) {
     if (type === "textarea") {
       return (
         <label className={`modal-field inline-active ${wide ? "wide" : ""}`}>
@@ -541,6 +765,7 @@ function InlineField({
             autoFocus
             value={value}
             onChange={(event) => onChange(event.target.value)}
+            onBlur={onCommit}
           />
         </label>
       );
@@ -556,6 +781,7 @@ function InlineField({
           autoFocus
           value={value}
           onChange={(event) => onChange(event.target.value)}
+          onBlur={onCommit}
         />
       </label>
     );
@@ -564,8 +790,7 @@ function InlineField({
   return (
     <div
       className={`modal-field inline-readable ${wide ? "wide" : ""}`}
-      onDoubleClick={() => onEdit(field)}
-      title="Double-click to edit"
+      onClick={() => onEdit(field)}
     >
       <span>{label}</span>
       {badge ? (
@@ -617,20 +842,12 @@ function TextAreaField({ label, value, onChange, wide = false }) {
 
 function SelectField({ label, value, options, onChange }) {
   return (
-    <label className="modal-field">
-      <span>{label}</span>
-      <select
-        className="modal-control"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {formatLabel(option)}
-          </option>
-        ))}
-      </select>
-    </label>
+    <CustomSelectField
+      label={label}
+      value={value}
+      options={options}
+      onChange={onChange}
+    />
   );
 }
 
@@ -680,10 +897,22 @@ function WorkItemModal({
     : activeItem?.type;
   const sprintParentId =
     modal.kind === "create" ? modal.parentId : activeItem?.parentId;
-  const fallbackSprint = isSprint || isMainRoot
+  const createSprintParent =
+    modal.kind === "create"
+      ? sprints.find((sprint) => sprint.id === modal.parentId)
+      : null;
+  const fallbackSprint = modal.kind === "create" && modal.sprint
+    ? modal.sprint
+    : createSprintParent
+    ? createSprintParent.title
+    : isSprint || isMainRoot
     ? rootTitle
     : inheritedSprint(sprintParentId, workItems, rootTitle);
-  const fallbackDocketState = isSprint
+  const fallbackDocketState = modal.kind === "create" && modal.docketState
+    ? modal.docketState
+    : createSprintParent
+    ? createSprintParent.docketState || rootDocketState || "concept"
+    : isSprint
     ? rootDocketState || "concept"
     : isMainRoot
     ? "concept"
@@ -696,10 +925,7 @@ function WorkItemModal({
       : isRoot
       ? { title: rootTitle, docketState: rootDocketState || "concept" }
       : activeSprint
-      ? {
-          title: activeSprint.title,
-          docketState: activeSprint.docketState || "concept",
-        }
+      ? makeSprintDraft(activeSprint, rootTitle, rootDocketState)
       : activeItem
       ? makeEditDraft(activeItem, fallbackSprint)
       : null;
@@ -761,6 +987,17 @@ function WorkItemModal({
     setError("");
   }
 
+  function handleEpicPresetChange(value) {
+    const preset = epicPresetDraft(value, fallbackSprint, fallbackDocketState);
+
+    setDraft((current) => ({
+      ...current,
+      ...preset,
+      epicPresetId: value,
+    }));
+    setError("");
+  }
+
   function startInlineEdit(field) {
     if (modal.kind !== "details") return;
     setMode("view");
@@ -815,6 +1052,15 @@ function WorkItemModal({
       }) : onSaveSprint(activeSprint.id, {
         title: draft.title,
         docketState: draft.docketState,
+        code: draft.code,
+        sprintStartDate: draft.sprintStartDate,
+        sprintEndDate: draft.sprintEndDate,
+        sprintState: draft.sprintState,
+        state: draft.state,
+        createdBy: draft.createdBy,
+        createdAt: draft.createdAt,
+        updatedBy: draft.updatedBy,
+        updatedAt: draft.updatedAt,
       });
       if (result.ok) {
         setMode("view");
@@ -831,6 +1077,14 @@ function WorkItemModal({
       sprint: draft.sprint.trim() || fallbackSprint,
       docketState: draft.docketState || "concept",
       type: itemType,
+      createdAt:
+        modal.kind === "create" && itemType === "epic"
+          ? draft.createdAt || modal.worklogDate
+          : draft.createdAt,
+      updatedAt:
+        modal.kind === "create" && itemType === "epic"
+          ? draft.updatedAt || draft.createdAt || modal.worklogDate
+          : draft.updatedAt,
       storyPoints:
         itemType === "story"
           ? Number(draft.storyPoints || 0)
@@ -877,10 +1131,7 @@ function WorkItemModal({
         : isRoot
         ? { title: rootTitle, docketState: rootDocketState || "concept" }
         : activeSprint
-        ? {
-            title: activeSprint.title,
-            docketState: activeSprint.docketState || "concept",
-          }
+        ? makeSprintDraft(activeSprint, rootTitle, rootDocketState)
         : makeEditDraft(activeItem, fallbackSprint)
     );
     setError("");
@@ -939,7 +1190,7 @@ function WorkItemModal({
       onMouseDown={onClose}
     >
       <section
-        className="modal-card"
+        className={`modal-card ${isEditing ? "modal-card-edit" : "modal-card-view"}`}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="modal-header">
@@ -983,22 +1234,13 @@ function WorkItemModal({
 
         <div className="modal-body">
           {modal.kind === "details" && !isMainRoot && (
-            <label className="docket-state-control">
-              <span>Docket State</span>
-              <select
-                className="modal-control"
-                value={draft.docketState || currentDocketState}
-                onChange={(event) =>
-                  updateDraft("docketState", event.target.value)
-                }
-              >
-                {DOCKET_STATES.map((state) => (
-                  <option key={state} value={state}>
-                    {formatDocketState(state)}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <CustomSelectField
+              label="Docket State"
+              value={draft.docketState || currentDocketState}
+              options={DOCKET_STATES}
+              onChange={(value) => updateDraft("docketState", value)}
+              wide
+            />
           )}
 
           {!isEditing ? (
@@ -1013,6 +1255,7 @@ function WorkItemModal({
                       editingField={editingField}
                       onEdit={startInlineEdit}
                       onChange={(value) => updateDraft("title", value)}
+                      onCommit={handleSave}
                       wide
                     />
                   </ModalSection>
@@ -1044,9 +1287,45 @@ function WorkItemModal({
                       editingField={editingField}
                       onEdit={startInlineEdit}
                       onChange={(value) => updateDraft("title", value)}
+                      onCommit={handleSave}
                       wide
                     />
+                    {activeSprint && (
+                      <>
+                        <ReadOnlyField label="Code" value={draft.code} />
+                        <ReadOnlyField
+                          label="Sprint Start Date"
+                          value={formatDateLabel(draft.sprintStartDate)}
+                        />
+                        <ReadOnlyField
+                          label="Sprint End Date"
+                          value={formatDateLabel(draft.sprintEndDate)}
+                        />
+                        <ReadOnlyField
+                          label="Sprint State"
+                          value={draft.sprintState}
+                          badge
+                        />
+                        <ReadOnlyField label="State" value={draft.state} badge />
+                      </>
+                    )}
                   </ModalSection>
+                  {activeSprint && (
+                    <section className="modal-section modal-section-untitled">
+                      <div className="modal-section-grid">
+                        <ReadOnlyField label="Created By" value={draft.createdBy} />
+                        <ReadOnlyField
+                          label="Created At"
+                          value={formatTimestamp(activeSprint.createdAt)}
+                        />
+                        <ReadOnlyField label="Updated By" value={draft.updatedBy} />
+                        <ReadOnlyField
+                          label="Updated At"
+                          value={formatTimestamp(activeSprint.updatedAt)}
+                        />
+                      </div>
+                    </section>
+                  )}
                   <ModalSection title="Effort & Time">
                     <ReadOnlyField
                       label="Calculated Story Points"
@@ -1070,6 +1349,7 @@ function WorkItemModal({
                       editingField={editingField}
                       onEdit={startInlineEdit}
                       onChange={(value) => updateDraft("title", value)}
+                      onCommit={handleSave}
                     />
                     <InlineField
                       label="Description"
@@ -1081,10 +1361,11 @@ function WorkItemModal({
                       onChange={(value) =>
                         updateDraft("description", value)
                       }
+                      onCommit={handleSave}
                     />
                   </ModalSection>
                   {hasWorklog && (
-                    <ModalSection title="Worklog">
+                    <ModalSection title="Worklog" className="worklog-section">
                       <InlineField
                         label="Date"
                         field="worklogDate"
@@ -1093,6 +1374,17 @@ function WorkItemModal({
                         editingField={editingField}
                         onEdit={startInlineEdit}
                         onChange={(value) => updateDraft("worklogDate", value)}
+                        onCommit={handleSave}
+                      />
+                      <InlineField
+                        label="Time"
+                        field="time"
+                        value={draft.time}
+                        editingField={editingField}
+                        onEdit={startInlineEdit}
+                        onChange={(value) => updateDraft("time", value)}
+                        onCommit={handleSave}
+                        badge
                       />
                       <InlineField
                         label="Description"
@@ -1104,16 +1396,8 @@ function WorkItemModal({
                         onChange={(value) =>
                           updateDraft("worklogDescription", value)
                         }
+                        onCommit={handleSave}
                         wide
-                      />
-                      <InlineField
-                        label="Time"
-                        field="time"
-                        value={draft.time}
-                        editingField={editingField}
-                        onEdit={startInlineEdit}
-                        onChange={(value) => updateDraft("time", value)}
-                        badge
                       />
                     </ModalSection>
                   )}
@@ -1140,6 +1424,19 @@ function WorkItemModal({
                       onChange={(value) => updateDraft("priority", value)}
                       badge
                     />
+                    {activeItem.type === "story" && (
+                      <InlineField
+                        label="Story Points"
+                        field="storyPoints"
+                        value={draft.storyPoints}
+                        type="number"
+                        editingField={editingField}
+                        onEdit={startInlineEdit}
+                        onChange={(value) => updateDraft("storyPoints", value)}
+                        onCommit={handleSave}
+                        badge
+                      />
+                    )}
                   </ModalSection>
                   <ModalSection title="Hierarchy">
                     <ReadOnlyField
@@ -1151,54 +1448,106 @@ function WorkItemModal({
                       value={parentLabel(activeItem.parentId, workItems)}
                     />
                     <ReadOnlyField label="Sprint" value={currentSprint} />
-                  </ModalSection>
-                  <ModalSection title="Effort & Time">
-                    {activeItem.type === "story" && (
-                      <InlineField
-                        label="Story Points"
-                        field="storyPoints"
-                        value={draft.storyPoints}
-                        type="number"
-                        editingField={editingField}
-                        onEdit={startInlineEdit}
-                        onChange={(value) => updateDraft("storyPoints", value)}
-                        badge
-                      />
+                    {activeItem.assignee && (
+                      <ReadOnlyField label="Assignee" value={activeItem.assignee} />
                     )}
-                    {activeItem.type === "epic" && (
+                  </ModalSection>
+                  <section className="modal-section modal-section-untitled">
+                    <div className="modal-section-grid">
+                      {activeItem.createdBy && (
+                        <ReadOnlyField label="Created By" value={activeItem.createdBy} />
+                      )}
                       <ReadOnlyField
-                        label="Calculated Story Points"
-                        value={`${calculatedSp} SP`}
-                        badge
+                        label="Created At"
+                        value={formatTimestamp(activeItem.createdAt)}
                       />
-                    )}
-                    <ReadOnlyField
-                      label="Calculated Time"
-                      value={formatWorkTime(calculatedTime)}
-                      badge
-                    />
-                  </ModalSection>
-                  <ModalSection title="System Information">
-                    <ReadOnlyField
-                      label="Created At"
-                      value={formatTimestamp(activeItem.createdAt)}
-                    />
-                    <ReadOnlyField
-                      label="Updated At"
-                      value={formatTimestamp(activeItem.updatedAt)}
-                    />
-                  </ModalSection>
+                      {activeItem.updatedBy && (
+                        <ReadOnlyField label="Updated By" value={activeItem.updatedBy} />
+                      )}
+                      <ReadOnlyField
+                        label="Updated At"
+                        value={formatTimestamp(activeItem.updatedAt)}
+                      />
+                    </div>
+                  </section>
                 </>
               )}
             </div>
           ) : (
             <div className="modal-sections">
+              {modal.kind === "create" && itemType === "epic" && (
+                <ModalSection title="Epic">
+                  <CustomSelectField
+                    label="Epic"
+                    value={draft.epicPresetId || CREATE_NEW_EPIC_ID}
+                    options={EPIC_PRESET_OPTIONS}
+                    onChange={handleEpicPresetChange}
+                    getOptionLabel={epicPresetLabel}
+                    wide
+                  />
+                </ModalSection>
+              )}
+
               <ModalSection title="Basic Information">
                 <TextField
                   label="Title"
                   value={draft.title}
                   onChange={(value) => updateDraft("title", value)}
                 />
+
+                {activeSprint && (
+                  <>
+                    <TextField
+                      label="Code"
+                      value={draft.code}
+                      onChange={(value) => updateDraft("code", value)}
+                    />
+                    <TextField
+                      label="Sprint Start Date"
+                      type="date"
+                      value={draft.sprintStartDate}
+                      onChange={(value) => updateDraft("sprintStartDate", value)}
+                    />
+                    <TextField
+                      label="Sprint End Date"
+                      type="date"
+                      value={draft.sprintEndDate}
+                      onChange={(value) => updateDraft("sprintEndDate", value)}
+                    />
+                    <TextField
+                      label="Sprint State"
+                      value={draft.sprintState}
+                      onChange={(value) => updateDraft("sprintState", value)}
+                    />
+                    <TextField
+                      label="State"
+                      value={draft.state}
+                      onChange={(value) => updateDraft("state", value)}
+                    />
+                    <TextField
+                      label="Created By"
+                      value={draft.createdBy}
+                      onChange={(value) => updateDraft("createdBy", value)}
+                    />
+                    <TextField
+                      label="Created Time"
+                      type="datetime-local"
+                      value={draft.createdAt}
+                      onChange={(value) => updateDraft("createdAt", value)}
+                    />
+                    <TextField
+                      label="Updated By"
+                      value={draft.updatedBy}
+                      onChange={(value) => updateDraft("updatedBy", value)}
+                    />
+                    <TextField
+                      label="Updated Time"
+                      type="datetime-local"
+                      value={draft.updatedAt}
+                      onChange={(value) => updateDraft("updatedAt", value)}
+                    />
+                  </>
+                )}
 
                 {!isSprint && !isMainRoot && (
                   <TextAreaField
@@ -1330,16 +1679,18 @@ function WorkItemModal({
               ) : null}
 
               {modal.kind !== "create" && !isSprint && !isMainRoot && (
-                <ModalSection title="System Information">
-                  <ReadOnlyField
-                    label="Created At"
-                    value={formatTimestamp(activeItem.createdAt)}
-                  />
-                  <ReadOnlyField
-                    label="Updated At"
-                    value={formatTimestamp(activeItem.updatedAt)}
-                  />
-                </ModalSection>
+                <section className="modal-section modal-section-untitled">
+                  <div className="modal-section-grid">
+                    <ReadOnlyField
+                      label="Created At"
+                      value={formatTimestamp(activeItem.createdAt)}
+                    />
+                    <ReadOnlyField
+                      label="Updated At"
+                      value={formatTimestamp(activeItem.updatedAt)}
+                    />
+                  </div>
+                </section>
               )}
             </div>
           )}
@@ -1402,6 +1753,15 @@ function App() {
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [planningAnchorDate, setPlanningAnchorDate] = useState(
+    formatDateInput(new Date())
+  );
+  const [planningRangeStart, setPlanningRangeStart] = useState(
+    formatDateInput(new Date(new Date().setDate(new Date().getDate() - 7)))
+  );
+  const [planningRangeEnd, setPlanningRangeEnd] = useState(
+    formatDateInput(new Date(new Date().setDate(new Date().getDate() + 14)))
+  );
   const [loadState, setLoadState] = useState(
     cachedSnapshot ? "ready" : "loading"
   );
@@ -1452,9 +1812,10 @@ function App() {
     () => calculateStoryPoints(workItems),
     [workItems]
   );
+  const isGraphTimeView = GRAPH_TIME_VIEW_IDS.has(viewMode);
   const visibleWorkItems = useMemo(
-    () => descendantsIncluding(workItems, viewRootId),
-    [viewRootId, workItems]
+    () => descendantsIncluding(workItems, isGraphTimeView ? null : viewRootId),
+    [isGraphTimeView, viewRootId, workItems]
   );
   const searchedWorkItems = useMemo(
     () => filterWorkItemsForSearch(visibleWorkItems, searchQuery),
@@ -1465,27 +1826,62 @@ function App() {
 
     return sprints.filter((sprint) => sprintMatchesQuery(sprint, searchQuery));
   }, [searchQuery, sprints, viewMode]);
-  const displayedTotals = useMemo(
-    () => calculateStoryPoints(searchedWorkItems),
-    [searchedWorkItems]
+  const timeGraph = useMemo(
+    () =>
+      isGraphTimeView
+        ? buildTimeGraph({
+            viewMode,
+            workItems: searchedWorkItems,
+            sprints,
+            rootTitle,
+            anchorDate: planningAnchorDate,
+            rangeStart: planningRangeStart,
+            rangeEnd: planningRangeEnd,
+          })
+        : null,
+    [
+      isGraphTimeView,
+      planningAnchorDate,
+      planningRangeEnd,
+      planningRangeStart,
+      rootTitle,
+      searchedWorkItems,
+      sprints,
+      viewMode,
+    ]
+  );
+  const graphWorkItems = timeGraph?.workItems || searchedWorkItems;
+  const graphSprints = timeGraph ? [] : searchedSprints;
+  const graphRootId = timeGraph?.rootId || viewRootId;
+  const graphTotals = useMemo(
+    () => calculateStoryPoints(graphWorkItems),
+    [graphWorkItems]
   );
   const viewRootItem = viewRootId
     ? workItems.find((item) => item.id === viewRootId)
     : null;
+  const isPlanningView = PLANNING_VIEW_IDS.has(viewMode);
+  const usesPlanningSurface = isPlanningView && !isGraphTimeView;
+  const planningViewLabel =
+    PLANNING_VIEWS.find((view) => view.id === viewMode)?.label || "";
   const contextTitle =
-    viewMode === "main"
+    isPlanningView
+      ? planningViewLabel
+      : viewMode === "main"
       ? "Main View"
       : viewRootItem
       ? `${viewRootItem.title} View`
       : "Sprint View";
   const contextItemCount =
-    searchedWorkItems.length + (viewMode === "main" ? searchedSprints.length : 1);
+    (timeGraph ? graphWorkItems.length : searchedWorkItems.length) +
+    (!isPlanningView && viewMode === "main" ? searchedSprints.length : 0) +
+    (!isPlanningView && viewMode !== "main" ? 1 : 0);
   const contextStoryPoints =
-    viewRootId ? displayedTotals.byId[viewRootId] || 0 : displayedTotals.rootTotal;
+    graphRootId ? graphTotals.byId[graphRootId] || 0 : graphTotals.rootTotal;
   const contextTimeMinutes =
-    viewRootId
-      ? displayedTotals.timeById[viewRootId] || 0
-      : displayedTotals.rootTimeMinutes || 0;
+    graphRootId
+      ? graphTotals.timeById[graphRootId] || 0
+      : graphTotals.rootTimeMinutes || 0;
 
   useEffect(() => {
     workItemsRef.current = workItems;
@@ -1651,7 +2047,7 @@ function App() {
   const handleStartSprint = useCallback(() => {
     const currentSprints = storyStateRef.current?.sprints || [];
     const id = generateSprintId(currentSprints);
-    const title = `Sprint ${currentSprints.length + 1}`;
+    const now = new Date().toISOString();
 
     setStoryState((current) => ({
       ...current,
@@ -1659,18 +2055,32 @@ function App() {
         ...(current?.sprints || []),
         {
           id,
-          title,
+          code: "",
+          title: "New Sprint",
           docketState: "concept",
+          sprintStartDate: "",
+          sprintEndDate: "",
+          sprintState: "",
+          state: "",
+          createdBy: "",
+          createdAt: now,
+          updatedBy: "",
+          updatedAt: "",
         },
       ],
     }));
+    setSelectedId(id);
+    setModal({
+      kind: "details",
+      id,
+    });
     setMessage("Unsaved Changes");
     setLayoutNonce((value) => value + 1);
   }, []);
 
   const createItem = useCallback((payload) => {
     const currentWorkItems = workItemsRef.current;
-    const id = generateWorkItemId(currentWorkItems, payload.type);
+    const id = payload.id || generateWorkItemId(currentWorkItems, payload.type);
     const result = createWorkItem(currentWorkItems, {
       ...payload,
       id,
@@ -1699,7 +2109,7 @@ function App() {
     return result;
   }, [rootDocketState]);
 
-  const handleStartChild = useCallback((type, parentId) => {
+  const handleStartChild = useCallback((type, parentId, options = {}) => {
     const currentWorkItems = workItemsRef.current;
     const sprintParent = sprints.find((sprint) => sprint.id === parentId);
     const actualParentId =
@@ -1712,7 +2122,21 @@ function App() {
       currentWorkItems,
       sprintParent?.docketState || rootDocketState
     );
+
+    if (type === "epic") {
+      setModal({
+        kind: "create",
+        type,
+        parentId: actualParentId,
+        sprint: fallbackSprint,
+        docketState: fallbackDocketState,
+        worklogDate: options.worklogDate,
+      });
+      return;
+    }
+
     const typeLabel = formatType(type);
+    const worklogDate = options.worklogDate || new Date().toISOString();
 
     createItem({
       title: `New ${typeLabel}`,
@@ -1723,12 +2147,14 @@ function App() {
       docketState: fallbackDocketState,
       type,
       parentId: actualParentId,
+      createdAt: options.worklogDate || undefined,
+      updatedAt: options.worklogDate || undefined,
       storyPoints: type === "story" ? 0 : undefined,
       timeMinutes: acceptsTime(type) ? 0 : undefined,
       worklogs: acceptsTime(type)
         ? [
             {
-              date: new Date().toISOString(),
+              date: worklogDate,
               description: "",
               timeMinutes: 0,
             },
@@ -1767,6 +2193,16 @@ function App() {
     setSelectedId(null);
     setViewMenuOpen(false);
     setLayoutNonce((value) => value + 1);
+  }, []);
+
+  const showPlanningView = useCallback((nextViewMode) => {
+    setViewMode(nextViewMode);
+    setViewRootId(null);
+    setSelectedId(null);
+    setViewMenuOpen(false);
+    if (GRAPH_TIME_VIEW_IDS.has(nextViewMode)) {
+      setLayoutNonce((value) => value + 1);
+    }
   }, []);
 
   const saveRootTitle = useCallback((updates) => {
@@ -1863,6 +2299,15 @@ function App() {
               ...sprint,
               title: trimmed,
               docketState: updates.docketState || "concept",
+              code: updates.code || "",
+              sprintStartDate: optionalDateInputToIso(updates.sprintStartDate),
+              sprintEndDate: optionalDateInputToIso(updates.sprintEndDate),
+              sprintState: updates.sprintState || "",
+              state: updates.state || "",
+              createdBy: updates.createdBy || "",
+              createdAt: dateTimeInputToIso(updates.createdAt) || sprint.createdAt || "",
+              updatedBy: updates.updatedBy || "",
+              updatedAt: dateTimeInputToIso(updates.updatedAt) || "",
             }
           : sprint
       ),
@@ -2032,7 +2477,7 @@ function App() {
 
   const handleUseSampleLocally = useCallback(() => {
     const seedState = normalizeStoryStateArtifactRollup(
-      normalizeSeedData(yamlText)
+      withRealSprints(normalizeSeedData(yamlText))
     );
     setStoryState(seedState);
     workItemsRef.current = seedState.workItems;
@@ -2049,7 +2494,7 @@ function App() {
   const handleUseLegacyState = useCallback(() => {
     if (!legacyState) return;
 
-    const normalized = normalizeStoryStateArtifactRollup(legacyState);
+    const normalized = normalizeStoryStateArtifactRollup(withRealSprints(legacyState));
     setStoryState(normalized);
     workItemsRef.current = normalized.workItems;
     setShowLegacyNotice(false);
@@ -2125,7 +2570,9 @@ function App() {
               aria-haspopup="listbox"
             >
               <span>
-                {viewMode === "main"
+                {isPlanningView
+                  ? planningViewLabel
+                  : viewMode === "main"
                   ? "Main View"
                   : viewRootItem
                   ? `${viewRootItem.title} View`
@@ -2155,6 +2602,19 @@ function App() {
                 >
                   Sprint View
                 </button>
+                <div className="view-selector-group">Planning</div>
+                {PLANNING_VIEWS.map((view) => (
+                  <button
+                    key={view.id}
+                    type="button"
+                    className={viewMode === view.id ? "selected" : ""}
+                    onClick={() => showPlanningView(view.id)}
+                    role="option"
+                    aria-selected={viewMode === view.id}
+                  >
+                    {view.label}
+                  </button>
+                ))}
                 {viewRootItem && (
                   <button
                     type="button"
@@ -2178,6 +2638,43 @@ function App() {
           <span>{formatWorkTime(contextTimeMinutes)} Logged</span>
           <span>Last synced {formatRelativeSync(lastSyncedAt)}</span>
         </div>
+
+        {(isGraphTimeView || viewMode === "calendar") && (
+          <div className="time-view-controls">
+            {viewMode === "range" ? (
+              <>
+                <input
+                  type="date"
+                  value={planningRangeStart}
+                  onChange={(event) => {
+                    setPlanningRangeStart(event.target.value);
+                    setLayoutNonce((value) => value + 1);
+                  }}
+                  aria-label="Range start"
+                />
+                <input
+                  type="date"
+                  value={planningRangeEnd}
+                  onChange={(event) => {
+                    setPlanningRangeEnd(event.target.value);
+                    setLayoutNonce((value) => value + 1);
+                  }}
+                  aria-label="Range end"
+                />
+              </>
+            ) : (
+              <input
+                type="date"
+                value={planningAnchorDate}
+                onChange={(event) => {
+                  setPlanningAnchorDate(event.target.value);
+                  setLayoutNonce((value) => value + 1);
+                }}
+                aria-label="Planning date"
+              />
+            )}
+          </div>
+        )}
 
         <div className="toolbar-actions">
           <button
@@ -2260,29 +2757,44 @@ function App() {
         </div>
       )}
 
-      {searchedWorkItems.length === 0 && viewMode !== "main" && (
+      {graphWorkItems.length === 0 && !usesPlanningSurface && viewMode !== "main" && (
         <div className="empty-canvas-state">
           <h2>Create your first work item</h2>
           <p>Use the plus button on the Sprint View box to begin.</p>
         </div>
       )}
 
-      <GraphView
-        workItems={searchedWorkItems}
-        mainTitle={mainTitle}
-        rootTitle={rootTitle}
-        rootDocketState={rootDocketState}
-        sprints={searchedSprints}
-        storyPointTotals={displayedTotals}
-        viewRootId={viewRootId}
-        viewMode={viewMode}
-        selectedId={selectedId}
-        onSelect={handleSelectNode}
-        onOpenDetails={openDetailsModal}
-        onStartChild={handleStartChild}
-        onStartSprint={handleStartSprint}
-        layoutNonce={layoutNonce}
-      />
+      {usesPlanningSurface ? (
+        <PlanningView
+          viewMode={viewMode}
+          workItems={searchedWorkItems}
+          sprints={searchedSprints}
+          onOpenDetails={openDetailsModal}
+          anchorDate={planningAnchorDate}
+          onAnchorDateChange={setPlanningAnchorDate}
+          onOpenDay={(date) => {
+            setPlanningAnchorDate(date);
+            showPlanningView("day");
+          }}
+        />
+      ) : (
+        <GraphView
+          workItems={graphWorkItems}
+          mainTitle={mainTitle}
+          rootTitle={timeGraph?.title || rootTitle}
+          rootDocketState={rootDocketState}
+          sprints={graphSprints}
+          storyPointTotals={graphTotals}
+          viewRootId={graphRootId}
+          viewMode={viewMode}
+          selectedId={selectedId}
+          onSelect={handleSelectNode}
+          onOpenDetails={openDetailsModal}
+          onStartChild={handleStartChild}
+          onStartSprint={handleStartSprint}
+          layoutNonce={layoutNonce}
+        />
+      )}
 
       {modal && (
         <WorkItemModal

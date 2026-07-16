@@ -196,8 +196,25 @@ function normalizeSprint(input, fallbackId = ROOT_ID) {
 
   return {
     id: id || fallbackId,
+    code: String(input?.code || input?.id || "").trim(),
     title: title || DEFAULT_ROOT_TITLE,
     docketState: normalizeDocketState(input?.docketState),
+    sprintStartDate: isValidDate(input?.sprintStartDate)
+      ? new Date(input.sprintStartDate).toISOString()
+      : "",
+    sprintEndDate: isValidDate(input?.sprintEndDate)
+      ? new Date(input.sprintEndDate).toISOString()
+      : "",
+    sprintState: String(input?.sprintState || "").trim(),
+    state: String(input?.state || "").trim(),
+    createdBy: String(input?.createdBy || "").trim(),
+    createdAt: isValidDate(input?.createdAt)
+      ? new Date(input.createdAt).toISOString()
+      : "",
+    updatedBy: String(input?.updatedBy || "").trim(),
+    updatedAt: isValidDate(input?.updatedAt)
+      ? new Date(input.updatedAt).toISOString()
+      : "",
   };
 }
 
@@ -241,6 +258,8 @@ function makeWorkItem(input, fallbackParentId = ROOT_ID) {
     parentId: input.parentId || fallbackParentId,
     openQueue: Boolean(input.openQueue),
     assignee: String(input.assignee || ""),
+    createdBy: String(input.createdBy || ""),
+    updatedBy: String(input.updatedBy || ""),
     sprint: String(input.sprint || ""),
     docketState: normalizeDocketState(input.docketState),
     createdAt,
@@ -509,6 +528,17 @@ function canonicalGraphWorkItem(item) {
     openQueue: Boolean(item.openQueue),
     assignee: String(item.assignee || ""),
     sprint: String(item.sprint || ""),
+    code: String(item.code || "").trim(),
+    sprintStartDate: isValidDate(item.sprintStartDate)
+      ? new Date(item.sprintStartDate).toISOString()
+      : "",
+    sprintEndDate: isValidDate(item.sprintEndDate)
+      ? new Date(item.sprintEndDate).toISOString()
+      : "",
+    sprintState: String(item.sprintState || "").trim(),
+    state: String(item.state || "").trim(),
+    createdBy: String(item.createdBy || "").trim(),
+    updatedBy: String(item.updatedBy || "").trim(),
     createdAt: item.createdAt || nowIso(),
     updatedAt: item.updatedAt || item.createdAt || nowIso(),
   };
@@ -602,8 +632,15 @@ function legacyStateToGraphSnapshot(state) {
         type: "sprint",
         status: sprint.docketState,
         parentId: WORKSPACE_ID,
-        createdAt: DEFAULT_TIMESTAMP,
-        updatedAt: latestUpdatedAt,
+        code: sprint.code,
+        sprintStartDate: sprint.sprintStartDate,
+        sprintEndDate: sprint.sprintEndDate,
+        sprintState: sprint.sprintState,
+        state: sprint.state,
+        createdBy: sprint.createdBy,
+        createdAt: sprint.createdAt || DEFAULT_TIMESTAMP,
+        updatedBy: sprint.updatedBy,
+        updatedAt: sprint.updatedAt || latestUpdatedAt,
       })
     ),
     ...state.workItems.map((item) => {
@@ -699,8 +736,17 @@ function graphSnapshotToLegacyState(snapshot) {
     .filter((item) => normalizeGenericType(item.type) === "sprint")
     .map((item) => ({
       id: item.id,
+      code: item.code || item.id,
       title: item.title,
       docketState: normalizeDocketState(item.status || item.docketState),
+      sprintStartDate: item.sprintStartDate,
+      sprintEndDate: item.sprintEndDate,
+      sprintState: item.sprintState,
+      state: item.state,
+      createdBy: item.createdBy,
+      createdAt: item.createdAt,
+      updatedBy: item.updatedBy,
+      updatedAt: item.updatedAt,
     }));
   const rootSprint =
     sprints.find((sprint) => sprint.id === snapshot.workspace?.rootSprintId) ||
