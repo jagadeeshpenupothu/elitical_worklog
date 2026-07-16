@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-07-16T15:12:14.906Z",
+  "method": "GET",
+  "url": "https://elitical.sayukth.com/api/1/CtxDto?utResCode=200",
+  "status": 200,
+  "responseBody": "{\"podId\":\"3f06af63-a93c-0001-9797-005056907001\",\"groupId\":\"1a06ad69-a69c-11e4-2024-005056901001\",\"companyId\":\"1a06ad69-a69c-11e4-2024-005056901002\",\"podName\":\"Sambala\",\"groupName\":\"SaYukth\",\"companyName\":\"SaYukth\",\"sessionOrgType\":\"COMPANY\"}",
+  "responseJson": {
+    "podId": "3f06af63-a93c-0001-9797-005056907001",
+    "groupId": "1a06ad69-a69c-11e4-2024-005056901001",
+    "companyId": "1a06ad69-a69c-11e4-2024-005056901002",
+    "podName": "Sambala",
+    "groupName": "SaYukth",
+    "companyName": "SaYukth",
+    "sessionOrgType": "COMPANY"
+  },
+  "responseSizeBytes": 241
+}

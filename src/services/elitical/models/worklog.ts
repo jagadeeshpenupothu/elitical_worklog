@@ -19,6 +19,8 @@ export interface Worklog {
   worklogDate?: string;
   date?: string;
   createdDate?: string;
+  hour?: number;
+  min?: number;
   minutes?: number;
   loggedMinutes?: number;
   hours?: number;

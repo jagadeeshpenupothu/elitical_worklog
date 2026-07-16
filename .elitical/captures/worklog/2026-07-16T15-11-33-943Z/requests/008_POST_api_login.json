@@ -1,0 +1,12 @@
+{
+  "timestamp": "2026-07-16T15:12:13.104Z",
+  "method": "POST",
+  "url": "https://elitical.sayukth.com/api/login?utResCode=200",
+  "status": 200,
+  "requestBody": "{\"username\":\"780408382584\",\"password\":\"[captured-secret-redacted]\"}",
+  "requestJson": {
+    "username": "780408382584",
+    "password": "[captured-secret-redacted]"
+  },
+  "requestSizeBytes": 56
+}

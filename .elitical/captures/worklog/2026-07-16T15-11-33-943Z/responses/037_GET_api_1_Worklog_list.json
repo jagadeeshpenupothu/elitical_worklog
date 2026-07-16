@@ -1,0 +1,60 @@
+{
+  "timestamp": "2026-07-16T15:13:15.656Z",
+  "method": "GET",
+  "url": "https://elitical.sayukth.com/api/1/Worklog/list?utResCode=200&docketId=42bda7bb-6f1c-4bda-a9c8-91124bc606b5",
+  "status": 200,
+  "responseBody": "{\"worklogList\":[{\"id\":\"de2f0035-3eb0-4590-b3f7-e190dab6f2cb\",\"randomNumber\":1784214796305,\"createdTime\":1784234595000,\"sortedTime\":1784234595000,\"createdUserId\":\"ea64419a-365e-43a7-b69d-d10366dadb21\",\"createdUserName\":\"Jagadeesh  Penupothu\",\"hasPagination\":true,\"employeeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"employeeName\":\"Jagadeesh  Penupothu\",\"docketId\":\"42bda7bb-6f1c-4bda-a9c8-91124bc606b5\",\"docketName\":\"Cover Design\",\"worklogDate\":1784179800000,\"hour\":2,\"min\":0,\"comment\":\"Done R&D on new design with that contain abstracts\",\"designation\":\"Creative UX Designer\",\"empId\":\"EIN0070\",\"docketNum\":\"DES-663\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"projectName\":\"UX Designer\",\"docketType\":\"STORY\",\"storyPointEst\":2},{\"id\":\"f3559948-81b9-4f25-b633-8d21d0a38e2d\",\"randomNumber\":1784214796307,\"createdTime\":1784083411000,\"sortedTime\":1784083411000,\"createdUserId\":\"ea64419a-365e-43a7-b69d-d10366dadb21\",\"createdUserName\":\"Jagadeesh  Penupothu\",\"hasPagination\":true,\"employeeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"employeeName\":\"Jagadeesh  Penupothu\",\"docketId\":\"42bda7bb-6f1c-4bda-a9c8-91124bc606b5\",\"docketName\":\"Cover Design\",\"worklogDate\":1784007000000,\"hour\":2,\"min\":0,\"comment\":\"Designed sayukth cover photo and reviewed with varma sir\",\"designation\":\"Creative UX Designer\",\"empId\":\"EIN0070\",\"docketNum\":\"DES-663\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"projectName\":\"UX Designer\",\"docketType\":\"STORY\",\"storyPointEst\":2}]}",
+  "responseJson": {
+    "worklogList": [
+      {
+        "id": "de2f0035-3eb0-4590-b3f7-e190dab6f2cb",
+        "randomNumber": 1784214796305,
+        "createdTime": 1784234595000,
+        "sortedTime": 1784234595000,
+        "createdUserId": "ea64419a-365e-43a7-b69d-d10366dadb21",
+        "createdUserName": "Jagadeesh  Penupothu",
+        "hasPagination": true,
+        "employeeId": "97a233c1-0999-4c56-9164-6e3ab2edde57",
+        "employeeName": "Jagadeesh  Penupothu",
+        "docketId": "42bda7bb-6f1c-4bda-a9c8-91124bc606b5",
+        "docketName": "Cover Design",
+        "worklogDate": 1784179800000,
+        "hour": 2,
+        "min": 0,
+        "comment": "Done R&D on new design with that contain abstracts",
+        "designation": "Creative UX Designer",
+        "empId": "EIN0070",
+        "docketNum": "DES-663",
+        "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
+        "projectName": "UX Designer",
+        "docketType": "STORY",
+        "storyPointEst": 2
+      },
+      {
+        "id": "f3559948-81b9-4f25-b633-8d21d0a38e2d",
+        "randomNumber": 1784214796307,
+        "createdTime": 1784083411000,
+        "sortedTime": 1784083411000,
+        "createdUserId": "ea64419a-365e-43a7-b69d-d10366dadb21",
+        "createdUserName": "Jagadeesh  Penupothu",
+        "hasPagination": true,
+        "employeeId": "97a233c1-0999-4c56-9164-6e3ab2edde57",
+        "employeeName": "Jagadeesh  Penupothu",
+        "docketId": "42bda7bb-6f1c-4bda-a9c8-91124bc606b5",
+        "docketName": "Cover Design",
+        "worklogDate": 1784007000000,
+        "hour": 2,
+        "min": 0,
+        "comment": "Designed sayukth cover photo and reviewed with varma sir",
+        "designation": "Creative UX Designer",
+        "empId": "EIN0070",
+        "docketNum": "DES-663",
+        "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
+        "projectName": "UX Designer",
+        "docketType": "STORY",
+        "storyPointEst": 2
+      }
+    ]
+  },
+  "responseSizeBytes": 1459
+}

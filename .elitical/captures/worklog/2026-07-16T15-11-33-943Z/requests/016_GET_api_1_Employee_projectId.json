@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-07-16T15:12:17.281Z",
+  "method": "GET",
+  "url": "https://elitical.sayukth.com/api/1/Employee/projectId?utResCode=200&projectId=96d70d5d-c0ad-482a-93a1-6572d6935db5",
+  "status": 200,
+  "requestBody": "",
+  "requestJson": null,
+  "requestSizeBytes": 0
+}

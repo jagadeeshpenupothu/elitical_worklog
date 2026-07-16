@@ -101,10 +101,10 @@ function worklogProjectId(worklog: Worklog): string {
 }
 
 function worklogMinutes(worklog: Worklog): number {
-  const minutes = firstNumber(worklog.minutes, worklog.loggedMinutes);
-  const hours = firstNumber(worklog.hours, worklog.loggedHours, worklog.duration);
+  const minutes = firstNumber(worklog.min, worklog.minutes, worklog.loggedMinutes);
+  const hours = firstNumber(worklog.hour, worklog.hours, worklog.loggedHours, worklog.duration);
 
-  return minutes || Math.round(hours * 60);
+  return Math.round(hours * 60) + minutes;
 }
 
 export class EliticalProvider {

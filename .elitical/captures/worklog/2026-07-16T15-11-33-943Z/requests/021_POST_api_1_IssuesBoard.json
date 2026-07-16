@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-07-16T15:12:21.314Z",
+  "method": "POST",
+  "url": "https://elitical.sayukth.com/api/1/IssuesBoard?utResCode=200",
+  "status": 200,
+  "requestBody": "{\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\"}",
+  "requestJson": {
+    "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0"
+  },
+  "requestSizeBytes": 52
+}

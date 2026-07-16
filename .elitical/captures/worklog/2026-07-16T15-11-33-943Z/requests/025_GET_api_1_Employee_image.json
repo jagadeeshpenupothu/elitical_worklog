@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-07-16T15:12:25.140Z",
+  "method": "GET",
+  "url": "https://elitical.sayukth.com/api/1/Employee/image?utResCode=200&id=13b71512-ccd5-4845-891e-3d279b18d168",
+  "status": 200,
+  "requestBody": "",
+  "requestJson": null,
+  "requestSizeBytes": 0
+}

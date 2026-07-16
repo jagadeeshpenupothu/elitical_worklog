@@ -1,0 +1,14 @@
+{
+  "timestamp": "2026-07-16T15:12:44.033Z",
+  "method": "POST",
+  "url": "https://elitical.sayukth.com/api/1/Milestone/search?utResCode=200",
+  "status": 200,
+  "requestBody": "{\"prjId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"statusSet\":[\"IN_PROGRESS\"]}",
+  "requestJson": {
+    "prjId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
+    "statusSet": [
+      "IN_PROGRESS"
+    ]
+  },
+  "requestSizeBytes": 76
+}

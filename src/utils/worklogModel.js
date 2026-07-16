@@ -57,7 +57,7 @@ export const DOCKET_STATES = [
 const RELATIONSHIPS = {
   [ROOT_ID]: ["epic"],
   epic: ["story", "task"],
-  story: ["job"],
+  story: ["job", "task"],
   task: [],
   job: [],
 };
@@ -100,7 +100,7 @@ function normalizeTimeMinutes(value) {
 }
 
 function isWorklogType(type) {
-  return type === "story" || type === "job";
+  return type === "story" || type === "job" || type === "task";
 }
 
 function normalizeWorklogDate(value, fallback) {
@@ -121,9 +121,18 @@ function normalizeWorklogs(input, fallbackDate, fallbackDescription, fallbackTim
       ];
 
   return source.map((entry) => ({
-    date: normalizeWorklogDate(entry?.date, fallbackDate),
-    description: String(entry?.description || ""),
-    timeMinutes: normalizeTimeMinutes(entry?.timeMinutes),
+    ...entry,
+    id: entry?.id ? String(entry.id) : undefined,
+    date: normalizeWorklogDate(entry?.date || entry?.worklogDate, fallbackDate),
+    worklogDate: entry?.worklogDate
+      ? normalizeWorklogDate(entry.worklogDate, fallbackDate)
+      : undefined,
+    description: String(entry?.description || entry?.comment || ""),
+    comment: entry?.comment ? String(entry.comment) : undefined,
+    employeeId: entry?.employeeId ? String(entry.employeeId) : undefined,
+    employeeName: entry?.employeeName ? String(entry.employeeName) : undefined,
+    timeMinutes: normalizeTimeMinutes(entry?.timeMinutes ?? entry?.durationMinutes),
+    durationMinutes: normalizeTimeMinutes(entry?.durationMinutes ?? entry?.timeMinutes),
   }));
 }
 
@@ -132,6 +141,144 @@ function worklogTotalMinutes(worklogs) {
     (total, entry) => total + normalizeTimeMinutes(entry.timeMinutes),
     0
   );
+}
+
+function worklogStableId(entry, itemId, index) {
+  return String(
+    entry?.id ||
+      entry?.worklogId ||
+      [
+        itemId,
+        entry?.date || entry?.worklogDate || "",
+        entry?.employeeId || entry?.employeeName || "",
+        entry?.description || entry?.comment || "",
+        entry?.timeMinutes ?? entry?.durationMinutes ?? "",
+        index,
+      ].join(":")
+  );
+}
+
+function directWorklogEntries(item) {
+  if (!isWorklogType(item?.type) || !Array.isArray(item.worklogs)) return [];
+
+  return item.worklogs
+    .filter((entry) => entry?.id || entry?.worklogId)
+    .map((entry, index) => ({
+      id: worklogStableId(entry, item.id, index),
+      minutes: normalizeTimeMinutes(entry?.timeMinutes ?? entry?.durationMinutes),
+    }));
+}
+
+export function aggregateLoggedDurations(items = []) {
+  const timeById = {};
+  const ownTimeById = {};
+  const worklogIdsById = {};
+  const worklogMinutesById = {};
+  const sprintTimeById = {};
+  const sprintTimeByTitle = {};
+  const childrenByParent = items.reduce((acc, item) => {
+    if (!acc[item.parentId]) acc[item.parentId] = [];
+    acc[item.parentId].push(item);
+    return acc;
+  }, {});
+
+  function ownWorklogsFor(item) {
+    const uniqueIds = new Set();
+    let minutes = 0;
+
+    directWorklogEntries(item).forEach((entry) => {
+      if (!entry.id || uniqueIds.has(entry.id)) return;
+
+      uniqueIds.add(entry.id);
+      worklogMinutesById[entry.id] = entry.minutes;
+      minutes += entry.minutes;
+    });
+
+    ownTimeById[item.id] = minutes;
+    return uniqueIds;
+  }
+
+  function aggregateFor(item) {
+    if (worklogIdsById[item.id]) {
+      return worklogIdsById[item.id];
+    }
+
+    const ids = ownWorklogsFor(item);
+
+    (childrenByParent[item.id] || []).forEach((child) => {
+      aggregateFor(child).forEach((id) => ids.add(id));
+    });
+
+    worklogIdsById[item.id] = ids;
+    timeById[item.id] = Array.from(ids).reduce(
+      (total, id) => total + normalizeTimeMinutes(worklogMinutesById[id]),
+      0
+    );
+    return ids;
+  }
+
+  items.forEach((item) => {
+    aggregateFor(item);
+  });
+
+  const rootIds = new Set();
+  (childrenByParent[ROOT_ID] || []).forEach((child) => {
+    aggregateFor(child).forEach((id) => rootIds.add(id));
+  });
+  worklogIdsById[ROOT_ID] = rootIds;
+  timeById[ROOT_ID] = Array.from(rootIds).reduce(
+    (total, id) => total + normalizeTimeMinutes(worklogMinutesById[id]),
+    0
+  );
+
+  items.forEach((item) => {
+    const ownIds = ownWorklogsFor(item);
+    const sprintId = item.elitical?.sprintId || item.sprintId || "";
+    const sprintTitle = item.sprint || "";
+
+    if (sprintId) {
+      sprintTimeById[sprintId] = sprintTimeById[sprintId] || {
+        ids: new Set(),
+        minutes: 0,
+      };
+      ownIds.forEach((id) => sprintTimeById[sprintId].ids.add(id));
+    }
+
+    if (sprintTitle) {
+      sprintTimeByTitle[sprintTitle] = sprintTimeByTitle[sprintTitle] || {
+        ids: new Set(),
+        minutes: 0,
+      };
+      ownIds.forEach((id) => sprintTimeByTitle[sprintTitle].ids.add(id));
+    }
+  });
+
+  Object.values(sprintTimeById).forEach((entry) => {
+    entry.minutes = Array.from(entry.ids).reduce(
+      (total, id) => total + normalizeTimeMinutes(worklogMinutesById[id]),
+      0
+    );
+  });
+  Object.values(sprintTimeByTitle).forEach((entry) => {
+    entry.minutes = Array.from(entry.ids).reduce(
+      (total, id) => total + normalizeTimeMinutes(worklogMinutesById[id]),
+      0
+    );
+  });
+
+  return {
+    rootTimeMinutes: timeById[ROOT_ID],
+    timeById,
+    ownTimeById,
+    worklogIdsById,
+    worklogMinutesById,
+    sprintTimeById: Object.fromEntries(
+      Object.entries(sprintTimeById).map(([id, entry]) => [id, entry.minutes])
+    ),
+    sprintTimeByTitle: Object.fromEntries(
+      Object.entries(sprintTimeByTitle).map(([title, entry]) => [title, entry.minutes])
+    ),
+  };
 }
 
 function normalizePosition(position) {
@@ -700,14 +847,11 @@ function legacyStateToGraphSnapshot(state) {
       rootSprintId: ROOT_ID,
     },
     views: [
-      { id: "main", title: "Main View", type: "main" },
+      { id: "main", title: "Tree View", type: "main" },
       { id: "sprint", title: state.rootTitle, type: "sprint", sprintId: ROOT_ID },
-      { id: "epic", title: "Epic View", type: "epic" },
-      { id: "story", title: "Story View", type: "story" },
-      { id: "timeline", title: "Timeline View", type: "timeline" },
-      { id: "dependencies", title: "Dependencies View", type: "dependencies" },
       { id: "backlog", title: "Backlog View", type: "backlog" },
-      { id: "completed", title: "Completed View", type: "completed" },
+      { id: "worklog", title: "Worklog View", type: "worklog" },
+      { id: "dashboard", title: "Dashboard", type: "dashboard" },
     ],
     workItems: uniqueById(graphItems),
     relationships: uniqueById(relationships),
@@ -1125,7 +1269,6 @@ export function deleteWorkItem(items, id) {
 
 export function calculateStoryPoints(items) {
   const byId = {};
-  const timeById = {};
   const childrenByParent = items.reduce((acc, item) => {
     if (!acc[item.parentId]) acc[item.parentId] = [];
     acc[item.parentId].push(item);
@@ -1137,26 +1280,7 @@ export function calculateStoryPoints(items) {
       byId[item.id] = normalizeStoryPoints(item.storyPoints);
     }
   });
-
-  function timeFor(item) {
-    if (timeById[item.id] !== undefined) return timeById[item.id];
-
-    const ownTime =
-      isWorklogType(item.type)
-        ? normalizeTimeMinutes(item.timeMinutes)
-        : 0;
-    const childTime = (childrenByParent[item.id] || []).reduce(
-      (total, child) => total + timeFor(child),
-      0
-    );
-
-    timeById[item.id] = ownTime + childTime;
-    return timeById[item.id];
-  }
-
-  items.forEach((item) => {
-    timeFor(item);
-  });
+  const loggedDurations = aggregateLoggedDurations(items);
 
   items
     .filter((item) => item.type === "epic")
@@ -1173,16 +1297,11 @@ export function calculateStoryPoints(items) {
   byId[ROOT_ID] = (childrenByParent[ROOT_ID] || [])
     .filter((child) => child.type === "epic")
     .reduce((total, epic) => total + (byId[epic.id] || 0), 0);
-  timeById[ROOT_ID] = (childrenByParent[ROOT_ID] || []).reduce(
-    (total, child) => total + timeFor(child),
-    0
-  );
 
   return {
     rootTotal: byId[ROOT_ID],
     byId,
-    rootTimeMinutes: timeById[ROOT_ID],
-    timeById,
+    ...loggedDurations,
   };
 }
 

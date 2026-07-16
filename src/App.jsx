@@ -8,11 +8,6 @@ import {
 import GraphView from "./views/GraphView";
 import PlanningView from "./views/PlanningView";
 import {
-  loadEliticalData,
-  loadEliticalEpicPresets,
-} from "./services/elitical/loadEliticalData";
-import { buildTimeGraph } from "./utils/planningGraph";
-import {
   CATEGORIES,
   DOCKET_STATES,
   PRIORITIES,
@@ -35,68 +30,76 @@ import {
   loadWorklogSnapshot,
   saveWorklogSnapshot,
 } from "./services/worklogApi";
+import { syncLiveEliticalData } from "./services/elitical/syncLiveClient";
+import {
+  loadLocalGraphCache,
+  loadLocalWorklogsCache,
+  subscribeToLocalCacheEvents,
+} from "./services/localCacheClient";
+import {
+  clearJobWorklogDraft,
+  loadJobWorklogState,
+  saveJobWorklogDraft,
+  submitJobWorklog,
+} from "./services/worklogEngineClient";
 import "./App.css";
 
 const MAIN_ROOT_ID = "mainRoot";
-const CREATE_NEW_EPIC_ID = "__create_new_epic__";
-const ELITICAL_INITIAL_STATE = loadEliticalData();
-const ELITICAL_EPIC_PRESETS = loadEliticalEpicPresets();
-const PLANNING_VIEWS = [
-  { id: "backlog", label: "Backlog View" },
-  { id: "timeline", label: "Timeline View" },
-  { id: "calendar", label: "Calendar View" },
-  { id: "month", label: "Month View" },
-  { id: "week", label: "Week View" },
+const APP_VIEWS = [
+  { id: "main", label: "Tree View" },
+  { id: "sprint", label: "Sprint View" },
+  { id: "epic", label: "Epic View" },
+  { id: "story", label: "Story View" },
+  { id: "job", label: "Job View" },
+  { id: "task", label: "Task View" },
   { id: "day", label: "Day View" },
-  { id: "range", label: "Custom Date Range" },
-  { id: "worklog", label: "Work Log View" },
+  { id: "backlog", label: "Backlog View" },
+  { id: "worklog", label: "Worklog View" },
+  { id: "dashboard", label: "Dashboard" },
 ];
-const PLANNING_VIEW_IDS = new Set(PLANNING_VIEWS.map((view) => view.id));
-const GRAPH_TIME_VIEW_IDS = new Set(["day", "week", "month", "range", "timeline"]);
-const EPIC_PRESET_OPTIONS = [
-  CREATE_NEW_EPIC_ID,
-  ...ELITICAL_EPIC_PRESETS.map((epic) => epic.id),
-];
+const PLANNING_VIEW_IDS = new Set(["backlog", "worklog"]);
+const CONTEXT_VIEW_IDS = new Set(["sprint", "epic", "story", "job", "task", "day"]);
+const DOCKET_CONTEXT_TYPES = new Set(["epic", "story", "job", "task"]);
+const BROWSER_REFRESH_STATE_KEY = "elitical-worklog.browser-refresh-state.v1";
 
-function epicPresetLabel(id) {
-  if (id === CREATE_NEW_EPIC_ID) return "Create New Epic";
-
-  const epic = ELITICAL_EPIC_PRESETS.find((entry) => entry.id === id);
-  return epic ? `${epic.id} · ${epic.title}` : id;
-}
-
-function epicPresetDraft(id, fallbackSprint, fallbackDocketState) {
-  const epic = ELITICAL_EPIC_PRESETS.find((entry) => entry.id === id);
-
-  if (!epic) {
-    return {
-      id: undefined,
-      title: "",
-      description: "",
-      category: "feature",
-      sprint: fallbackSprint,
-      docketState: fallbackDocketState,
-      assignee: "",
-      createdBy: "",
-      createdAt: undefined,
-      updatedBy: "",
-      updatedAt: undefined,
-    };
+function isBrowserReloadNavigation() {
+  if (typeof window === "undefined" || typeof window.performance === "undefined") {
+    return false;
   }
 
-  return {
-    id: epic.id,
-    title: epic.title,
-    description: "",
-    category: epic.category,
-    sprint: epic.sprint || fallbackSprint,
-    docketState: epic.docketState,
-    assignee: epic.assignee,
-    createdBy: epic.createdBy,
-    createdAt: epic.createdAt,
-    updatedBy: epic.updatedBy,
-    updatedAt: epic.updatedAt || epic.createdAt,
-  };
+  const [navigation] =
+    typeof window.performance.getEntriesByType === "function"
+      ? window.performance.getEntriesByType("navigation")
+      : [];
+
+  if (navigation?.type) return navigation.type === "reload";
+
+  return window.performance.navigation?.type === 1;
+}
+
+function readBrowserRefreshState() {
+  if (typeof window === "undefined") return null;
+
+  try {
+    return JSON.parse(
+      window.sessionStorage.getItem(BROWSER_REFRESH_STATE_KEY) || "null"
+    );
+  } catch {
+    return null;
+  }
+}
+
+function saveBrowserRefreshState(state) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.setItem(
+      BROWSER_REFRESH_STATE_KEY,
+      JSON.stringify(state)
+    );
+  } catch {
+    // Ignore storage failures; refresh should still load from the backend cache.
+  }
 }
 
 function formatType(type) {
@@ -120,7 +123,6 @@ function makeCreateDraft(type, sprint, docketState) {
     storyPoints: 0,
     time: "00:00",
     type,
-    epicPresetId: type === "epic" ? CREATE_NEW_EPIC_ID : undefined,
   };
 }
 
@@ -457,6 +459,440 @@ function descendantsIncluding(items, rootId) {
   return visible;
 }
 
+function ancestorsForMatches(items, predicate) {
+  const itemById = new Map(items.map((item) => [item.id, item]));
+  const visibleIds = new Set();
+
+  items.forEach((item) => {
+    if (!predicate(item)) return;
+
+    visibleIds.add(item.id);
+
+    let parentId = item.parentId;
+
+    while (parentId && parentId !== ROOT_ID) {
+      visibleIds.add(parentId);
+      parentId = itemById.get(parentId)?.parentId;
+    }
+  });
+
+  return items.filter((item) => visibleIds.has(item.id));
+}
+
+function sprintIdForItem(item) {
+  return item?.elitical?.sprintId || item?.sprintId || "";
+}
+
+function sprintSortTime(sprint) {
+  return Math.max(
+    new Date(sprint?.sprintStartDate || 0).getTime() || 0,
+    new Date(sprint?.createdAt || 0).getTime() || 0,
+    new Date(sprint?.updatedAt || 0).getTime() || 0
+  );
+}
+
+function defaultSprintId(sprints = []) {
+  const realSprints = sprints.filter((sprint) => sprint.id !== ROOT_ID);
+  const inProgress = realSprints
+    .filter((sprint) =>
+      String(sprint.sprintState || sprint.state || "")
+        .toLowerCase()
+        .includes("progress")
+    )
+    .sort((first, second) => sprintSortTime(second) - sprintSortTime(first));
+
+  return inProgress[0]?.id || realSprints[0]?.id || "";
+}
+
+function updatedSortTime(item) {
+  return Math.max(
+    new Date(item?.updatedAt || 0).getTime() || 0,
+    new Date(item?.createdAt || 0).getTime() || 0
+  );
+}
+
+function defaultDocketContextId(workItems = [], type) {
+  return workItems
+    .filter((item) => item.type === type)
+    .sort((first, second) => updatedSortTime(second) - updatedSortTime(first))[0]?.id || "";
+}
+
+function contextOptionLabel(option, viewMode) {
+  if (!option) return "";
+  if (viewMode === "sprint") return option.title || option.id;
+
+  const prefix = option.elitical?.num || option.id;
+  return `${prefix} ${option.title || ""}`.trim();
+}
+
+function contextOptionMeta(option, viewMode) {
+  if (!option) return "";
+  if (viewMode === "sprint") return option.sprintState || option.state || option.code || "";
+
+  return [formatType(option.type), option.sprint].filter(Boolean).join(" · ");
+}
+
+function contextViewLabel(viewMode) {
+  if (viewMode === "sprint") return "Sprint";
+  if (viewMode === "epic") return "Epic";
+  if (viewMode === "story") return "Story";
+  if (viewMode === "job") return "Job";
+  if (viewMode === "task") return "Task";
+  if (viewMode === "day") return "Date";
+  return "Context";
+}
+
+function defaultContextSelection({ viewMode, sprints, workItems }) {
+  if (viewMode === "sprint") return defaultSprintId(sprints);
+  if (viewMode === "day") return formatDateInput(new Date());
+  if (DOCKET_CONTEXT_TYPES.has(viewMode)) {
+    return defaultDocketContextId(workItems, viewMode);
+  }
+
+  return "";
+}
+
+function contextOptionsForView({ viewMode, sprints, workItems }) {
+  if (viewMode === "sprint") {
+    return sprints.filter((sprint) => sprint.id !== ROOT_ID);
+  }
+
+  if (viewMode === "day") return [];
+
+  if (DOCKET_CONTEXT_TYPES.has(viewMode)) {
+    return workItems.filter((item) => item.type === viewMode);
+  }
+
+  return [];
+}
+
+function worklogDateToInput(value) {
+  if (!value) return "";
+
+  if (typeof value === "number") return formatDateInput(new Date(value));
+
+  const text = String(value || "").trim();
+
+  if (!text) return "";
+
+  if (/^\d+$/.test(text)) return formatDateInput(new Date(Number(text)));
+
+  return formatDateInput(text);
+}
+
+function isRealImportedWorklog(entry) {
+  return Boolean(String(entry?.id || "").trim());
+}
+
+function worklogMinutes(entry) {
+  const minutes = Number(entry?.timeMinutes ?? entry?.durationMinutes ?? 0);
+
+  return Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes) : 0;
+}
+
+function worklogsForDay(item, selectedDate) {
+  if (!selectedDate || !Array.isArray(item?.worklogs)) return [];
+
+  return item.worklogs.filter(
+    (entry) =>
+      isRealImportedWorklog(entry) &&
+      worklogDateToInput(entry.worklogDate || entry.date) === selectedDate
+  );
+}
+
+function aggregateDayWorklogs(item, selectedDate) {
+  const worklogs = worklogsForDay(item, selectedDate);
+  const totalMinutes = worklogs.reduce(
+    (total, entry) => total + worklogMinutes(entry),
+    0
+  );
+  const comments = worklogs
+    .map((entry) => String(entry.comment || entry.description || "").trim())
+    .filter(Boolean);
+
+  return {
+    worklogs,
+    totalMinutes,
+    count: worklogs.length,
+    comments,
+  };
+}
+
+function normalizedImportedWorklog(entry = {}) {
+  const durationMinutes = Number(entry.durationMinutes ?? entry.timeMinutes ?? 0);
+
+  return {
+    ...entry,
+    id: String(entry.id || entry.worklogId || ""),
+    date: entry.worklogDate || entry.date || "",
+    worklogDate: entry.worklogDate || entry.date || "",
+    description: String(entry.comment || entry.description || ""),
+    comment: String(entry.comment || entry.description || ""),
+    employeeId: String(entry.employeeId || ""),
+    employeeName: String(entry.employeeName || ""),
+    timeMinutes: Number.isFinite(durationMinutes) ? Math.max(0, Math.round(durationMinutes)) : 0,
+    durationMinutes: Number.isFinite(durationMinutes) ? Math.max(0, Math.round(durationMinutes)) : 0,
+  };
+}
+
+function applyImportedWorklogs(workItems = [], importedWorklogs = []) {
+  if (!Array.isArray(importedWorklogs) || importedWorklogs.length === 0) {
+    return workItems;
+  }
+
+  const byDocket = new Map();
+
+  importedWorklogs.forEach((entry) => {
+    const docketId = String(entry?.docketId || "").trim();
+
+    if (!docketId) return;
+    if (!byDocket.has(docketId)) byDocket.set(docketId, []);
+    byDocket.get(docketId).push(normalizedImportedWorklog(entry));
+  });
+
+  return workItems.map((item) => {
+    if (!["story", "job", "task"].includes(item.type)) return item;
+
+    return {
+      ...item,
+      worklogs: byDocket.get(item.id) || [],
+    };
+  });
+}
+
+function rootAncestorIdForItem(item, itemById) {
+  let current = item;
+
+  while (current?.parentId && current.parentId !== ROOT_ID) {
+    current = itemById.get(current.parentId);
+  }
+
+  return current?.id || item?.id || "";
+}
+
+function addAncestors(item, itemById, contextIds) {
+  let parentId = item?.parentId;
+
+  while (parentId && parentId !== ROOT_ID) {
+    const parent = itemById.get(parentId);
+
+    if (!parent) break;
+
+    contextIds.add(parent.id);
+    parentId = parent.parentId;
+  }
+}
+
+function addDescendants(itemId, childrenByParent, selectedIds) {
+  const pending = [itemId];
+
+  while (pending.length) {
+    const currentId = pending.shift();
+
+    (childrenByParent.get(currentId) || []).forEach((child) => {
+      if (selectedIds.has(child.id)) return;
+
+      selectedIds.add(child.id);
+      pending.push(child.id);
+    });
+  }
+}
+
+function buildContextGraph({
+  workItems,
+  sprints = [],
+  viewMode,
+  selectedId,
+}) {
+  if (!CONTEXT_VIEW_IDS.has(viewMode) || !selectedId) {
+    return {
+      workItems,
+      rootId: null,
+      sprints: [],
+    };
+  }
+
+  const itemById = new Map(workItems.map((item) => [item.id, item]));
+  const sprintById = new Map(sprints.map((sprint) => [sprint.id, sprint]));
+  const selectedIds = new Set();
+  const contextIds = new Set();
+  const selectedSprintIds = new Set();
+  const branchSprintTitles = new Map();
+  const dayAggregates = new Map();
+  const childrenByParent = workItems.reduce((acc, item) => {
+    if (!acc.has(item.parentId)) acc.set(item.parentId, []);
+    acc.get(item.parentId).push(item);
+    return acc;
+  }, new Map());
+
+  if (viewMode === "sprint") {
+    workItems.forEach((item) => {
+      if (sprintIdForItem(item) !== selectedId) return;
+
+      selectedIds.add(item.id);
+      addAncestors(item, itemById, contextIds);
+    });
+  } else if (viewMode === "day") {
+    workItems.forEach((item) => {
+      const aggregate = aggregateDayWorklogs(item, selectedId);
+
+      if (aggregate.count === 0) return;
+
+      selectedIds.add(item.id);
+      dayAggregates.set(item.id, aggregate);
+      addAncestors(item, itemById, contextIds);
+
+      const sprintId = sprintIdForItem(item);
+      const sprint = sprintById.get(sprintId);
+
+      if (!sprint) return;
+
+      selectedSprintIds.add(sprintId);
+
+      const rootAncestorId = rootAncestorIdForItem(item, itemById);
+
+      if (rootAncestorId && !branchSprintTitles.has(rootAncestorId)) {
+        branchSprintTitles.set(rootAncestorId, sprint.title);
+      }
+    });
+  } else if (viewMode === "epic") {
+    if (itemById.has(selectedId)) {
+      selectedIds.add(selectedId);
+      addDescendants(selectedId, childrenByParent, selectedIds);
+    }
+  } else if (viewMode === "story") {
+    const selected = itemById.get(selectedId);
+
+    if (selected) {
+      selectedIds.add(selected.id);
+      addAncestors(selected, itemById, contextIds);
+      addDescendants(selected.id, childrenByParent, selectedIds);
+    }
+  } else if (viewMode === "job" || viewMode === "task") {
+    const selected = itemById.get(selectedId);
+
+    if (selected) {
+      selectedIds.add(selected.id);
+      addAncestors(selected, itemById, contextIds);
+    }
+  }
+
+  contextIds.forEach((id) => {
+    if (selectedIds.has(id)) contextIds.delete(id);
+  });
+
+  const contextWorkItems = workItems
+    .filter((item) => selectedIds.has(item.id) || contextIds.has(item.id))
+    .map((item) => {
+      const aggregate = dayAggregates.get(item.id);
+      const dayItem =
+        viewMode === "day" && aggregate
+          ? {
+              ...item,
+              worklogs: aggregate.worklogs.map((entry) => ({
+                ...entry,
+                date: entry.date || entry.worklogDate,
+                timeMinutes: worklogMinutes(entry),
+                description: entry.description || entry.comment || "",
+              })),
+              timeMinutes: aggregate.totalMinutes,
+              dayWorklogCount: aggregate.count,
+              dayWorklogComments: aggregate.comments,
+            }
+          : item;
+      const next =
+        contextIds.has(dayItem.id) && !selectedIds.has(dayItem.id)
+          ? {
+              ...dayItem,
+              worklogs: [],
+              timeMinutes: 0,
+              isContextNode: true,
+            }
+          : selectedIds.has(dayItem.id)
+          ? {
+              ...dayItem,
+              isContextPrimary: true,
+            }
+          : dayItem;
+      const branchSprintTitle =
+        viewMode === "day" && dayItem.parentId === ROOT_ID
+          ? branchSprintTitles.get(dayItem.id)
+          : "";
+
+      return branchSprintTitle && next.sprint !== branchSprintTitle
+        ? {
+            ...next,
+            sprint: branchSprintTitle,
+          }
+        : next;
+    });
+
+  return {
+    workItems: contextWorkItems,
+    rootId: viewMode === "epic" ? selectedId : null,
+    sprints:
+      viewMode === "day"
+        ? sprints.filter((sprint) => selectedSprintIds.has(sprint.id))
+        : [],
+  };
+}
+
+function dayViewSummary({ workItems, graphWorkItems, selectedDate, rootTitle }) {
+  const dayWorklogs = workItems.flatMap((item) =>
+    worklogsForDay(item, selectedDate).map((entry) => ({
+      item,
+      entry,
+    }))
+  );
+  const selectedDocketIds = new Set(dayWorklogs.map(({ item }) => item.id));
+  const graphByType = graphWorkItems.reduce((acc, item) => {
+    acc[item.type] = (acc[item.type] || 0) + 1;
+    return acc;
+  }, {});
+  const sprintNames = new Set(
+    graphWorkItems.map((item) => item.sprint).filter(Boolean)
+  );
+  const totalMinutes = dayWorklogs.reduce(
+    (total, { entry }) => total + worklogMinutes(entry),
+    0
+  );
+
+  return {
+    selectedDate,
+    worklogs: dayWorklogs.length,
+    totalMinutes,
+    projects: rootTitle ? 1 : 0,
+    sprints: sprintNames.size,
+    epics: graphByType.epic || 0,
+    stories: graphByType.story || 0,
+    jobs: graphByType.job || 0,
+    tasks: graphByType.task || 0,
+    dockets: selectedDocketIds.size,
+  };
+}
+
+function mergeByStableIdentity(currentItems = [], nextItems = []) {
+  const currentById = new Map(currentItems.map((item) => [item.id, item]));
+
+  return nextItems.map((item) => {
+    const current = currentById.get(item.id);
+
+    return current && stableSnapshotString(current) === stableSnapshotString(item)
+      ? current
+      : item;
+  });
+}
+
+function mergeGraphState(currentState, nextState) {
+  if (!currentState) return nextState;
+
+  return {
+    ...nextState,
+    sprints: mergeByStableIdentity(currentState.sprints, nextState.sprints),
+    workItems: mergeByStableIdentity(currentState.workItems, nextState.workItems),
+  };
+}
+
 function descendantCount(items, id) {
   return descendantsIncluding(items, id).length - 1;
 }
@@ -577,6 +1013,65 @@ function MetadataBadge({ children }) {
   return <span className="metadata-badge">{children || "-"}</span>;
 }
 
+function DashboardView({ workItems, sprints, rootTitle, totals, lastSyncedAt }) {
+  const stories = workItems.filter((item) => item.type === "story");
+  const jobs = workItems.filter((item) => item.type === "job");
+  const epics = workItems.filter((item) => item.type === "epic");
+  const todayKey = formatDateInput(new Date());
+  const weekStart = new Date();
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+  weekStart.setHours(0, 0, 0, 0);
+  const loggedToday = workItems.reduce(
+    (total, item) =>
+      total +
+      (item.worklogs || [])
+        .filter((entry) => formatDateInput(entry.date) === todayKey)
+        .reduce((sum, entry) => sum + Number(entry.timeMinutes || 0), 0),
+    0
+  );
+  const loggedThisWeek = workItems.reduce(
+    (total, item) =>
+      total +
+      (item.worklogs || [])
+        .filter((entry) => {
+          const date = new Date(entry.date);
+          return !Number.isNaN(date.getTime()) && date >= weekStart;
+        })
+        .reduce((sum, entry) => sum + Number(entry.timeMinutes || 0), 0),
+    0
+  );
+  const cards = [
+    ["Active Sprint", rootTitle || sprints[0]?.title || "-"],
+    ["Total Epics", epics.length],
+    ["Total Stories", stories.length],
+    ["Total Jobs", jobs.length],
+    ["Completed Jobs", jobs.filter((item) => item.docketState === "artifact" || item.docketState === "closed").length],
+    ["In Progress Jobs", jobs.filter((item) => item.docketState === "concept" || item.docketState === "design").length],
+    ["Blocked Jobs", jobs.filter((item) => item.docketState === "blocked").length],
+    ["Story Points", totals.rootTotal],
+    ["Hours Logged Today", formatWorkTime(loggedToday)],
+    ["Hours Logged This Week", formatWorkTime(loggedThisWeek)],
+    ["Last Sync Time", formatRelativeSync(lastSyncedAt)],
+  ];
+
+  return (
+    <main className="dashboard-view">
+      <header className="dashboard-header">
+        <span>Overview</span>
+        <h1>Dashboard</h1>
+      </header>
+      <section className="dashboard-grid">
+        {cards.map(([label, value]) => (
+          <article key={label} className="dashboard-card">
+            <span>{label}</span>
+            <strong>{value}</strong>
+          </article>
+        ))}
+      </section>
+    </main>
+  );
+}
+
 function ModalSection({ title, children, className = "" }) {
   return (
     <section className={`modal-section ${className}`}>
@@ -688,6 +1183,180 @@ function CustomSelectField({
         </div>
       )}
     </div>
+  );
+}
+
+function ContextGraphSelector({
+  label,
+  options,
+  value,
+  onChange,
+  viewMode,
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const selectorRef = useRef(null);
+  const selectedOption = options.find((option) => option.id === value);
+  const filteredOptions = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+
+    if (!normalized) return options;
+
+    return options.filter((option) =>
+      [
+        contextOptionLabel(option, viewMode),
+        contextOptionMeta(option, viewMode),
+        option.id,
+      ].some((entry) => String(entry || "").toLowerCase().includes(normalized))
+    );
+  }, [options, query, viewMode]);
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [query, viewMode]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    function handlePointerDown(event) {
+      if (selectorRef.current?.contains(event.target)) return;
+
+      setOpen(false);
+      setQuery("");
+    }
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") {
+        setOpen(false);
+        setQuery("");
+      }
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  function selectOption(optionId) {
+    onChange(optionId);
+    setOpen(false);
+    setQuery("");
+  }
+
+  function handleKeyDown(event) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setOpen(true);
+      setActiveIndex((current) =>
+        Math.min(current + 1, Math.max(0, filteredOptions.length - 1))
+      );
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setOpen(true);
+      setActiveIndex((current) => Math.max(0, current - 1));
+      return;
+    }
+
+    if (event.key === "Enter" && open && filteredOptions[activeIndex]) {
+      event.preventDefault();
+      selectOption(filteredOptions[activeIndex].id);
+    }
+  }
+
+  return (
+    <section className="context-graph-selector" ref={selectorRef}>
+      <span>{label}</span>
+      <div className="context-graph-select">
+        <input
+          type="text"
+          value={open ? query : contextOptionLabel(selectedOption, viewMode)}
+          placeholder={`Select ${label}`}
+          onFocus={() => setOpen(true)}
+          onKeyDown={handleKeyDown}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setOpen(true);
+          }}
+          aria-label={`Select ${label}`}
+          aria-expanded={open}
+        />
+        <button
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          aria-label={`Toggle ${label} list`}
+        >
+          v
+        </button>
+        {open && (
+          <div className="context-graph-menu" role="listbox">
+            {filteredOptions.length === 0 ? (
+              <div className="context-graph-empty">No options</div>
+            ) : (
+              filteredOptions.map((option, index) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={`${option.id === value ? "selected" : ""} ${
+                    index === activeIndex ? "active" : ""
+                  }`}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  onClick={() => selectOption(option.id)}
+                  role="option"
+                  aria-selected={option.id === value}
+                >
+                  <span>{contextOptionLabel(option, viewMode)}</span>
+                  <small>{contextOptionMeta(option, viewMode)}</small>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function DayViewToolbar({ value, onChange, summary }) {
+  if (!summary) return null;
+
+  const rows = [
+    ["Worklogs", summary.worklogs],
+    ["Logged", formatWorkTime(summary.totalMinutes)],
+    ["Projects", summary.projects],
+    ["Sprints", summary.sprints],
+    ["Epics", summary.epics],
+    ["Stories", summary.stories],
+    ["Jobs", summary.jobs],
+    ["Tasks", summary.tasks],
+  ];
+
+  return (
+    <section className="day-view-toolbar" aria-label="Day View toolbar">
+      <label className="day-view-date-field">
+        <span>Date</span>
+        <input
+          type="date"
+          value={value || formatDateInput(new Date())}
+          onChange={(event) => onChange(event.target.value)}
+          aria-label="Select date"
+        />
+      </label>
+      <div className="day-view-stats" aria-label="Day View statistics">
+        {rows.map(([label, value]) => (
+          <span key={label}>
+            {label} {value}
+          </span>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -811,6 +1480,393 @@ function TextAreaField({ label, value, onChange, wide = false }) {
         onChange={(event) => onChange(event.target.value)}
       />
     </label>
+  );
+}
+
+const WORKLOG_DURATION_OPTIONS = [
+  { label: "15m", minutes: 15 },
+  { label: "30m", minutes: 30 },
+  { label: "45m", minutes: 45 },
+  { label: "1h", minutes: 60 },
+  { label: "1h30m", minutes: 90 },
+  { label: "2h", minutes: 120 },
+];
+
+function WorklogPanelField({ label, value }) {
+  return (
+    <div className="worklog-panel-field">
+      <span>{label}</span>
+      <strong>{value || "-"}</strong>
+    </div>
+  );
+}
+
+function normalizePanelWorklog(entry = {}) {
+  const date = entry.date || entry.worklogDate || "";
+  const durationMinutes = Number(entry.durationMinutes ?? entry.timeMinutes ?? 0);
+
+  return {
+    ...entry,
+    date,
+    durationMinutes: Number.isFinite(durationMinutes) ? Math.max(0, Math.round(durationMinutes)) : 0,
+    description: String(entry.description || entry.comment || ""),
+    employeeName: String(entry.employeeName || ""),
+  };
+}
+
+function sortWorklogsNewestFirst(entries = []) {
+  return [...entries]
+    .map(normalizePanelWorklog)
+    .sort((first, second) => {
+      const firstTime = new Date(first.date || 0).getTime() || 0;
+      const secondTime = new Date(second.date || 0).getTime() || 0;
+
+      return secondTime - firstTime;
+    });
+}
+
+function worklogPanelHierarchy(item, itemById) {
+  const parent = itemById.get(item.parentId);
+
+  if (item.type === "job") {
+    const story = parent?.type === "story" ? parent : null;
+    const epic = story ? itemById.get(story.parentId) : parent?.type === "epic" ? parent : null;
+
+    return { epic, story };
+  }
+
+  if (item.type === "task") {
+    const story = parent?.type === "story" ? parent : null;
+    const epic = story ? itemById.get(story.parentId) : parent?.type === "epic" ? parent : null;
+
+    return { epic, story };
+  }
+
+  if (item.type === "story") {
+    return {
+      epic: parent?.type === "epic" ? parent : null,
+      story: item,
+    };
+  }
+
+  return { epic: null, story: null };
+}
+
+function WorklogPanel({ item, workItems, onClose }) {
+  const [date, setDate] = useState(formatDateInput(new Date()));
+  const [durationMinutes, setDurationMinutes] = useState(0);
+  const [customDuration, setCustomDuration] = useState("");
+  const [description, setDescription] = useState("");
+  const [history, setHistory] = useState([]);
+  const [pending, setPending] = useState([]);
+  const [statusMessage, setStatusMessage] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+
+  const itemById = useMemo(
+    () => new Map(workItems.map((item) => [item.id, item])),
+    [workItems]
+  );
+  const { epic, story } = useMemo(
+    () => worklogPanelHierarchy(item, itemById),
+    [item, itemById]
+  );
+  const sortedHistory = useMemo(
+    () => sortWorklogsNewestFirst(history),
+    [history]
+  );
+  const totalLoggedMinutes = useMemo(
+    () =>
+      sortedHistory.reduce(
+        (total, entry) => total + Number(entry.durationMinutes || 0),
+        0
+      ),
+    [sortedHistory]
+  );
+
+  const loggedMinutes = useMemo(
+    () =>
+      (item.worklogs || []).reduce(
+        (total, entry) => total + Number(entry.timeMinutes || 0),
+        0
+      ),
+    [item.worklogs]
+  );
+
+  const remainingMinutes = Math.max(0, Number(item.timeMinutes || 0) - loggedMinutes);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setLoading(true);
+    setDraftLoaded(false);
+    setError("");
+    setStatusMessage("");
+    setDate(formatDateInput(new Date()));
+    setDurationMinutes(0);
+    setCustomDuration("");
+    setDescription("");
+
+    loadJobWorklogState(item.id)
+      .then((state) => {
+        if (cancelled) return;
+
+        const draft = state.draft;
+
+        if (draft) {
+          setDate(draft.date || formatDateInput(new Date()));
+          setDurationMinutes(Number(draft.durationMinutes || 0));
+          setDescription(draft.description || "");
+        }
+
+        setPending(state.pending || []);
+        setHistory(
+          Array.isArray(state.history) && state.history.length > 0
+            ? state.history
+            : item.worklogs || []
+        );
+      })
+      .catch((requestError) => {
+        if (!cancelled) {
+          setError(requestError.message || "Unable to load worklog data.");
+          setHistory(item.worklogs || []);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+          setDraftLoaded(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [item.id, item.worklogs]);
+
+  useEffect(() => {
+    if (!draftLoaded) return undefined;
+
+    const handle = window.setTimeout(() => {
+      saveJobWorklogDraft(item.id, {
+        date,
+        durationMinutes,
+        description,
+      }).catch((requestError) => {
+        setError(requestError.message || "Unable to save draft.");
+      });
+    }, 650);
+
+    return () => window.clearTimeout(handle);
+  }, [date, description, draftLoaded, durationMinutes, item.id]);
+
+  const saveDraft = useCallback(async () => {
+    setError("");
+    const result = await saveJobWorklogDraft(item.id, {
+      date,
+      durationMinutes,
+      description,
+    });
+    setStatusMessage(`Draft saved ${formatTimestamp(result.draft?.updatedAt)}`);
+  }, [date, description, durationMinutes, item.id]);
+
+  const clearDraft = useCallback(async () => {
+    setError("");
+    await clearJobWorklogDraft(item.id);
+    setDate(formatDateInput(new Date()));
+    setDurationMinutes(0);
+    setCustomDuration("");
+    setDescription("");
+    setStatusMessage("Draft cleared");
+  }, [item.id]);
+
+  const submitWorklog = useCallback(async () => {
+    if (!durationMinutes) {
+      setError("Duration is required.");
+      return;
+    }
+
+    if (!description.trim()) {
+      setError("Description is required.");
+      return;
+    }
+
+    setSubmitting(true);
+    setError("");
+    setStatusMessage("");
+
+    try {
+      const result = await submitJobWorklog(item.id, {
+        date,
+        durationMinutes,
+        description,
+      });
+      setDate(formatDateInput(new Date()));
+      setDurationMinutes(0);
+      setCustomDuration("");
+      setDescription("");
+      setPending((current) => [result.entry, ...current]);
+      setHistory((current) => [result.entry, ...current]);
+      setStatusMessage(result.message || "Pending Upload");
+    } catch (requestError) {
+      setError(requestError.message || "Unable to submit worklog.");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [date, description, durationMinutes, item.id]);
+
+  const selectDuration = useCallback((minutes) => {
+    setDurationMinutes(minutes);
+    setCustomDuration("");
+  }, []);
+
+  const updateCustomDuration = useCallback((value) => {
+    setCustomDuration(value);
+    setDurationMinutes(Number(value || 0));
+  }, []);
+
+  return (
+    <aside className="worklog-side-panel" aria-label={`${formatType(item.type)} details and worklog`}>
+      <header className="worklog-panel-header">
+        <div>
+          <span>{formatType(item.type)} Details</span>
+          <h2>{item.elitical?.num || item.id}</h2>
+        </div>
+        <button type="button" onClick={onClose} aria-label="Close worklog panel">
+          x
+        </button>
+      </header>
+
+      <div className="worklog-panel-scroll">
+        <section className="worklog-panel-section">
+          <h3>{item.title || `Untitled ${formatType(item.type)}`}</h3>
+          <div className="worklog-panel-grid">
+            <WorklogPanelField label="Epic" value={epic?.title} />
+            {item.type !== "story" && <WorklogPanelField label="Story" value={story?.title} />}
+            <WorklogPanelField label="Sprint" value={item.sprint} />
+            <WorklogPanelField label="Current Status" value={formatDocketState(item.docketState)} />
+            <WorklogPanelField label="Priority" value={formatLabel(item.priority)} />
+            {item.type === "story" && (
+              <WorklogPanelField label="Story Points" value={item.storyPoints ?? 0} />
+            )}
+            <WorklogPanelField label="Assignee" value={item.assignee} />
+            <WorklogPanelField label="Reviewer" value={item.reviewer || item.reviewerName} />
+            <WorklogPanelField label="Created Date" value={formatTimestamp(item.createdAt)} />
+            <WorklogPanelField label="Updated Date" value={formatTimestamp(item.updatedAt)} />
+            <WorklogPanelField label="Logged" value={formatWorkTime(loggedMinutes)} />
+            <WorklogPanelField label="Remaining" value={formatWorkTime(remainingMinutes)} />
+          </div>
+          <div className="worklog-panel-description">
+            <span>Description</span>
+            <p>{item.description || "-"}</p>
+          </div>
+        </section>
+
+        <section className="worklog-panel-section">
+          <div className="worklog-panel-section-title">
+            <h3>Worklog</h3>
+            {loading && <span>Loading...</span>}
+          </div>
+
+          <label className="worklog-panel-input">
+            <span>Date</span>
+            <input
+              type="date"
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
+            />
+          </label>
+
+          <div className="worklog-panel-input">
+            <span>Duration</span>
+            <div className="worklog-duration-grid">
+              {WORKLOG_DURATION_OPTIONS.map((option) => (
+                <button
+                  key={option.minutes}
+                  type="button"
+                  className={durationMinutes === option.minutes ? "active" : ""}
+                  onClick={() => selectDuration(option.minutes)}
+                >
+                  {option.label}
+                </button>
+              ))}
+              <label className="worklog-custom-duration">
+                <span>Custom</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="15"
+                  value={customDuration}
+                  placeholder="min"
+                  onChange={(event) => updateCustomDuration(event.target.value)}
+                />
+              </label>
+            </div>
+          </div>
+
+          <label className="worklog-panel-input">
+            <span>Description</span>
+            <textarea
+              rows="7"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="What did you work on?"
+            />
+          </label>
+
+          {error && <p className="worklog-panel-error">{error}</p>}
+          {statusMessage && <p className="worklog-panel-status">{statusMessage}</p>}
+
+          <div className="worklog-panel-actions">
+            <button type="button" onClick={saveDraft}>
+              Save Draft
+            </button>
+            <button
+              type="button"
+              className="primary"
+              onClick={submitWorklog}
+              disabled={submitting}
+            >
+              {submitting ? "Submitting..." : "Submit Worklog"}
+            </button>
+            <button type="button" onClick={clearDraft}>
+              Clear
+            </button>
+          </div>
+        </section>
+
+        <section className="worklog-panel-section">
+          <div className="worklog-panel-section-title">
+            <h3>Worklogs ({sortedHistory.length})</h3>
+            <span>Logged {formatWorkTime(totalLoggedMinutes)}</span>
+          </div>
+          {sortedHistory.length === 0 ? (
+            <p className="worklog-empty">No worklogs yet.</p>
+          ) : (
+            <div className="worklog-history-list">
+              {sortedHistory.map((entry) => (
+                <article key={entry.id || `${entry.date}-${entry.description}`} className="worklog-history-entry">
+                  <div>
+                    <strong>{formatDateLabel(entry.date)}</strong>
+                    <span>{formatWorkTime(entry.durationMinutes)}</span>
+                    <span>{entry.employeeName || "Unknown employee"}</span>
+                    {entry.status === "pending" && <em>Pending Upload</em>}
+                  </div>
+                  <p>{entry.description || "No comment"}</p>
+                </article>
+              ))}
+            </div>
+          )}
+          {pending.length > 0 && (
+            <p className="worklog-panel-note">
+              {pending.length} pending upload{pending.length === 1 ? "" : "s"} will stay queued until the Elitical upload endpoint is connected.
+            </p>
+          )}
+        </section>
+      </div>
+    </aside>
   );
 }
 
@@ -957,17 +2013,6 @@ function WorkItemModal({
     setDraft((current) => ({
       ...current,
       [field]: value,
-    }));
-    setError("");
-  }
-
-  function handleEpicPresetChange(value) {
-    const preset = epicPresetDraft(value, fallbackSprint, fallbackDocketState);
-
-    setDraft((current) => ({
-      ...current,
-      ...preset,
-      epicPresetId: value,
     }));
     setError("");
   }
@@ -1449,19 +2494,6 @@ function WorkItemModal({
             </div>
           ) : (
             <div className="modal-sections">
-              {modal.kind === "create" && itemType === "epic" && (
-                <ModalSection title="Epic">
-                  <CustomSelectField
-                    label="Epic"
-                    value={draft.epicPresetId || CREATE_NEW_EPIC_ID}
-                    options={EPIC_PRESET_OPTIONS}
-                    onChange={handleEpicPresetChange}
-                    getOptionLabel={epicPresetLabel}
-                    wide
-                  />
-                </ModalSection>
-              )}
-
               <ModalSection title="Basic Information">
                 <TextField
                   label="Title"
@@ -1705,62 +2737,62 @@ function WorkItemModal({
 }
 
 function App() {
-  const importedSnapshot = useMemo(() => {
-    try {
-      return snapshotFromState(ELITICAL_INITIAL_STATE);
-    } catch {
-      return null;
-    }
-  }, []);
-  const [storyState, setStoryState] = useState(
-    ELITICAL_INITIAL_STATE
+  const isBrowserRefreshStartup = useMemo(
+    () => isBrowserReloadNavigation(),
+    []
   );
+  const browserRefreshStateRef = useRef(
+    isBrowserRefreshStartup ? readBrowserRefreshState() : null
+  );
+  const [storyState, setStoryState] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [modal, setModal] = useState(null);
   const [message, setMessage] = useState(
-    "Imported Elitical data"
+    "Loading local cache..."
   );
   const [layoutNonce, setLayoutNonce] = useState(1);
-  const [viewMode, setViewMode] = useState("sprint");
+  const [viewMode, setViewMode] = useState("main");
   const [viewRootId, setViewRootId] = useState(null);
+  const [contextSelections, setContextSelections] = useState({});
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [planningAnchorDate, setPlanningAnchorDate] = useState(
-    formatDateInput(new Date())
-  );
-  const [planningRangeStart, setPlanningRangeStart] = useState(
-    formatDateInput(new Date(new Date().setDate(new Date().getDate() - 7)))
-  );
-  const [planningRangeEnd, setPlanningRangeEnd] = useState(
-    formatDateInput(new Date(new Date().setDate(new Date().getDate() + 14)))
-  );
   const [loadState, setLoadState] = useState(
-    "ready"
+    "loading-cache"
   );
   const [syncState, setSyncState] = useState(
-    "syncing"
+    isBrowserRefreshStartup ? "synced" : "syncing"
   );
   const [saveState, setSaveState] = useState("idle");
   const [baseSha, setBaseSha] = useState("");
   const [baselineSnapshot, setBaselineSnapshot] = useState(
-    importedSnapshot
+    null
   );
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [legacyState, setLegacyState] = useState(null);
   const [showLegacyNotice, setShowLegacyNotice] = useState(false);
+  const [liveSyncState, setLiveSyncState] = useState("idle");
+  const [liveSyncProgress, setLiveSyncProgress] = useState("");
+  const [liveSyncSummary, setLiveSyncSummary] = useState(null);
+  const [importedWorklogs, setImportedWorklogs] = useState([]);
+  const [syncStatusPopoverOpen, setSyncStatusPopoverOpen] = useState(false);
 
   const {
     mainTitle = "Genesis",
     rootTitle = "",
     rootDocketState = "concept",
     sprints = [],
-    workItems = [],
+    workItems: rawWorkItems = [],
   } = storyState || {};
+  const workItems = useMemo(
+    () => applyImportedWorklogs(rawWorkItems, importedWorklogs),
+    [importedWorklogs, rawWorkItems]
+  );
   const workItemsRef = useRef(workItems);
   const storyStateRef = useRef(storyState);
   const saveRequestIdRef = useRef(0);
   const hasCheckedLegacyRef = useRef(false);
+  const syncStatusPopoverRef = useRef(null);
   const currentSnapshot = useMemo(
     () => (storyState ? snapshotFromState(storyState) : null),
     [storyState]
@@ -1780,10 +2812,43 @@ function App() {
     () => calculateStoryPoints(workItems),
     [workItems]
   );
-  const isGraphTimeView = GRAPH_TIME_VIEW_IDS.has(viewMode);
+  const isContextView = CONTEXT_VIEW_IDS.has(viewMode);
+  const contextOptions = useMemo(
+    () => contextOptionsForView({ viewMode, sprints, workItems }),
+    [sprints, viewMode, workItems]
+  );
+  const selectedContextId =
+    contextSelections[viewMode] ||
+    defaultContextSelection({ viewMode, sprints, workItems });
+  const selectedContextOption = useMemo(
+    () =>
+      viewMode === "day"
+        ? {
+            id: selectedContextId,
+            title: selectedContextId,
+          }
+        : contextOptions.find((option) => option.id === selectedContextId) || null,
+    [contextOptions, selectedContextId, viewMode]
+  );
+  const contextGraph = useMemo(
+    () =>
+      isContextView
+        ? buildContextGraph({
+            workItems,
+            sprints,
+            viewMode,
+            selectedId: selectedContextOption?.id || "",
+          })
+        : {
+            workItems,
+            rootId: null,
+            sprints: [],
+          },
+    [isContextView, selectedContextOption, sprints, viewMode, workItems]
+  );
   const visibleWorkItems = useMemo(
-    () => descendantsIncluding(workItems, isGraphTimeView ? null : viewRootId),
-    [isGraphTimeView, viewRootId, workItems]
+    () => descendantsIncluding(contextGraph.workItems, viewRootId),
+    [contextGraph.workItems, viewRootId]
   );
   const searchedWorkItems = useMemo(
     () => filterWorkItemsForSearch(visibleWorkItems, searchQuery),
@@ -1794,67 +2859,136 @@ function App() {
 
     return sprints.filter((sprint) => sprintMatchesQuery(sprint, searchQuery));
   }, [searchQuery, sprints, viewMode]);
-  const timeGraph = useMemo(
-    () =>
-      isGraphTimeView
-        ? buildTimeGraph({
-            viewMode,
-            workItems: searchedWorkItems,
-            sprints,
-            rootTitle,
-            anchorDate: planningAnchorDate,
-            rangeStart: planningRangeStart,
-            rangeEnd: planningRangeEnd,
-          })
-        : null,
-    [
-      isGraphTimeView,
-      planningAnchorDate,
-      planningRangeEnd,
-      planningRangeStart,
-      rootTitle,
-      searchedWorkItems,
-      sprints,
-      viewMode,
-    ]
-  );
-  const graphWorkItems = timeGraph?.workItems || searchedWorkItems;
-  const graphSprints = timeGraph ? [] : searchedSprints;
-  const graphRootId = timeGraph?.rootId || viewRootId;
+  const graphWorkItems = searchedWorkItems;
+  const graphSprints =
+    viewMode === "main"
+      ? searchedSprints
+      : viewMode === "day"
+      ? contextGraph.sprints
+      : [];
+  const graphMainTitle =
+    viewMode === "sprint"
+      ? selectedContextOption?.title || "Sprint"
+      : viewMode === "day"
+      ? formatDateLabel(selectedContextOption?.id || formatDateInput(new Date()))
+      : mainTitle;
+  const graphRootTitle =
+    viewMode === "sprint" || viewMode === "day"
+      ? rootTitle || mainTitle || "Project"
+      : rootTitle;
+  const graphRootId = viewRootId || contextGraph.rootId;
   const graphTotals = useMemo(
     () => calculateStoryPoints(graphWorkItems),
     [graphWorkItems]
+  );
+  const daySummary = useMemo(
+    () =>
+      viewMode === "day"
+        ? dayViewSummary({
+            workItems,
+            graphWorkItems: contextGraph.workItems,
+            selectedDate: selectedContextOption?.id || formatDateInput(new Date()),
+            rootTitle,
+          })
+        : null,
+    [contextGraph.workItems, rootTitle, selectedContextOption, viewMode, workItems]
   );
   const viewRootItem = viewRootId
     ? workItems.find((item) => item.id === viewRootId)
     : null;
   const isPlanningView = PLANNING_VIEW_IDS.has(viewMode);
-  const usesPlanningSurface = isPlanningView && !isGraphTimeView;
-  const planningViewLabel =
-    PLANNING_VIEWS.find((view) => view.id === viewMode)?.label || "";
+  const usesPlanningSurface = isPlanningView;
+  const isDashboardView = viewMode === "dashboard";
+  const selectedWorklogItem = selectedId
+    ? workItems.find(
+        (item) =>
+          item.id === selectedId &&
+          ["story", "job", "task"].includes(item.type)
+      )
+    : null;
+  const currentAppView = APP_VIEWS.find((view) => view.id === viewMode);
   const contextTitle =
-    isPlanningView
-      ? planningViewLabel
+    currentAppView
+      ? currentAppView.label
       : viewMode === "main"
-      ? "Main View"
+      ? "Tree View"
       : viewRootItem
       ? `${viewRootItem.title} View`
       : "Sprint View";
   const contextItemCount =
-    (timeGraph ? graphWorkItems.length : searchedWorkItems.length) +
+    searchedWorkItems.length +
     (!isPlanningView && viewMode === "main" ? searchedSprints.length : 0) +
-    (!isPlanningView && viewMode !== "main" ? 1 : 0);
+    (!isPlanningView && !isDashboardView && viewMode !== "main" ? 1 : 0);
   const contextStoryPoints =
     graphRootId ? graphTotals.byId[graphRootId] || 0 : graphTotals.rootTotal;
   const contextTimeMinutes =
     graphRootId
       ? graphTotals.timeById[graphRootId] || 0
       : graphTotals.rootTimeMinutes || 0;
+  const projectStats = useMemo(() => ({
+    projects: mainTitle ? 1 : 0,
+    sprints: sprints.length,
+    dockets: workItems.length,
+    epics: workItems.filter((item) => item.type === "epic").length,
+    stories: workItems.filter((item) => item.type === "story").length,
+    jobs: workItems.filter((item) => item.type === "job").length,
+    tasks: workItems.filter((item) => item.type === "task").length,
+  }), [mainTitle, sprints.length, workItems]);
+
+  useEffect(() => {
+    if (!isContextView) return;
+    if (viewMode === "day") {
+      if (selectedContextId) return;
+
+      setContextSelections((current) => ({
+        ...current,
+        [viewMode]: defaultContextSelection({ viewMode, sprints, workItems }),
+      }));
+      return;
+    }
+
+    if (
+      selectedContextId &&
+      contextOptions.some((option) => option.id === selectedContextId)
+    ) {
+      return;
+    }
+
+    const nextSelection = defaultContextSelection({ viewMode, sprints, workItems });
+
+    setContextSelections((current) => ({
+      ...current,
+      [viewMode]: nextSelection,
+    }));
+  }, [
+    contextOptions,
+    isContextView,
+    selectedContextId,
+    sprints,
+    viewMode,
+    workItems,
+  ]);
 
   useEffect(() => {
     workItemsRef.current = workItems;
     storyStateRef.current = storyState;
   }, [storyState, workItems]);
+
+  useEffect(() => {
+    if (!syncStatusPopoverOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (syncStatusPopoverRef.current?.contains(event.target)) return;
+
+      setSyncStatusPopoverOpen(false);
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [syncStatusPopoverOpen]);
 
   const checkLegacyState = useCallback((remoteSnapshot) => {
     if (hasCheckedLegacyRef.current) return;
@@ -1960,6 +3094,198 @@ function App() {
     }
   }, [applyLoadedSnapshot, baseSha, checkLegacyState]);
 
+  const applyNormalizedGraphPayload = useCallback((result, {
+    message: nextMessage = "Loaded local cache",
+    preserveView = true,
+    updateSummary = false,
+  } = {}) => {
+    const normalizedState = normalizeStoryStateArtifactRollup(
+      result.normalized.appState
+    );
+    const mergedState = mergeGraphState(storyStateRef.current, normalizedState);
+    const normalizedSnapshot = snapshotFromState(mergedState);
+    const syncedAt =
+      result.syncedAt ||
+      result.metadata?.lastSyncTime ||
+      result.cache?.metadata?.lastSyncTime ||
+      new Date().toISOString();
+    const nextIds = new Set([
+      ROOT_ID,
+      MAIN_ROOT_ID,
+      ...mergedState.sprints.map((sprint) => sprint.id),
+      ...mergedState.workItems.map((item) => item.id),
+    ]);
+
+    setStoryState(mergedState);
+    workItemsRef.current = mergedState.workItems;
+    setBaselineSnapshot(normalizedSnapshot);
+    setSelectedId((current) =>
+      preserveView && nextIds.has(current) ? current : null
+    );
+    setViewRootId((current) =>
+      preserveView && nextIds.has(current) ? current : null
+    );
+    setModal((current) =>
+      current?.id && !nextIds.has(current.id) ? null : current
+    );
+    setLoadState("ready");
+    setSyncState("synced");
+    setSaveState("idle");
+    setLastSyncedAt(syncedAt);
+    setMessage(nextMessage);
+    setLayoutNonce((value) => value + 1);
+
+    if (updateSummary) {
+      setLiveSyncSummary({
+        status: "Success",
+        counts: result.counts || {
+          projects: result.normalized.projects?.length || 0,
+          sprints: result.normalized.sprints?.length || 0,
+          epics: result.normalized.epics?.length || 0,
+          stories: result.normalized.stories?.length || 0,
+          jobs: result.normalized.jobs?.length || 0,
+          tasks: result.normalized.tasks?.length || 0,
+        },
+        durationMs: result.durationMs || 0,
+        syncedAt,
+        incremental: result.incremental || null,
+      });
+    }
+
+    return {
+      normalizedSnapshot,
+      syncedAt,
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLocalCache() {
+      try {
+        const [result, worklogCache] = await Promise.all([
+          loadLocalGraphCache({
+            skipBackgroundSync: isBrowserRefreshStartup,
+          }),
+          loadLocalWorklogsCache().catch(() => null),
+        ]);
+
+        if (cancelled) return;
+
+        setImportedWorklogs(worklogCache?.worklogs || []);
+        applyNormalizedGraphPayload(result, {
+          message: "Loaded local cache",
+          preserveView: false,
+        });
+
+        const refreshState = browserRefreshStateRef.current;
+
+        if (isBrowserRefreshStartup && refreshState) {
+          const normalizedState = normalizeStoryStateArtifactRollup(
+            result.normalized.appState
+          );
+          const validIds = new Set([
+            ROOT_ID,
+            MAIN_ROOT_ID,
+            ...normalizedState.sprints.map((sprint) => sprint.id),
+            ...normalizedState.workItems.map((item) => item.id),
+          ]);
+          const knownViewModes = new Set([
+            ...APP_VIEWS.map((view) => view.id),
+            "focused",
+          ]);
+          const nextViewMode = knownViewModes.has(refreshState.viewMode)
+            ? refreshState.viewMode
+            : "main";
+          const nextViewRootId =
+            refreshState.viewRootId && validIds.has(refreshState.viewRootId)
+              ? refreshState.viewRootId
+              : null;
+
+          setViewMode(
+            nextViewMode === "focused" && !nextViewRootId ? "main" : nextViewMode
+          );
+          setViewRootId(nextViewRootId);
+          setSelectedId(
+            refreshState.selectedId && validIds.has(refreshState.selectedId)
+              ? refreshState.selectedId
+              : null
+          );
+          if (
+            refreshState.contextSelections &&
+            typeof refreshState.contextSelections === "object"
+          ) {
+            setContextSelections(refreshState.contextSelections);
+          }
+          setSearchQuery(refreshState.searchQuery || "");
+          setSearchOpen(
+            Boolean(refreshState.searchOpen && refreshState.searchQuery)
+          );
+        }
+      } catch (error) {
+        if (cancelled) return;
+
+        setStoryState(null);
+        setLoadState("no-cache");
+        setSyncState("offline");
+        setMessage(
+          error.status === 404
+            ? "No local cache"
+            : error.message || "Unable to load local cache."
+        );
+      }
+    }
+
+    loadLocalCache();
+
+    const events = isBrowserRefreshStartup
+      ? null
+      : subscribeToLocalCacheEvents({
+          onUpdated(payload) {
+            if (cancelled) return;
+
+            loadLocalWorklogsCache()
+              .then((worklogCache) => {
+                if (!cancelled) setImportedWorklogs(worklogCache.worklogs || []);
+              })
+              .catch(() => {
+                if (!cancelled) setImportedWorklogs([]);
+              });
+            applyNormalizedGraphPayload(payload, {
+              message: "Updated from Elitical",
+              preserveView: true,
+            });
+          },
+          onFailed(payload) {
+            if (cancelled) return;
+
+            setSyncState("offline");
+            setMessage(payload?.message || "Background sync failed.");
+          },
+        });
+
+    return () => {
+      cancelled = true;
+      events?.close();
+    };
+  }, [applyNormalizedGraphPayload, isBrowserRefreshStartup]);
+
+  useEffect(() => {
+    const handlePageHide = () => {
+      saveBrowserRefreshState({
+        selectedId,
+        contextSelections,
+        viewMode,
+        viewRootId,
+        searchOpen,
+        searchQuery,
+      });
+    };
+
+    window.addEventListener("pagehide", handlePageHide);
+    return () => window.removeEventListener("pagehide", handlePageHide);
+  }, [contextSelections, searchOpen, searchQuery, selectedId, viewMode, viewRootId]);
+
   useEffect(() => {
     if (!dirty) return undefined;
 
@@ -1992,6 +3318,13 @@ function App() {
     setSelectedId(id);
 
     if (id) {
+      const selectedItem = workItemsRef.current.find((item) => item.id === id);
+
+      if (["story", "job", "task"].includes(selectedItem?.type)) {
+        setModal(null);
+        return;
+      }
+
       setModal({
         kind: "details",
         id,
@@ -2121,6 +3454,16 @@ function App() {
   }, [createItem, rootDocketState, rootTitle, sprints]);
 
   const openDetailsModal = useCallback((id) => {
+    const selectedItem = workItemsRef.current.find((item) => item.id === id);
+
+    setSelectedId(id);
+
+    if (selectedItem?.type === "job") {
+      setModal(null);
+      setMessage("");
+      return;
+    }
+
     setModal({
       kind: "details",
       id,
@@ -2144,23 +3487,25 @@ function App() {
     setLayoutNonce((value) => value + 1);
   }, []);
 
-  const showMainView = useCallback(() => {
-    setViewMode("main");
-    setViewRootId(null);
-    setSelectedId(null);
-    setViewMenuOpen(false);
-    setLayoutNonce((value) => value + 1);
-  }, []);
-
-  const showPlanningView = useCallback((nextViewMode) => {
+  const showAppView = useCallback((nextViewMode) => {
     setViewMode(nextViewMode);
     setViewRootId(null);
     setSelectedId(null);
     setViewMenuOpen(false);
-    if (GRAPH_TIME_VIEW_IDS.has(nextViewMode)) {
+    if (nextViewMode === "main" || CONTEXT_VIEW_IDS.has(nextViewMode)) {
       setLayoutNonce((value) => value + 1);
     }
   }, []);
+
+  const selectContextViewOption = useCallback((optionId) => {
+    setContextSelections((current) => ({
+      ...current,
+      [viewMode]: optionId,
+    }));
+    setViewRootId(null);
+    setSelectedId(null);
+    setLayoutNonce((value) => value + 1);
+  }, [viewMode]);
 
   const saveRootTitle = useCallback((updates) => {
     const trimmed = updates.title.trim();
@@ -2432,21 +3777,78 @@ function App() {
     await loadRemoteSnapshot({ block: false });
   }, [dirty, loadRemoteSnapshot]);
 
-  const handleUseSampleLocally = useCallback(() => {
-    const seedState = normalizeStoryStateArtifactRollup(
-      ELITICAL_INITIAL_STATE
-    );
-    setStoryState(seedState);
-    workItemsRef.current = seedState.workItems;
-    setLoadState("ready");
-    setSaveState("idle");
-    setMessage("Imported Elitical data");
-    setSelectedId(null);
-    setViewMode("sprint");
-    setViewRootId(null);
-    setModal(null);
-    setLayoutNonce((value) => value + 1);
-  }, []);
+  const handleSyncFromElitical = useCallback(async () => {
+    if (liveSyncState === "syncing") return;
+
+    setSyncStatusPopoverOpen(false);
+    setLiveSyncState("syncing");
+    setLiveSyncProgress("Authenticating...");
+    setSyncState("syncing");
+    setMessage("Syncing from Elitical...");
+
+    try {
+      const result = await syncLiveEliticalData({
+        onProgress(progress) {
+          if (progress?.message) {
+            setLiveSyncProgress(progress.message);
+          }
+        },
+      });
+      const worklogCache = await loadLocalWorklogsCache().catch(() => null);
+
+      setImportedWorklogs(worklogCache?.worklogs || []);
+      const { normalizedSnapshot, syncedAt } = applyNormalizedGraphPayload(result, {
+        message: "Sync Complete",
+        preserveView: true,
+        updateSummary: true,
+      });
+      saveCache({
+        snapshot: normalizedSnapshot,
+        sha: baseSha,
+        lastSyncedAt: syncedAt,
+      });
+      setLiveSyncState("synced");
+      setLiveSyncProgress("Sync Complete");
+    } catch (error) {
+      const errorMessage =
+        error.status === 401
+          ? "Authentication failed."
+          : error.status === 502
+          ? "Unable to contact Elitical."
+          : error.message || "Elitical import failed.";
+
+      setLiveSyncState("failed");
+      setLiveSyncProgress(errorMessage);
+      setLiveSyncSummary((current) => current
+        ? {
+            ...current,
+            status: "Failed",
+            errorMessage,
+          }
+        : {
+            status: "Failed",
+            errorMessage,
+            counts: {
+              projects: 0,
+              sprints: 0,
+              epics: 0,
+              stories: 0,
+              jobs: 0,
+              tasks: 0,
+            },
+            durationMs: 0,
+            syncedAt: "",
+            incremental: null,
+          }
+      );
+      setSyncState("offline");
+      setMessage(errorMessage);
+    }
+  }, [
+    applyNormalizedGraphPayload,
+    baseSha,
+    liveSyncState,
+  ]);
 
   const handleUseLegacyState = useCallback(() => {
     if (!legacyState) return;
@@ -2468,15 +3870,82 @@ function App() {
   }, []);
 
   const statusLabel =
-    saveState === "failed"
+    liveSyncState === "syncing"
+      ? "🔄 Syncing..."
+    : liveSyncState === "failed"
+      ? "Elitical Sync Failed"
+      : saveState === "failed"
       ? "Save failed"
       : saveState === "saving"
       ? "Syncing..."
       : syncState === "offline"
       ? "Offline"
-      : syncState === "syncing" || syncState === "loading"
+    : syncState === "syncing" || syncState === "loading"
       ? "Syncing..."
-      : "Synced";
+      : "✓ Synced";
+  const syncStatusSummary = liveSyncSummary || {
+    status: liveSyncState === "failed" ? "Failed" : "Success",
+    counts: {
+      projects: 0,
+      sprints: 0,
+      epics: 0,
+      stories: 0,
+      jobs: 0,
+      tasks: 0,
+    },
+    durationMs: 0,
+    syncedAt: lastSyncedAt,
+    incremental: null,
+  };
+  const syncStatusCounts = syncStatusSummary.counts || {};
+  const syncIncremental = syncStatusSummary.incremental || {};
+  const syncStatusRows = [
+    ["Status", syncStatusSummary.status || (liveSyncState === "failed" ? "Failed" : "Success")],
+    ["Last Synced", syncStatusSummary.syncedAt ? formatTimestamp(syncStatusSummary.syncedAt) : "-"],
+    ["Duration", syncStatusSummary.durationMs ? `${Math.round(syncStatusSummary.durationMs / 1000)} sec` : "-"],
+    ["Projects", syncStatusCounts.projects ?? "-"],
+    ["Sprints", syncStatusCounts.sprints ?? "-"],
+    ["Epics", syncStatusCounts.epics ?? "-"],
+    ["Stories", syncStatusCounts.stories ?? "-"],
+    ["Jobs", syncStatusCounts.jobs ?? "-"],
+    ["Tasks", syncStatusCounts.tasks ?? "-"],
+    ["Incremental Sync", syncIncremental.mode === "incremental" ? "Yes" : syncIncremental.mode ? "No" : "-"],
+    ["New", syncIncremental.newDockets ?? "-"],
+    ["Modified", syncIncremental.modifiedDockets ?? "-"],
+    ["Unchanged", syncIncremental.unchangedDockets ?? "-"],
+  ];
+
+  if (loadState === "loading-cache") {
+    return (
+      <div className="app-container app-state-screen">
+        <section className="state-panel">
+          <h1>Loading local cache</h1>
+          <p>Checking the desktop backend for cached Elitical data...</p>
+        </section>
+      </div>
+    );
+  }
+
+  if (loadState === "no-cache") {
+    return (
+      <div className="app-container app-state-screen">
+        <section className="state-panel">
+          <h1>No local cache</h1>
+          <p>Run Sync from Elitical once to create the desktop cache.</p>
+          <div className="state-actions">
+            <button
+              type="button"
+              onClick={handleSyncFromElitical}
+              disabled={liveSyncState === "syncing"}
+            >
+              {liveSyncState === "syncing" ? "Syncing..." : "Sync from Elitical"}
+            </button>
+          </div>
+          {liveSyncProgress ? <p>{liveSyncProgress}</p> : null}
+        </section>
+      </div>
+    );
+  }
 
   if (loadState === "loading") {
     return (
@@ -2502,9 +3971,6 @@ function App() {
             >
               Retry
             </button>
-            <button type="button" onClick={handleUseSampleLocally}>
-              Use Imported Elitical Data
-            </button>
           </div>
         </section>
       </div>
@@ -2527,13 +3993,8 @@ function App() {
               aria-haspopup="listbox"
             >
               <span>
-                {isPlanningView
-                  ? planningViewLabel
-                  : viewMode === "main"
-                  ? "Main View"
-                  : viewRootItem
-                  ? `${viewRootItem.title} View`
-                  : "Sprint View"}
+                {currentAppView?.label ||
+                  (viewRootItem ? `${viewRootItem.title} View` : "Tree View")}
               </span>
               <span className="view-selector-caret" aria-hidden="true">
                 v
@@ -2541,97 +4002,47 @@ function App() {
             </button>
             {viewMenuOpen && (
               <div className="view-selector-menu" role="listbox">
-                <button
-                  type="button"
-                  className={viewMode === "main" ? "selected" : ""}
-                  onClick={showMainView}
-                  role="option"
-                  aria-selected={viewMode === "main"}
-                >
-                  Main View
-                </button>
-                <button
-                  type="button"
-                  className={viewMode === "sprint" ? "selected" : ""}
-                  onClick={showSprintView}
-                  role="option"
-                  aria-selected={viewMode === "sprint"}
-                >
-                  Sprint View
-                </button>
-                <div className="view-selector-group">Planning</div>
-                {PLANNING_VIEWS.map((view) => (
+                {APP_VIEWS.map((view) => (
                   <button
                     key={view.id}
                     type="button"
                     className={viewMode === view.id ? "selected" : ""}
-                    onClick={() => showPlanningView(view.id)}
+                    onClick={() => showAppView(view.id)}
                     role="option"
                     aria-selected={viewMode === view.id}
                   >
                     {view.label}
                   </button>
                 ))}
-                {viewRootItem && (
-                  <button
-                    type="button"
-                    className="selected"
-                    onClick={() => setViewMenuOpen(false)}
-                    role="option"
-                    aria-selected="true"
-                  >
-                    {viewRootItem.title} View
-                  </button>
-                )}
               </div>
             )}
           </div>
         </div>
 
         <div className="toolbar-context" aria-label="Current view summary">
-          <strong>{contextTitle}</strong>
-          <span>{contextItemCount} Items</span>
-          <span>{contextStoryPoints} SP</span>
-          <span>{formatWorkTime(contextTimeMinutes)} Logged</span>
-          <span>Last synced {formatRelativeSync(lastSyncedAt)}</span>
-        </div>
-
-        {(isGraphTimeView || viewMode === "calendar") && (
-          <div className="time-view-controls">
-            {viewMode === "range" ? (
+          <div className="toolbar-context-row primary">
+            <strong>{contextTitle}</strong>
+            {viewMode !== "day" && (
               <>
-                <input
-                  type="date"
-                  value={planningRangeStart}
-                  onChange={(event) => {
-                    setPlanningRangeStart(event.target.value);
-                    setLayoutNonce((value) => value + 1);
-                  }}
-                  aria-label="Range start"
-                />
-                <input
-                  type="date"
-                  value={planningRangeEnd}
-                  onChange={(event) => {
-                    setPlanningRangeEnd(event.target.value);
-                    setLayoutNonce((value) => value + 1);
-                  }}
-                  aria-label="Range end"
-                />
+                <span>{contextItemCount} Items</span>
+                <span>{contextStoryPoints} SP</span>
+                <span>{formatWorkTime(contextTimeMinutes)} Logged</span>
               </>
-            ) : (
-              <input
-                type="date"
-                value={planningAnchorDate}
-                onChange={(event) => {
-                  setPlanningAnchorDate(event.target.value);
-                  setLayoutNonce((value) => value + 1);
-                }}
-                aria-label="Planning date"
-              />
             )}
+            <span>Last synced {formatRelativeSync(lastSyncedAt)}</span>
           </div>
-        )}
+          {viewMode !== "day" && (
+            <div className="toolbar-context-row secondary">
+              <span>Projects: {projectStats.projects}</span>
+              <span>Sprints: {projectStats.sprints}</span>
+              <span>Dockets: {projectStats.dockets}</span>
+              <span>Epics: {projectStats.epics}</span>
+              <span>Stories: {projectStats.stories}</span>
+              <span>Jobs: {projectStats.jobs}</span>
+              <span>Tasks: {projectStats.tasks}</span>
+            </div>
+          )}
+        </div>
 
         <div className="toolbar-actions">
           <button
@@ -2642,9 +4053,45 @@ function App() {
             Search
             <span>Ctrl K</span>
           </button>
-          <span className={`sync-status ${syncState}`}>
-            {statusLabel}
-          </span>
+          <div className="sync-status-control" ref={syncStatusPopoverRef}>
+            <span className={`sync-status ${syncState}`}>
+              {statusLabel}
+            </span>
+            <button
+              type="button"
+              className="sync-status-icon"
+              onClick={() => setSyncStatusPopoverOpen((open) => !open)}
+              aria-label="Sync status"
+              aria-expanded={syncStatusPopoverOpen}
+            >
+              i
+            </button>
+            {syncStatusPopoverOpen && (
+              <div className="sync-status-popover">
+                <h2>Last Sync</h2>
+                {syncStatusSummary.errorMessage ? (
+                  <p className="sync-status-error">{syncStatusSummary.errorMessage}</p>
+                ) : null}
+                <dl>
+                  {syncStatusRows.map(([label, value]) => (
+                    <div key={label}>
+                      <dt>{label}</dt>
+                      <dd>{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={handleSyncFromElitical}
+            disabled={liveSyncState === "syncing"}
+          >
+            {liveSyncState === "syncing" ? "Syncing..." : "Sync from Elitical"}
+          </button>
 
           {dirty && (
             <>
@@ -2708,16 +4155,36 @@ function App() {
             </label>
             <div className="search-results">
               <span>{searchedWorkItems.length} work items</span>
-              <span>{searchedSprints.length} sprints</span>
+              {viewMode === "main" && <span>{searchedSprints.length} sprints</span>}
             </div>
           </section>
         </div>
       )}
 
-      {graphWorkItems.length === 0 && !usesPlanningSurface && viewMode !== "main" && (
+      {viewMode === "day" && !usesPlanningSurface && !isDashboardView ? (
+        <DayViewToolbar
+          value={selectedContextOption?.id || formatDateInput(new Date())}
+          onChange={selectContextViewOption}
+          summary={daySummary}
+        />
+      ) : isContextView && !usesPlanningSurface && !isDashboardView ? (
+        <ContextGraphSelector
+          label={contextViewLabel(viewMode)}
+          options={contextOptions}
+          value={selectedContextOption?.id || ""}
+          onChange={selectContextViewOption}
+          viewMode={viewMode}
+        />
+      ) : null}
+
+      {graphWorkItems.length === 0 && !usesPlanningSurface && !isDashboardView && viewMode !== "main" && (
         <div className="empty-canvas-state">
-          <h2>Create your first work item</h2>
-          <p>Use the plus button on the Sprint View box to begin.</p>
+          <h2>{viewMode === "day" ? "No work logged" : "No work assigned"}</h2>
+          <p>
+            {viewMode === "day"
+              ? "No imported worklogs match this date."
+              : `No imported work items match this ${contextViewLabel(viewMode).toLowerCase()} view.`}
+          </p>
         </div>
       )}
 
@@ -2727,29 +4194,33 @@ function App() {
           workItems={searchedWorkItems}
           sprints={searchedSprints}
           onOpenDetails={openDetailsModal}
-          anchorDate={planningAnchorDate}
-          onAnchorDateChange={setPlanningAnchorDate}
-          onOpenDay={(date) => {
-            setPlanningAnchorDate(date);
-            showPlanningView("day");
-          }}
+        />
+      ) : isDashboardView ? (
+        <DashboardView
+          workItems={workItems}
+          sprints={sprints}
+          rootTitle={rootTitle}
+          totals={totals}
+          lastSyncedAt={lastSyncedAt}
         />
       ) : (
         <GraphView
           workItems={graphWorkItems}
-          mainTitle={mainTitle}
-          rootTitle={timeGraph?.title || rootTitle}
+          mainTitle={graphMainTitle}
+          rootTitle={graphRootTitle}
           rootDocketState={rootDocketState}
           sprints={graphSprints}
           storyPointTotals={graphTotals}
           viewRootId={graphRootId}
           viewMode={viewMode}
           selectedId={selectedId}
+          daySummary={daySummary}
           onSelect={handleSelectNode}
           onOpenDetails={openDetailsModal}
           onStartChild={handleStartChild}
           onStartSprint={handleStartSprint}
           layoutNonce={layoutNonce}
+          searchQuery={searchQuery}
         />
       )}
 
@@ -2770,6 +4241,14 @@ function App() {
           onCreateItem={createItem}
           onDeleteItem={removeWorkItem}
           onSetView={setFocusedView}
+        />
+      )}
+
+      {selectedWorklogItem && (
+        <WorklogPanel
+          item={selectedWorklogItem}
+          workItems={workItems}
+          onClose={() => setSelectedId(null)}
         />
       )}
     </div>

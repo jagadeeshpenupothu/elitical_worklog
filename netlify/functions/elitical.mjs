@@ -1,8 +1,6 @@
 /* global Buffer, process */
 
-import { EliticalAuthService } from "../../src/services/elitical/auth/index.ts";
-import { EliticalClient } from "../../src/services/elitical/client/index.ts";
-import { EliticalProvider } from "../../src/services/elitical/provider/index.ts";
+import { importEliticalLiveToNormalized } from "../../src/services/elitical/syncLive.ts";
 
 const ELITICAL_BASE_URL =
   process.env.ELITICAL_BASE_URL || "https://elitical.sayukth.com";
@@ -21,6 +19,24 @@ let productionWorklogsExpiresAt = 0;
 
 const PRODUCTION_READ_CACHE_TTL_MS = 60_000;
 const PRODUCTION_WORKLOG_DEADLINE_MS = 10_000;
+
+async function loadEliticalRuntime() {
+  const [
+    { EliticalAuthService },
+    { EliticalClient },
+    { EliticalProvider },
+  ] = await Promise.all([
+    import("../../src/services/elitical/auth/index.ts"),
+    import("../../src/services/elitical/client/index.ts"),
+    import("../../src/services/elitical/provider/index.ts"),
+  ]);
+
+  return {
+    EliticalAuthService,
+    EliticalClient,
+    EliticalProvider,
+  };
+}
 
 function response(statusCode, body, headers = {}) {
   return {
@@ -214,6 +230,54 @@ async function handleExtensionSync(event) {
   });
 }
 
+async function handleLiveSync(event) {
+  if (event.httpMethod !== "POST") {
+    return response(405, {
+      error: "Method Not Allowed",
+    });
+  }
+
+  try {
+    const result = await importEliticalLiveToNormalized({
+      writeOutput: false,
+      onProgress(progress) {
+        console.info("[elitical] live sync progress", progress);
+      },
+    });
+
+    return response(200, {
+      status: "synced",
+      normalized: result.normalized,
+      counts: result.counts,
+      detailRequests: result.detailRequests,
+      issues: result.issues,
+      durationMs: result.durationMs,
+      syncedAt: result.syncedAt,
+    });
+  } catch (error) {
+    const safeError = sanitizeError(error);
+    const statusCode =
+      error?.status === 401 || error?.status === 403
+        ? 401
+        : /network|fetch|contact|ENOTFOUND|ECONN/i.test(error?.message || "")
+        ? 502
+        : 500;
+
+    console.error("[elitical] live sync failed", safeError);
+
+    return response(statusCode, {
+      error:
+        statusCode === 401
+          ? "Authentication failed."
+          : statusCode === 502
+          ? "Unable to contact Elitical."
+          : "Elitical import failed.",
+      message: error?.message || "Unable to sync from Elitical.",
+      endpoint: error?.endpoint || "",
+    });
+  }
+}
+
 async function readPayload(response) {
   const contentType = response.headers.get("content-type") || "";
 
@@ -292,6 +356,8 @@ function officialId(item) {
 async function productionProvider() {
   if (!productionProviderPromise) {
     productionProviderPromise = (async () => {
+      const { EliticalAuthService, EliticalClient, EliticalProvider } =
+        await loadEliticalRuntime();
       const authService = new EliticalAuthService({
         baseUrl: ELITICAL_BASE_URL,
         dataDir: process.env.ELITICAL_DATA_DIR || undefined,
@@ -593,6 +659,10 @@ export async function handler(event) {
 
   if (path === "/extension-sync") {
     return handleExtensionSync(event);
+  }
+
+  if (path === "/sync-live") {
+    return handleLiveSync(event);
   }
 
   const auth = authHeaders(event.headers);

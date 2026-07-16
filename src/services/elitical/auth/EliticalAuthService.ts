@@ -298,12 +298,13 @@ export class EliticalAuthService implements EliticalAuthServiceContract {
 
       if (!session) {
         logRuntimeInstances(
-          "restoreSession verification returned unauthenticated; keeping runtime",
+          "restoreSession verification returned unauthenticated; closing runtime",
           this.instanceId,
           this.browser,
           context,
           page
         );
+        await this.closeRuntime();
         return null;
       }
 
@@ -367,6 +368,29 @@ export class EliticalAuthService implements EliticalAuthServiceContract {
     await previousRequest.catch(() => undefined);
 
     try {
+      const response = await this.sendAuthenticatedRequest(request);
+
+      if (response.status !== 401) {
+        return response;
+      }
+
+      console.info("[EliticalAuthService] authenticatedRequest renewing session after 401", {
+        authServiceInstanceId: this.instanceId,
+        path: request.path,
+        method: request.method || "GET",
+      });
+
+      await this.login();
+
+      return this.sendAuthenticatedRequest(request);
+    } finally {
+      releaseRequest();
+    }
+  }
+
+  private async sendAuthenticatedRequest(
+    request: EliticalAuthenticatedRequest
+  ): Promise<EliticalAuthenticatedResponse> {
     const context = await this.ensureAuthenticatedContext();
     const page = await this.ensurePage(context);
     const endpoint = requestUrl(this.config, request);
@@ -412,17 +436,6 @@ export class EliticalAuthService implements EliticalAuthServiceContract {
               }
             } catch {
               // Keep the raw localStorage value when it is not JSON encoded.
-            }
-
-            const hazelcastSessionId = document.cookie
-              .split(";")
-              .map((cookie) => cookie.trim())
-              .find((cookie) => cookie.startsWith("hazelcast.sessionId="))
-              ?.split("=")[1];
-
-            if (hazelcastSessionId) {
-              sJwtToken = hazelcastSessionId;
-              window.localStorage.setItem("flutter.s-jwt-token", hazelcastSessionId);
             }
 
             if (authorization) headers.authorization = authorization;
@@ -505,7 +518,7 @@ export class EliticalAuthService implements EliticalAuthServiceContract {
       }
 
       if (response.status === 401) {
-        console.error("[EliticalAuthService] first authenticatedRequest 401", {
+        console.error("[EliticalAuthService] authenticatedRequest 401", {
           authServiceInstanceId: this.instanceId,
           endpoint,
           method: request.method || "GET",
@@ -523,9 +536,6 @@ export class EliticalAuthService implements EliticalAuthServiceContract {
         context,
         page
       );
-    }
-    } finally {
-      releaseRequest();
     }
   }
 
@@ -742,17 +752,6 @@ export class EliticalAuthService implements EliticalAuthServiceContract {
             }
           } catch {
             // Keep the raw localStorage value when it is not JSON encoded.
-          }
-
-          const hazelcastSessionId = document.cookie
-            .split(";")
-            .map((cookie) => cookie.trim())
-            .find((cookie) => cookie.startsWith("hazelcast.sessionId="))
-            ?.split("=")[1];
-
-          if (hazelcastSessionId) {
-            sJwtToken = hazelcastSessionId;
-            window.localStorage.setItem("flutter.s-jwt-token", hazelcastSessionId);
           }
 
           if (authorization) headers.authorization = authorization;

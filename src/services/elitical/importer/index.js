@@ -7,7 +7,7 @@ const DEFAULT_DUMP_DIR = ".elitical/dump";
 const DEFAULT_OUTPUT_FILE = "src/data/elitical-normalized.json";
 const TARGET_PROJECT_CODE = "DES";
 const TARGET_PROJECT_NAME = "UX Designer";
-const SUPPORTED_TYPES = new Set(["EPIC", "STORY", "JOB"]);
+const SUPPORTED_TYPES = new Set(["EPIC", "STORY", "JOB", "TASK"]);
 const STATE_BY_NAME = {
   artifact: "artifact",
   closed: "closed",
@@ -30,7 +30,11 @@ const CATEGORY_BY_NAME = {
 };
 
 function repoRoot() {
-  const currentFile = fileURLToPath(import.meta.url);
+  const currentFile =
+    typeof import.meta.url === "string" ? fileURLToPath(import.meta.url) : "";
+
+  if (!currentFile) return globalThis.process?.cwd?.() || ".";
+
   return path.resolve(path.dirname(currentFile), "../../../..");
 }
 
@@ -151,6 +155,7 @@ function normalizeEmployee(employee, projectId = "") {
 
 function normalizeDocket(docket, fileProjectId = "") {
   const type = text(docket.type).toUpperCase();
+  const storyPoints = Number(docket.storyPointEst ?? docket.storyPoints ?? docket.estimatedStoryPoints);
 
   if (!SUPPORTED_TYPES.has(type)) return null;
 
@@ -159,7 +164,7 @@ function normalizeDocket(docket, fileProjectId = "") {
     num: text(docket.num),
     type,
     title: text(docket.title || docket.num || docket.id),
-    description: text(docket.descr),
+    description: text(docket.descr || docket.description),
     projectId: text(docket.projectId || fileProjectId),
     sprintId: text(docket.sprintId),
     epicId: text(docket.epicId),
@@ -169,22 +174,21 @@ function normalizeDocket(docket, fileProjectId = "") {
     storyName: text(docket.storyName),
     storyNum: text(docket.storyNum),
     parentId: text(docket.parentId),
-    stateId: text(docket.dktStateId),
-    stateName: text(docket.dktStateName),
-    docketState: enumValue(docket.dktStateName, STATE_BY_NAME, "concept"),
+    stateId: text(docket.dktStateId || docket.stateId),
+    stateName: text(docket.dktStateName || docket.docketState || docket.status),
+    docketState: enumValue(docket.dktStateName || docket.docketState || docket.status, STATE_BY_NAME, "concept"),
     category: enumValue(docket.category, CATEGORY_BY_NAME, "feature"),
     priority: enumValue(docket.priority, PRIORITY_BY_NAME, "info"),
     assigneeId: text(docket.assigneeId),
-    assigneeName: text(docket.assigneeName),
+    assigneeName: text(docket.assigneeName || docket.assignee),
     reporterId: text(docket.reporterId),
     reporterName: text(docket.reporterName),
-    storyPoints: Number.isFinite(Number(docket.storyPointEst))
-      ? Number(docket.storyPointEst)
-      : 0,
+    storyPoints: Number.isFinite(storyPoints) ? storyPoints : 0,
     createdBy: text(docket.createdUserName),
     createdAt: isoFromMillis(docket.createdTime),
     updatedBy: text(docket.updatedUserName),
     updatedAt: isoFromMillis(docket.updatedTime || docket.sortedTime),
+    worklogs: Array.isArray(docket.worklogs) ? docket.worklogs : [],
   };
 }
 
@@ -326,6 +330,12 @@ function filterToTargetProject(collected) {
         if (docket.type === "EPIC") return true;
         if (docket.type === "STORY") return !docket.epicId || targetDocketIds.has(docket.epicId);
         if (docket.type === "JOB") return !docket.storyId || targetDocketIds.has(docket.storyId);
+        if (docket.type === "TASK") {
+          if (docket.parentId) return targetDocketIds.has(docket.parentId);
+          if (docket.storyId) return targetDocketIds.has(docket.storyId);
+          if (docket.epicId) return targetDocketIds.has(docket.epicId);
+          return true;
+        }
         return false;
       }),
       states: targetStates,
@@ -369,11 +379,25 @@ function workItemBase(docket, sprintsById) {
   };
 }
 
+function normalizeWorkItemWorklogs(worklogs) {
+  if (!Array.isArray(worklogs) || worklogs.length === 0) return [];
+
+  return worklogs.map((worklog) => ({
+    id: text(worklog.id),
+    date: text(worklog.worklogDate || worklog.date),
+    description: text(worklog.comment || worklog.description),
+    timeMinutes: Number(worklog.durationMinutes || worklog.timeMinutes || 0),
+    employeeId: text(worklog.employeeId),
+    employeeName: text(worklog.employeeName),
+  }));
+}
+
 function buildDocketModel(collected) {
   const docketsById = new Map(collected.dockets.map((docket) => [docket.id, docket]));
   const epics = [];
   const stories = [];
   const jobs = [];
+  const tasks = [];
 
   collected.dockets.forEach((docket) => {
     if (docket.type === "EPIC") {
@@ -418,10 +442,34 @@ function buildDocketModel(collected) {
     });
   });
 
+  collected.dockets.forEach((docket) => {
+    if (docket.type !== "TASK") return;
+
+    const existingParent = docketsById.get(docket.parentId);
+    const parentId =
+      (existingParent?.type === "STORY" || existingParent?.type === "EPIC"
+        ? docket.parentId
+        : "") ||
+      (docket.storyId && docketsById.get(docket.storyId)?.type === "STORY"
+        ? docket.storyId
+        : "") ||
+      (docket.epicId && docketsById.get(docket.epicId)?.type === "EPIC"
+        ? docket.epicId
+        : "");
+
+    if (!parentId) return;
+
+    tasks.push({
+      ...docket,
+      parentId,
+    });
+  });
+
   return {
     epics,
     stories,
     jobs,
+    tasks,
   };
 }
 
@@ -461,37 +509,25 @@ function toWorkItems(model) {
             type: "story",
             parentId: story.parentId,
             storyPoints: story.storyPoints,
-            worklogs: [
-              {
-                date: story.updatedAt || story.createdAt || new Date(0).toISOString(),
-                description: "",
-                timeMinutes: 0,
-              },
-            ],
+            worklogs: normalizeWorkItemWorklogs(story.worklogs),
           }
         : {
             ...syntheticWorkItem(story, "story"),
             storyPoints: story.storyPoints || 0,
-            worklogs: [
-              {
-                date: new Date(0).toISOString(),
-                description: "",
-                timeMinutes: 0,
-              },
-            ],
+            worklogs: normalizeWorkItemWorklogs(story.worklogs),
           }
     ),
     ...model.jobs.map((job) => ({
       ...workItemBase(job, sprintsById),
       type: "job",
       parentId: job.parentId,
-      worklogs: [
-        {
-          date: job.updatedAt || job.createdAt || new Date(0).toISOString(),
-          description: "",
-          timeMinutes: 0,
-        },
-      ],
+      worklogs: normalizeWorkItemWorklogs(job.worklogs),
+    })),
+    ...model.tasks.map((task) => ({
+      ...workItemBase(task, sprintsById),
+      type: "task",
+      parentId: task.parentId,
+      worklogs: normalizeWorkItemWorklogs(task.worklogs),
     })),
   ];
 }
@@ -527,21 +563,23 @@ function toAppState(model) {
   };
 }
 
-export function importEliticalDump({
-  dumpDir = path.join(repoRoot(), DEFAULT_DUMP_DIR),
+export function normalizeEliticalData({
+  collected,
   outputFile = path.join(repoRoot(), DEFAULT_OUTPUT_FILE),
+  sourceDir = "",
+  writeOutput = true,
 } = {}) {
-  const collected = collectDump(dumpDir);
   const { filtered, filteredOut } = filterToTargetProject(collected);
   const docketModel = buildDocketModel(filtered);
   const targetDocketCounts = {
     epics: filtered.dockets.filter((docket) => docket.type === "EPIC").length,
     stories: filtered.dockets.filter((docket) => docket.type === "STORY").length,
     jobs: filtered.dockets.filter((docket) => docket.type === "JOB").length,
+    tasks: filtered.dockets.filter((docket) => docket.type === "TASK").length,
   };
   const model = {
     generatedAt: new Date().toISOString(),
-    sourceDir: path.relative(repoRoot(), dumpDir),
+    sourceDir,
     targetProject: {
       code: TARGET_PROJECT_CODE,
       name: TARGET_PROJECT_NAME,
@@ -555,14 +593,8 @@ export function importEliticalDump({
     epics: docketModel.epics,
     stories: docketModel.stories,
     jobs: docketModel.jobs,
+    tasks: docketModel.tasks,
     report: {
-      removedStartupDemoData: [
-        "src/data/jira.yaml startup seed import",
-        "src/data/predefinedSprints.js startup merge",
-        "src/data/predefinedEpics.js startup preset import",
-        "local cached snapshot as startup source",
-        "automatic remote GitHub snapshot as startup source",
-      ],
       filter: {
         projectCode: TARGET_PROJECT_CODE,
         projectName: TARGET_PROJECT_NAME,
@@ -573,6 +605,7 @@ export function importEliticalDump({
         employeesFilteredOut: filteredOut.employees,
         storiesDroppedBecauseParentMissing: targetDocketCounts.stories - docketModel.stories.length,
         jobsDroppedBecauseParentMissing: targetDocketCounts.jobs - docketModel.jobs.length,
+        tasksDroppedBecauseParentMissing: targetDocketCounts.tasks - docketModel.tasks.length,
       },
       remaining: {
         projects: filtered.projects.length,
@@ -580,6 +613,7 @@ export function importEliticalDump({
         epics: docketModel.epics.length,
         stories: docketModel.stories.length,
         jobs: docketModel.jobs.length,
+        tasks: docketModel.tasks.length,
       },
     },
   };
@@ -588,13 +622,59 @@ export function importEliticalDump({
     appState: toAppState(model),
   };
 
-  fs.mkdirSync(path.dirname(outputFile), { recursive: true });
-  fs.writeFileSync(outputFile, `${JSON.stringify(output, null, 2)}\n`);
+  if (writeOutput) {
+    fs.mkdirSync(path.dirname(outputFile), { recursive: true });
+    fs.writeFileSync(outputFile, `${JSON.stringify(output, null, 2)}\n`);
+  }
 
   return output;
 }
 
-if (globalThis.process?.argv?.[1] === fileURLToPath(import.meta.url)) {
+export function collectLiveData({ projects = [], sprints = [], dockets = [] } = {}) {
+  return {
+    projects: uniqueById(projects.map(normalizeProject)),
+    sprints: uniqueById(sprints.map((sprint) => normalizeSprint(sprint, sprint.projectId))),
+    dockets: uniqueById(
+      dockets
+        .map((docket) => normalizeDocket(docket, docket.projectId))
+        .filter(Boolean)
+    ),
+    states: [],
+    employees: [],
+    ignoredFiles: [],
+  };
+}
+
+export function importEliticalLiveData({
+  projects = [],
+  sprints = [],
+  dockets = [],
+  outputFile = path.join(repoRoot(), DEFAULT_OUTPUT_FILE),
+  writeOutput = true,
+} = {}) {
+  return normalizeEliticalData({
+    collected: collectLiveData({ projects, sprints, dockets }),
+    outputFile,
+    sourceDir: "live-api",
+    writeOutput,
+  });
+}
+
+export function importEliticalDump({
+  dumpDir = path.join(repoRoot(), DEFAULT_DUMP_DIR),
+  outputFile = path.join(repoRoot(), DEFAULT_OUTPUT_FILE),
+} = {}) {
+  return normalizeEliticalData({
+    collected: collectDump(dumpDir),
+    outputFile,
+    sourceDir: path.relative(repoRoot(), dumpDir),
+  });
+}
+
+if (
+  typeof import.meta.url === "string" &&
+  globalThis.process?.argv?.[1] === fileURLToPath(import.meta.url)
+) {
   const output = importEliticalDump();
   const counts = {
     projects: output.projects.length,

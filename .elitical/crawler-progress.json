@@ -1,0 +1,20 @@
+{
+  "updatedAt": "2026-07-16T06:10:56.635Z",
+  "queued": 54,
+  "completed": 54,
+  "failed": 0,
+  "resourcesFetched": 54,
+  "remaining": 0,
+  "activeRequests": 0,
+  "jsonFilesSaved": 18,
+  "maxDepth": 4,
+  "detailNavigationLimit": 3,
+  "discoveredEndpoints": 11,
+  "totalIdsDiscovered": 49,
+  "discoveredIds": {
+    "projects": 7,
+    "sprints": 0,
+    "dockets": 0,
+    "employees": 42
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "capturedAt": "2026-07-16T15:01:34.201Z",
+  "url": "https://elitical.sayukth.com/api/1/IssuesBoard?utResCode=200",
+  "method": "POST",
+  "query": {
+    "utResCode": "200"
+  },
+  "headers": {
+    "sec-ch-ua-platform": "\"macOS\"",
+    "authorization": "[captured-secret-redacted]",
+    "referer": "https://elitical.sayukth.com/docket/issues/list",
+    "sec-ch-ua": "\"Chromium\";v=\"149\", \"Not)A;Brand\";v=\"24\"",
+    "sec-ch-ua-mobile": "?0",
+    "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+    "accept": "application/json",
+    "content-type": "application/json",
+    "s-jwt-token": "[captured-secret-redacted]"
+  },
+  "postBody": "{\"projectId\":\"96d70d5d-c0ad-482a-93a1-6572d6935db5\"}",
+  "postJson": {
+    "projectId": "96d70d5d-c0ad-482a-93a1-6572d6935db5"
+  }
+}

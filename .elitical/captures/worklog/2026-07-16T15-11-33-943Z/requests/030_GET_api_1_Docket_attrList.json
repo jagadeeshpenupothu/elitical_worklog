@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-07-16T15:12:44.033Z",
+  "method": "GET",
+  "url": "https://elitical.sayukth.com/api/1/Docket/attrList?utResCode=200&type=EPIC&projectId=b9da5042-33d2-4b89-9190-69a9ca5103e0",
+  "status": 200,
+  "requestBody": "",
+  "requestJson": null,
+  "requestSizeBytes": 0
+}

@@ -31,6 +31,260 @@ const edgeTypes = {
 const MAIN_ROOT_ID = "mainRoot";
 const CONNECTOR_STROKE_WIDTH = 1.8;
 const CONNECTOR_CORNER_RADIUS = 10;
+const EXPANDED_COMPLETED_SUMMARIES_KEY =
+  "elitical-worklog.expanded-completed-summaries.v1";
+const COMPLETED_STATES = new Set(["closed", "artifact"]);
+
+function normalizeState(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-");
+}
+
+function isCompletedItem(item) {
+  return COMPLETED_STATES.has(normalizeState(item?.docketState || item?.status));
+}
+
+function loadExpandedSummaryIds() {
+  if (typeof window === "undefined") return new Set();
+
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(EXPANDED_COMPLETED_SUMMARIES_KEY) || "[]"
+    );
+
+    return new Set(Array.isArray(parsed) ? parsed.filter(Boolean) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveExpandedSummaryIds(summaryIds) {
+  if (typeof window === "undefined") return;
+
+  window.localStorage.setItem(
+    EXPANDED_COMPLETED_SUMMARIES_KEY,
+    JSON.stringify(Array.from(summaryIds).sort())
+  );
+}
+
+function summaryIdFor(parentId, type, scope = "") {
+  return `completed-summary:${parentId || ROOT_ID}:${type || "items"}:${scope || "all"}`;
+}
+
+function summaryLabelFor(type) {
+  if (type === "job") return "Completed Jobs";
+  if (type === "story") return "Completed Stories";
+  if (type === "epic") return "Completed Epics";
+  if (type === "task") return "Completed Tasks";
+  return "Completed Items";
+}
+
+function itemMatchesSearch(item, query) {
+  const normalized = query.trim().toLowerCase();
+
+  if (!normalized) return false;
+
+  return [
+    item.title,
+    item.description,
+    item.type,
+    item.category,
+    item.priority,
+    item.docketState,
+    item.sprint,
+    item.id,
+  ].some((value) => String(value || "").toLowerCase().includes(normalized));
+}
+
+function descendantIdsFor(itemId, childrenByParent) {
+  const ids = [];
+  const pending = [...(childrenByParent.get(itemId) || [])];
+
+  while (pending.length) {
+    const child = pending.shift();
+    ids.push(child.id);
+    pending.push(...(childrenByParent.get(child.id) || []));
+  }
+
+  return ids;
+}
+
+function prepareCompletedCollapse({
+  workItems,
+  expandedSummaryIds,
+  searchQuery,
+  storyPointTotals,
+}) {
+  const childrenByParent = workItems.reduce((acc, item) => {
+    const parentId = item.parentId || ROOT_ID;
+    if (!acc.has(parentId)) acc.set(parentId, []);
+    acc.get(parentId).push(item);
+    return acc;
+  }, new Map());
+  const itemById = new Map(workItems.map((item) => [item.id, item]));
+  const branchCompletion = new Map();
+  const searchMatches = new Set();
+
+  workItems.forEach((item) => {
+    if (itemMatchesSearch(item, searchQuery)) searchMatches.add(item.id);
+  });
+
+  function isCompletedBranch(item) {
+    if (branchCompletion.has(item.id)) return branchCompletion.get(item.id);
+
+    const complete =
+      isCompletedItem(item) &&
+      (childrenByParent.get(item.id) || []).every(isCompletedBranch);
+
+    branchCompletion.set(item.id, complete);
+    return complete;
+  }
+
+  function branchContainsSearch(item) {
+    if (!searchQuery.trim()) return false;
+    if (searchMatches.has(item.id)) return true;
+
+    return descendantIdsFor(item.id, childrenByParent).some((id) =>
+      searchMatches.has(id)
+    );
+  }
+
+  const visible = [];
+  const summaryControlsByParent = new Map();
+  const summaryIds = new Set();
+  function addControl(parentId, summary) {
+    summaryIds.add(summary.id);
+
+    if (!summaryControlsByParent.has(parentId)) {
+      summaryControlsByParent.set(parentId, []);
+    }
+    summaryControlsByParent.get(parentId).push(summary);
+  }
+
+  function appendChildren(parentId, forceVisible = false) {
+    const children = childrenByParent.get(parentId) || [];
+    const collapsedGroups = new Map();
+
+    children.forEach((child) => {
+      if (
+        forceVisible ||
+        child.isContextPrimary ||
+        child.isContextNode ||
+        !isCompletedBranch(child)
+      ) {
+        visible.push(child);
+        appendChildren(child.id, forceVisible);
+        return;
+      }
+
+      const scope = parentId === ROOT_ID ? child.sprint || "root" : "";
+      const summaryId = summaryIdFor(parentId, child.type, scope);
+      const explicitlyExpanded = expandedSummaryIds.has(summaryId);
+      const shouldExpand =
+        explicitlyExpanded || branchContainsSearch(child);
+
+      if (shouldExpand) {
+        addControl(parentId, {
+          id: summaryId,
+          type: child.type,
+          count: 0,
+          expanded: explicitlyExpanded,
+        });
+        visible.push({
+          ...child,
+          expandedSummaryId: explicitlyExpanded
+            ? summaryId
+            : undefined,
+        });
+        appendChildren(child.id, explicitlyExpanded);
+        return;
+      }
+
+      const groupKey = JSON.stringify({
+        type: child.type,
+        sprint: parentId === ROOT_ID ? child.sprint || "" : "",
+      });
+
+      if (!collapsedGroups.has(groupKey)) {
+        collapsedGroups.set(groupKey, []);
+      }
+
+      collapsedGroups.get(groupKey).push(child);
+    });
+
+    collapsedGroups.forEach((items, groupKey) => {
+      const { type, sprint } = JSON.parse(groupKey);
+      const summaryId = summaryIdFor(
+        parentId,
+        type,
+        parentId === ROOT_ID ? sprint || "root" : ""
+      );
+      const hiddenIds = items.flatMap((item) => [
+        item.id,
+        ...descendantIdsFor(item.id, childrenByParent),
+      ]);
+      const latestUpdatedAt = items.reduce((latest, item) => {
+        const itemTime = new Date(item.updatedAt || item.createdAt || 0).getTime();
+        const latestTime = new Date(latest || 0).getTime();
+
+        return itemTime > latestTime ? item.updatedAt || item.createdAt : latest;
+      }, "");
+      const summaryWorklogIds = new Set();
+
+      items.forEach((item) => {
+        (storyPointTotals.worklogIdsById?.[item.id] || new Set()).forEach((id) =>
+          summaryWorklogIds.add(id)
+        );
+      });
+      const hiddenTimeMinutes = Array.from(summaryWorklogIds).reduce(
+        (total, id) =>
+          total + Number(storyPointTotals.worklogMinutesById?.[id] || 0),
+        0
+      );
+      const hiddenStoryPoints = hiddenIds.reduce((total, id) => {
+        const item = itemById.get(id);
+        return total + Number(item?.storyPoints || 0);
+      }, 0);
+      const summary = {
+        id: summaryId,
+        title: summaryLabelFor(type),
+        type: "completed-summary",
+        summaryType: type,
+        parentId,
+        sprint,
+        docketState: "artifact",
+        updatedAt: latestUpdatedAt,
+        createdAt: latestUpdatedAt,
+        hiddenChildIds: hiddenIds,
+        hiddenCount: hiddenIds.length,
+        hiddenRootCount: items.length,
+        hiddenTimeMinutes,
+        hiddenStoryPoints,
+        isVirtual: true,
+        isCompletedSummary: true,
+      };
+
+      visible.push(summary);
+      addControl(parentId, {
+        id: summaryId,
+        type,
+        count: hiddenIds.length,
+        expanded: false,
+      });
+    });
+  }
+
+  appendChildren(ROOT_ID);
+
+  return {
+    workItems: visible,
+    summaryControlsByParent,
+    summaryIds,
+    searchMatchIds: searchMatches,
+  };
+}
 
 function SeparatorGuide({ data }) {
   return (
@@ -452,6 +706,7 @@ function sameNodeData(first, second) {
     a.description === b.description &&
     a.category === b.category &&
     a.type === b.type &&
+    a.nodeType === b.nodeType &&
     a.docketState === b.docketState &&
     a.priority === b.priority &&
     a.parentId === b.parentId &&
@@ -462,6 +717,17 @@ function sameNodeData(first, second) {
     a.timeMinutes === b.timeMinutes &&
     a.calculatedStoryPoints === b.calculatedStoryPoints &&
     a.calculatedTimeMinutes === b.calculatedTimeMinutes &&
+    a.dayWorklogCount === b.dayWorklogCount &&
+    a.isDayRoot === b.isDayRoot &&
+    a.isProjectNode === b.isProjectNode &&
+    a.isSprintNode === b.isSprintNode &&
+    a.hiddenCount === b.hiddenCount &&
+    a.hiddenRootCount === b.hiddenRootCount &&
+    a.expandedSummaryId === b.expandedSummaryId &&
+    a.searchMatch === b.searchMatch &&
+    a.isCompletedSummary === b.isCompletedSummary &&
+    JSON.stringify(a.completedSummaryControls || []) ===
+      JSON.stringify(b.completedSummaryControls || []) &&
     a.updatedAt === b.updatedAt &&
     a.createdAt === b.createdAt &&
     a.selected === b.selected &&
@@ -658,10 +924,6 @@ function workNodePositions(nodes) {
 }
 
 function displayDateForItem(item) {
-  if (item.type !== "story" && item.type !== "job") {
-    return item.updatedAt || item.createdAt;
-  }
-
   const primaryWorklog = Array.isArray(item.worklogs)
     ? item.worklogs[0]
     : null;
@@ -681,6 +943,9 @@ function toFlowNodes({
   selectedId,
   existingPositions,
   actions,
+  completedSummaryControls = new Map(),
+  searchMatchIds = new Set(),
+  daySummary,
 }) {
   const rootUpdatedAt = workItems.reduce((latest, item) => {
     const itemTime = new Date(item.updatedAt || item.createdAt).getTime();
@@ -690,7 +955,7 @@ function toFlowNodes({
   }, "");
 
   const mainRootNode =
-    viewMode === "main" && !viewRootId
+    (viewMode === "main" || viewMode === "sprint" || viewMode === "day") && !viewRootId
       ? [
           {
             id: MAIN_ROOT_ID,
@@ -711,10 +976,17 @@ function toFlowNodes({
               },
               calculatedStoryPoints: storyPointTotals.rootTotal,
               calculatedTimeMinutes: storyPointTotals.rootTimeMinutes,
+              dayWorklogCount: daySummary?.worklogs || 0,
+              nodeType: viewMode === "sprint" ? "sprint" : "project",
+              isDayRoot: viewMode === "day",
               selected: selectedId === MAIN_ROOT_ID,
               isRoot: true,
               isVirtual: true,
-              allowChildActions: true,
+              isProjectNode: viewMode === "main",
+              isSprintNode: viewMode === "sprint",
+              allowChildActions: viewMode !== "day",
+              completedSummaryControls:
+                completedSummaryControls.get(MAIN_ROOT_ID) || [],
               ...actions,
             },
           },
@@ -742,14 +1014,18 @@ function toFlowNodes({
             },
             calculatedStoryPoints: storyPointTotals.rootTotal,
             calculatedTimeMinutes: storyPointTotals.rootTimeMinutes,
+            nodeType: "project",
             selected: selectedId === ROOT_ID,
             isRoot: true,
+            isProjectNode: true,
+            completedSummaryControls:
+              completedSummaryControls.get(ROOT_ID) || [],
             ...actions,
           },
         },
       ];
   const extraSprintNodes =
-    viewMode === "main" && !viewRootId
+    (viewMode === "main" || viewMode === "day") && !viewRootId
       ? sprints
           .filter((sprint) => sprint.id !== ROOT_ID)
           .map((sprint) => ({
@@ -770,12 +1046,18 @@ function toFlowNodes({
                 y: 64,
               },
               calculatedStoryPoints: 0,
-              calculatedTimeMinutes: 0,
+              calculatedTimeMinutes:
+                storyPointTotals.sprintTimeById?.[sprint.id] ??
+                storyPointTotals.sprintTimeByTitle?.[sprint.title] ??
+                0,
               selected: selectedId === sprint.id,
               isRoot: true,
               isVirtual: true,
+              isSprintNode: true,
               allowChildActions: true,
               childParentId: sprint.id,
+              completedSummaryControls:
+                completedSummaryControls.get(sprint.id) || [],
               ...actions,
             },
           }))
@@ -802,7 +1084,19 @@ function toFlowNodes({
           },
           selected: selectedId === (item.sourceId || item.id),
           calculatedStoryPoints: storyPointTotals.byId[item.id],
-          calculatedTimeMinutes: storyPointTotals.timeById[item.id],
+          calculatedTimeMinutes: item.isCompletedSummary
+            ? item.hiddenTimeMinutes
+            : storyPointTotals.timeById[item.id],
+          hiddenCount: item.hiddenCount,
+          hiddenRootCount: item.hiddenRootCount,
+          hiddenChildIds: item.hiddenChildIds,
+          expandedSummaryId: item.expandedSummaryId,
+          summaryType: item.summaryType,
+          isCompletedSummary: item.isCompletedSummary,
+          isVirtual: item.isVirtual,
+          searchMatch: searchMatchIds.has(item.sourceId || item.id),
+          completedSummaryControls:
+            completedSummaryControls.get(item.id) || [],
           ...actions,
         },
       };
@@ -827,13 +1121,35 @@ export default function GraphView({
   onStartChild,
   onStartSprint,
   layoutNonce,
+  searchQuery = "",
+  daySummary,
 }) {
   const reactFlowRef = useRef(null);
   const initialViewCenteredRef = useRef(false);
+  const focusedSearchRef = useRef("");
   const [canvasLocked, setCanvasLocked] = useState(false);
-  const showMainRoot = viewMode === "main" && !viewRootId;
+  const [expandedSummaryIds, setExpandedSummaryIds] = useState(
+    loadExpandedSummaryIds
+  );
+  const showMainRoot =
+    (viewMode === "main" || viewMode === "sprint" || viewMode === "day") &&
+    !viewRootId;
   const rootNodeId = viewRootId || (showMainRoot ? MAIN_ROOT_ID : ROOT_ID);
   const appliedLayoutKeyRef = useRef("");
+  const collapsedGraph = useMemo(
+    () =>
+      prepareCompletedCollapse({
+        workItems,
+        expandedSummaryIds,
+        searchQuery,
+        storyPointTotals,
+      }),
+    [expandedSummaryIds, searchQuery, storyPointTotals, workItems]
+  );
+  const renderedWorkItems = collapsedGraph.workItems;
+  const completedSummaryControls = collapsedGraph.summaryControlsByParent;
+  const searchMatchIds = collapsedGraph.searchMatchIds;
+  const availableSummaryIds = collapsedGraph.summaryIds;
   const layoutStructureKey = useMemo(
     () =>
       JSON.stringify({
@@ -845,32 +1161,62 @@ export default function GraphView({
           sprint.title,
           sprint.docketState,
         ]),
-        workItems: workItems.map((item) => [
+        workItems: renderedWorkItems.map((item) => [
           item.id,
           item.parentId,
           item.type,
+          item.hiddenCount,
         ]),
       }),
-    [layoutNonce, rootNodeId, viewMode, sprints, workItems]
+    [layoutNonce, rootNodeId, viewMode, sprints, renderedWorkItems]
   );
   const actions = useMemo(
     () => ({
       onStartChild,
       onStartSprint,
+      onToggleCompletedSummary: (summaryId) => {
+        setExpandedSummaryIds((current) => {
+          const next = new Set(current);
+
+          if (next.has(summaryId)) {
+            next.delete(summaryId);
+          } else {
+            next.add(summaryId);
+          }
+
+          saveExpandedSummaryIds(next);
+          return next;
+        });
+      },
     }),
     [onStartChild, onStartSprint]
   );
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
+
+  useLayoutEffect(() => {
+    setExpandedSummaryIds((current) => {
+      const next = new Set(
+        Array.from(current).filter((summaryId) =>
+          availableSummaryIds.has(summaryId)
+        )
+      );
+
+      if (next.size === current.size) return current;
+
+      saveExpandedSummaryIds(next);
+      return next;
+    });
+  }, [availableSummaryIds]);
   const connectorEdges = useMemo(
     () =>
       buildBranchConnectorEdges(
         nodes,
-        workItems,
+        renderedWorkItems,
         !viewRootId,
         rootNodeId,
         sprints
       ),
-    [nodes, rootNodeId, viewRootId, sprints, workItems]
+    [nodes, rootNodeId, viewRootId, sprints, renderedWorkItems]
   );
 
   const centerInitialViewOnRoot = useCallback(
@@ -885,7 +1231,6 @@ export default function GraphView({
 
       const rootSize = getNodeSize(rootNode);
       const rootCenterX = rootNode.position.x + rootSize.width / 2;
-      const topPadding = 96;
       const zoom = 1;
 
       initialViewCenteredRef.current = true;
@@ -893,6 +1238,8 @@ export default function GraphView({
       window.requestAnimationFrame(() => {
         const wrapper = document.querySelector(".graph-view");
         const width = wrapper?.clientWidth || window.innerWidth;
+        const topPadding =
+          viewMode === "day" ? (width < 760 ? 220 : 158) : 96;
 
         reactFlowRef.current?.setViewport(
           {
@@ -906,19 +1253,19 @@ export default function GraphView({
         );
       });
     },
-    [rootNodeId]
+    [rootNodeId, viewMode]
   );
 
   useLayoutEffect(() => {
     initialViewCenteredRef.current = false;
-  }, [rootNodeId]);
+  }, [rootNodeId, viewMode]);
 
   useLayoutEffect(() => {
     setNodes((currentNodes) => {
       const existingPositions = workNodePositions(currentNodes);
 
       const nextNodes = withSeparatorGuideNodes(toFlowNodes({
-        workItems,
+        workItems: renderedWorkItems,
         mainTitle,
         rootTitle,
         rootDocketState,
@@ -929,7 +1276,10 @@ export default function GraphView({
         selectedId,
         existingPositions,
         actions,
-      }), workItems, rootNodeId, sprints);
+        completedSummaryControls,
+        searchMatchIds,
+        daySummary,
+      }), renderedWorkItems, rootNodeId, sprints);
 
       return reconcileNodes(currentNodes, nextNodes);
     });
@@ -943,9 +1293,12 @@ export default function GraphView({
     selectedId,
     setNodes,
     storyPointTotals,
+    completedSummaryControls,
+    searchMatchIds,
+    daySummary,
     viewRootId,
     viewMode,
-    workItems,
+    renderedWorkItems,
   ]);
 
   useLayoutEffect(() => {
@@ -964,7 +1317,7 @@ export default function GraphView({
         currentNodes.filter(isWorkNode).map((node) => [node.id, node])
       );
       const baseNodes = toFlowNodes({
-        workItems,
+        workItems: renderedWorkItems,
         mainTitle,
         rootTitle,
         rootDocketState,
@@ -975,6 +1328,9 @@ export default function GraphView({
         selectedId,
         existingPositions,
         actions,
+        completedSummaryControls,
+        searchMatchIds,
+        daySummary,
       }).map((node) => {
         const measured = measuredById.get(node.id);
 
@@ -989,7 +1345,7 @@ export default function GraphView({
       });
       const layout = getLayoutedElements(
         baseNodes,
-        buildLayoutEdges(workItems, !viewRootId, showMainRoot, sprints),
+        buildLayoutEdges(renderedWorkItems, !viewRootId, showMainRoot, sprints),
         rootNodeId
       );
       const nextNodes = withSeparatorGuideNodes(layout.nodes.map((node) => ({
@@ -998,7 +1354,7 @@ export default function GraphView({
           ...node.data,
           position: node.position,
         },
-      })), workItems, rootNodeId, sprints);
+      })), renderedWorkItems, rootNodeId, sprints);
       const reconciledNodes = reconcileNodes(
         currentNodes,
         nextNodes
@@ -1018,15 +1374,47 @@ export default function GraphView({
     selectedId,
     setNodes,
     storyPointTotals,
+    completedSummaryControls,
+    searchMatchIds,
+    daySummary,
     viewRootId,
     viewMode,
     showMainRoot,
-    workItems,
+    renderedWorkItems,
   ]);
 
   useLayoutEffect(() => {
     centerInitialViewOnRoot(nodes);
   }, [centerInitialViewOnRoot, nodes]);
+
+  useLayoutEffect(() => {
+    const normalizedSearch = searchQuery.trim().toLowerCase();
+
+    if (!normalizedSearch || !reactFlowRef.current) {
+      focusedSearchRef.current = "";
+      return;
+    }
+
+    const match = nodes.find(
+      (node) => isWorkNode(node) && node.data?.searchMatch
+    );
+
+    if (!match?.position || focusedSearchRef.current === `${normalizedSearch}:${match.id}`) {
+      return;
+    }
+
+    focusedSearchRef.current = `${normalizedSearch}:${match.id}`;
+
+    const size = getNodeSize(match);
+    reactFlowRef.current.setCenter(
+      match.position.x + size.width / 2,
+      match.position.y + size.height / 2,
+      {
+        zoom: 1.05,
+        duration: 240,
+      }
+    );
+  }, [nodes, searchQuery]);
 
   const handleNodeClick = useCallback(
     (_event, node) => {

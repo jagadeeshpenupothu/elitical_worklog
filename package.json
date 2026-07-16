@@ -4,13 +4,18 @@
   "version": "0.0.0",
   "type": "module",
     "scripts": {
-  "dev": "vite",
+  "dev": "netlify dev",
+  "dev:desktop": "node scripts/dev-desktop.mjs",
+  "dev:vite": "vite --host 127.0.0.1 --port 5177 --strictPort",
+  "backend:local": "tsx local-backend/server.mjs",
   "build": "vite build",
   "lint": "eslint .",
   "preview": "vite preview",
   "verify:elitical": "tsx scripts/verify-elitical.ts",
   "verify:elitical-sync": "tsx scripts/verify-elitical-sync.ts",
-  "verify:elitical-graph": "tsx scripts/verify-elitical-graph-sync.ts"
+  "verify:elitical-graph": "tsx scripts/verify-elitical-graph-sync.ts",
+  "import:elitical:live": "tsx scripts/import-elitical-live.ts",
+  "capture:worklog-api": "node tools/capture-worklog-api.js"
   },
   "dependencies": {
     "chromium-bidi": "^0.5.24",

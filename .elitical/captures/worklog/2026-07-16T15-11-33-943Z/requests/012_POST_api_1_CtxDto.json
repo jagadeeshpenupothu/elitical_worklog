@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-07-16T15:12:16.662Z",
+  "method": "POST",
+  "url": "https://elitical.sayukth.com/api/1/CtxDto?utResCode=200",
+  "status": 200,
+  "requestBody": "{\"podId\":\"3f06af63-a93c-0001-9797-005056907001\",\"groupId\":\"1a06ad69-a69c-11e4-2024-005056901001\",\"companyId\":\"1a06ad69-a69c-11e4-2024-005056901002\",\"zoneId\":\"\",\"branchId\":\"\",\"podName\":null,\"groupName\":null,\"companyName\":null,\"zoneName\":null,\"branchName\":null,\"sessionOrgType\":null}",
+  "requestJson": {
+    "podId": "3f06af63-a93c-0001-9797-005056907001",
+    "groupId": "1a06ad69-a69c-11e4-2024-005056901001",
+    "companyId": "1a06ad69-a69c-11e4-2024-005056901002",
+    "zoneId": "",
+    "branchId": "",
+    "podName": null,
+    "groupName": null,
+    "companyName": null,
+    "zoneName": null,
+    "branchName": null,
+    "sessionOrgType": null
+  },
+  "requestSizeBytes": 281
+}

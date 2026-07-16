@@ -1,19 +1,9 @@
 import { useMemo, useState } from "react";
 
-const PLANNING_VIEW_LABELS = {
+const VIEW_LABELS = {
   backlog: "Backlog View",
-  timeline: "Timeline View",
-  calendar: "Calendar View",
-  month: "Month View",
-  week: "Week View",
-  day: "Day View",
-  range: "Custom Date Range",
-  worklog: "Work Log View",
+  worklog: "Worklog View",
 };
-
-const WORK_START_HOUR = 8;
-const WORK_END_HOUR = 21;
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 function dateKey(value) {
   const date = new Date(value);
@@ -21,54 +11,10 @@ function dateKey(value) {
   return date.toISOString().slice(0, 10);
 }
 
-function toDate(value) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function startOfDay(date) {
-  const next = new Date(date);
-  next.setHours(0, 0, 0, 0);
-  return next;
-}
-
-function addDays(date, days) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function startOfWeek(date) {
-  const next = startOfDay(date);
-  const day = next.getDay() || 7;
-  next.setDate(next.getDate() - day + 1);
-  return next;
-}
-
-function startOfMonth(date) {
-  return new Date(date.getFullYear(), date.getMonth(), 1);
-}
-
-function endOfMonth(date) {
-  return new Date(date.getFullYear(), date.getMonth() + 1, 0);
-}
-
 function formatDate(value, options = {}) {
-  const date = toDate(value);
-  if (!date) return "Unscheduled";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unscheduled";
   return new Intl.DateTimeFormat("en", options).format(date);
-}
-
-function formatHour(hour) {
-  return `${String(hour).padStart(2, "0")}:00`;
-}
-
-function itemScheduleDate(item) {
-  return item.plannedStartDate || item.dueDate || item.actualStartDate || item.createdAt;
-}
-
-function itemEndDate(item) {
-  return item.plannedEndDate || item.dueDate || item.actualEndDate || itemScheduleDate(item);
 }
 
 function itemLoggedHours(item) {
@@ -87,55 +33,16 @@ function itemStoryPoints(item) {
   return Number(item.storyPoints || 0);
 }
 
-function itemMatchesDate(item, key) {
-  return dateKey(itemScheduleDate(item)) === key ||
-    dateKey(itemEndDate(item)) === key ||
-    dateKey(item.dueDate) === key ||
-    (Array.isArray(item.worklogs) &&
-      item.worklogs.some((entry) => dateKey(entry.date) === key));
-}
-
-function itemWithinRange(item, start, end) {
-  const itemStart = toDate(itemScheduleDate(item));
-  const itemEnd = toDate(itemEndDate(item));
-
-  if (!itemStart && !itemEnd) return false;
-
-  const normalizedStart = startOfDay(start);
-  const normalizedEnd = startOfDay(end);
-  const scheduledStart = startOfDay(itemStart || itemEnd);
-  const scheduledEnd = startOfDay(itemEnd || itemStart);
-
-  return scheduledStart <= normalizedEnd && scheduledEnd >= normalizedStart;
-}
-
-function rangeDays(start, end) {
-  const days = [];
-  let cursor = startOfDay(start);
-  const last = startOfDay(end);
-
-  while (cursor <= last) {
-    days.push(new Date(cursor));
-    cursor = addDays(cursor, 1);
-  }
-
-  return days;
-}
-
-function monthDays(anchor) {
-  const first = startOfWeek(startOfMonth(anchor));
-  const last = addDays(startOfWeek(endOfMonth(anchor)), 6);
-  return rangeDays(first, last);
-}
-
-function hoursForDay(items) {
-  return items.reduce(
-    (totals, item) => ({
-      estimated: totals.estimated + Number(item.estimatedHours || 0),
-      logged: totals.logged + itemLoggedHours(item),
-      remaining: totals.remaining + Number(item.remainingHours || 0),
-      storyPoints: totals.storyPoints + itemStoryPoints(item),
-      completed: totals.completed + (item.docketState === "closed" ? 1 : 0),
+function allStats(items) {
+  const totals = items.reduce(
+    (acc, item) => ({
+      estimated: acc.estimated + Number(item.estimatedHours || 0),
+      logged: acc.logged + itemLoggedHours(item),
+      remaining: acc.remaining + Number(item.remainingHours || 0),
+      storyPoints: acc.storyPoints + itemStoryPoints(item),
+      completed:
+        acc.completed +
+        (["artifact", "closed"].includes(item.docketState) ? 1 : 0),
     }),
     {
       estimated: 0,
@@ -145,17 +52,11 @@ function hoursForDay(items) {
       completed: 0,
     }
   );
-}
-
-function allStats(items) {
-  const totals = hoursForDay(items);
-  const completion = items.length > 0
-    ? Math.round((totals.completed / items.length) * 100)
-    : 0;
 
   return {
     ...totals,
-    completion,
+    completion:
+      items.length > 0 ? Math.round((totals.completed / items.length) * 100) : 0,
   };
 }
 
@@ -173,7 +74,7 @@ function optionValues(items, field) {
   ).sort((a, b) => a.localeCompare(b));
 }
 
-function PlanningCard({ item, onOpenDetails }) {
+function PlanningCard({ item, onOpenDetails, actionLabel = "Open" }) {
   return (
     <button
       type="button"
@@ -183,9 +84,10 @@ function PlanningCard({ item, onOpenDetails }) {
       <span>{item.title}</span>
       <small>
         {item.type} · {item.docketState}
-        {item.estimatedHours ? ` · ${item.estimatedHours}h est` : ""}
-        {itemLoggedHours(item) ? ` · ${itemLoggedHours(item)}h logged` : ""}
+        {item.storyPoints ? ` · ${item.storyPoints} SP` : ""}
+        {itemLoggedHours(item) ? ` · ${itemLoggedHours(item).toFixed(1)}h logged` : ""}
       </small>
+      <strong>{actionLabel}</strong>
     </button>
   );
 }
@@ -193,7 +95,6 @@ function PlanningCard({ item, onOpenDetails }) {
 function PlanningStats({ stats }) {
   return (
     <div className="planning-stats">
-      <span>{stats.estimated.toFixed(1)}h Estimated</span>
       <span>{stats.logged.toFixed(1)}h Logged</span>
       <span>{stats.remaining.toFixed(1)}h Remaining</span>
       <span>{stats.storyPoints} SP</span>
@@ -207,14 +108,7 @@ export default function PlanningView({
   workItems,
   sprints,
   onOpenDetails,
-  anchorDate: controlledAnchorDate,
-  onAnchorDateChange,
-  onOpenDay,
 }) {
-  const today = useMemo(() => startOfDay(new Date()), []);
-  const [localAnchorDate, setLocalAnchorDate] = useState(dateKey(today));
-  const [rangeStart, setRangeStart] = useState(dateKey(addDays(today, -7)));
-  const [rangeEnd, setRangeEnd] = useState(dateKey(addDays(today, 14)));
   const [filters, setFilters] = useState({
     sprint: "",
     epic: "",
@@ -238,36 +132,11 @@ export default function PlanningView({
     });
   }, [filters, workItems]);
 
-  const anchorDate = controlledAnchorDate || localAnchorDate;
-  const anchor = toDate(anchorDate) || today;
-  const activeMode = viewMode === "calendar" ? "month" : viewMode;
   const stats = useMemo(() => allStats(filteredItems), [filteredItems]);
   const epicOptions = useMemo(
     () => workItems.filter((item) => item.type === "epic"),
     [workItems]
   );
-
-  const dateRange = useMemo(() => {
-    if (activeMode === "month") return monthDays(anchor);
-    if (activeMode === "week") return rangeDays(startOfWeek(anchor), addDays(startOfWeek(anchor), 6));
-    if (activeMode === "day") return [anchor];
-    if (activeMode === "range") {
-      const start = toDate(rangeStart) || anchor;
-      const end = toDate(rangeEnd) || start;
-      return rangeDays(start <= end ? start : end, end >= start ? end : start);
-    }
-
-    return [];
-  }, [activeMode, anchor, rangeEnd, rangeStart]);
-
-  const rangedItems = useMemo(() => {
-    if (!["month", "week", "day", "range"].includes(activeMode)) return filteredItems;
-    if (dateRange.length === 0) return filteredItems;
-
-    const start = dateRange[0];
-    const end = dateRange[dateRange.length - 1];
-    return filteredItems.filter((item) => itemWithinRange(item, start, end));
-  }, [activeMode, dateRange, filteredItems]);
 
   function updateFilter(field, value) {
     setFilters((current) => ({
@@ -276,122 +145,9 @@ export default function PlanningView({
     }));
   }
 
-  function renderCalendarGrid(days) {
-    return (
-      <div className={`planning-calendar ${activeMode}`}>
-        {days.map((day) => {
-          const key = dateKey(day);
-          const dayItems = rangedItems.filter((item) => itemMatchesDate(item, key));
-          const dayStats = hoursForDay(dayItems);
-
-          return (
-            <section key={key} className="planning-day-cell">
-              <header>
-                <button
-                  type="button"
-                  className="planning-day-link"
-                  onClick={() => onOpenDay?.(key)}
-                >
-                  {formatDate(day, { weekday: "short", day: "numeric" })}
-                </button>
-                <span>{dayStats.logged.toFixed(1)}h / {dayStats.estimated.toFixed(1)}h</span>
-              </header>
-              <small>
-                {dayItems.filter((item) => item.type === "job").length} jobs ·{" "}
-                {dayItems.filter((item) => item.type === "story").length} stories ·{" "}
-                {dayStats.logged.toFixed(1)}h logged
-              </small>
-              <div className="planning-card-list">
-                {dayItems.map((item) => (
-                  <PlanningCard
-                    key={item.id}
-                    item={item}
-                    onOpenDetails={onOpenDetails}
-                  />
-                ))}
-              </div>
-            </section>
-          );
-        })}
-      </div>
-    );
-  }
-
-  function renderDayPlanner() {
-    const key = dateKey(anchor);
-    const dayItems = rangedItems.filter((item) => itemMatchesDate(item, key));
-
-    return (
-      <div className="planning-day-planner">
-        {Array.from({ length: WORK_END_HOUR - WORK_START_HOUR + 1 }, (_, index) => {
-          const hour = WORK_START_HOUR + index;
-
-          return (
-            <section key={hour} className="planning-hour-row">
-              <time>{formatHour(hour)}</time>
-              <div>
-                {dayItems
-                  .filter((_, itemIndex) => itemIndex % (WORK_END_HOUR - WORK_START_HOUR + 1) === index)
-                  .map((item) => (
-                    <PlanningCard
-                      key={item.id}
-                      item={item}
-                      onOpenDetails={onOpenDetails}
-                    />
-                  ))}
-              </div>
-            </section>
-          );
-        })}
-      </div>
-    );
-  }
-
-  function renderTimeline() {
-    const items = filteredItems.filter((item) =>
-      ["epic", "story", "task", "job"].includes(item.type) &&
-      (item.plannedStartDate || item.dueDate)
-    );
-    const dates = items.flatMap((item) => [itemScheduleDate(item), itemEndDate(item)])
-      .map(toDate)
-      .filter(Boolean);
-    const start = dates.length ? new Date(Math.min(...dates.map((date) => date.getTime()))) : today;
-    const end = dates.length ? new Date(Math.max(...dates.map((date) => date.getTime()))) : addDays(today, 14);
-    const totalDays = Math.max(1, Math.round((startOfDay(end) - startOfDay(start)) / DAY_MS) + 1);
-
-    return (
-      <div className="planning-timeline">
-        {items.map((item) => {
-          const itemStart = toDate(itemScheduleDate(item)) || start;
-          const itemEnd = toDate(itemEndDate(item)) || itemStart;
-          const offset = Math.max(0, Math.round((startOfDay(itemStart) - startOfDay(start)) / DAY_MS));
-          const span = Math.max(1, Math.round((startOfDay(itemEnd) - startOfDay(itemStart)) / DAY_MS) + 1);
-
-          return (
-            <button
-              key={item.id}
-              type="button"
-              className="planning-timeline-row"
-              onClick={() => onOpenDetails(item.id)}
-            >
-              <span>{item.title}</span>
-              <div>
-                <i
-                  style={{
-                    marginLeft: `${(offset / totalDays) * 100}%`,
-                    width: `${Math.min(100, (span / totalDays) * 100)}%`,
-                  }}
-                />
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    );
-  }
-
   function renderWorklog() {
-    const entries = filteredItems.flatMap((item) =>
+    const jobs = filteredItems.filter((item) => item.type === "job");
+    const entries = jobs.flatMap((item) =>
       (item.worklogs || []).map((entry) => ({
         item,
         entry,
@@ -406,6 +162,20 @@ export default function PlanningView({
 
     return (
       <div className="planning-worklog">
+        <section>
+          <header>
+            <strong>Jobs</strong>
+            <span>{jobs.length} ready to log</span>
+          </header>
+          {jobs.map((item) => (
+            <PlanningCard
+              key={item.id}
+              item={item}
+              onOpenDetails={onOpenDetails}
+              actionLabel="Quick Log"
+            />
+          ))}
+        </section>
         {Array.from(grouped.entries())
           .sort(([a], [b]) => b.localeCompare(a))
           .map(([key, dayEntries]) => {
@@ -443,7 +213,11 @@ export default function PlanningView({
         {filteredItems
           .filter((item) => !item.sprint)
           .map((item) => (
-            <PlanningCard key={item.id} item={item} onOpenDetails={onOpenDetails} />
+            <PlanningCard
+              key={item.id}
+              item={item}
+              onOpenDetails={onOpenDetails}
+            />
           ))}
       </div>
     );
@@ -453,38 +227,13 @@ export default function PlanningView({
     <main className="planning-view">
       <header className="planning-header">
         <div>
-          <span>Planning</span>
-          <h1>{PLANNING_VIEW_LABELS[viewMode] || "Planning View"}</h1>
+          <span>{viewMode === "worklog" ? "Worklog" : "Backlog"}</span>
+          <h1>{VIEW_LABELS[viewMode] || "Worklog View"}</h1>
         </div>
         <PlanningStats stats={stats} />
       </header>
 
       <section className="planning-filters">
-        <input
-          type="date"
-          value={anchorDate}
-          onChange={(event) => {
-            setLocalAnchorDate(event.target.value);
-            onAnchorDateChange?.(event.target.value);
-          }}
-          aria-label="Anchor date"
-        />
-        {activeMode === "range" && (
-          <>
-            <input
-              type="date"
-              value={rangeStart}
-              onChange={(event) => setRangeStart(event.target.value)}
-              aria-label="Range start"
-            />
-            <input
-              type="date"
-              value={rangeEnd}
-              onChange={(event) => setRangeEnd(event.target.value)}
-              aria-label="Range end"
-            />
-          </>
-        )}
         <select value={filters.sprint} onChange={(event) => updateFilter("sprint", event.target.value)}>
           <option value="">All sprints</option>
           {sprints.map((sprint) => (
@@ -530,11 +279,7 @@ export default function PlanningView({
       </section>
 
       <section className="planning-surface">
-        {activeMode === "timeline" && renderTimeline()}
-        {activeMode === "worklog" && renderWorklog()}
-        {activeMode === "backlog" && renderBacklog()}
-        {["month", "week", "range"].includes(activeMode) && renderCalendarGrid(dateRange)}
-        {activeMode === "day" && renderDayPlanner()}
+        {viewMode === "backlog" ? renderBacklog() : renderWorklog()}
       </section>
     </main>
   );

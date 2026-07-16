@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-07-16T15:12:44.034Z",
+  "method": "GET",
+  "url": "https://elitical.sayukth.com/api/1/DocketComment/list?utResCode=200&docketId=42bda7bb-6f1c-4bda-a9c8-91124bc606b5",
+  "status": 200,
+  "responseBody": "",
+  "responseJson": null,
+  "responseSizeBytes": 0
+}

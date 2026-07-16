@@ -71,6 +71,46 @@ function childTypes(data) {
 }
 
 function nodeIcon(data) {
+  if (data.type === "completed-summary") {
+    return (
+      <span className="node-type-icon node-type-icon-summary" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M3 6.5A2.5 2.5 0 0 1 5.5 4H10l2 2h6.5A2.5 2.5 0 0 1 21 8.5v9A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5v-11Z" />
+        </svg>
+      </span>
+    );
+  }
+
+  if (data.nodeType === "sprint" || data.isSprintNode) {
+    return (
+      <span className="node-type-icon node-type-icon-sprint" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M6 4v16" />
+          <path d="M7 5h10l-1.7 3L17 11H7" />
+        </svg>
+      </span>
+    );
+  }
+
+  if (
+    data.nodeType === "project" ||
+    data.isProjectNode ||
+    data.type === "main-root" ||
+    data.type === "story-root"
+  ) {
+    return (
+      <span className="node-type-icon node-type-icon-project" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <rect x="4" y="4" width="6" height="6" />
+          <rect x="14" y="4" width="6" height="6" />
+          <rect x="4" y="14" width="6" height="6" />
+          <path d="M10 7h4" />
+          <path d="M7 10v4" />
+        </svg>
+      </span>
+    );
+  }
+
   if (data.type === "epic") {
     return (
       <span className="node-type-icon node-type-icon-epic" aria-hidden="true">
@@ -124,6 +164,8 @@ function JiraNode({ data }) {
     : childTypes(data);
   const showSp = hasStoryPoints(data);
   const timeValue = data.calculatedTimeMinutes || 0;
+  const summaryControls = data.completedSummaryControls || [];
+  const isDayRoot = Boolean(data.isDayRoot);
 
   function startChild(type, event) {
     stopCanvasEvent(event);
@@ -136,11 +178,18 @@ function JiraNode({ data }) {
     });
   }
 
+  function toggleSummary(summaryId, event) {
+    stopCanvasEvent(event);
+    data.onToggleCompletedSummary?.(summaryId);
+  }
+
   return (
     <div
       className={`jira-node ${data.type} docket-${data.docketState || "concept"} ${
         data.selected ? "selected" : ""
-      }`}
+      } ${data.searchMatch ? "search-match" : ""} ${
+        data.isContextNode || data.isSprintContext ? "sprint-context" : ""
+      } ${isDayRoot ? "day-root" : ""}`}
       title={data.title}
     >
       <Handle type="target" position={Position.Top} />
@@ -155,22 +204,85 @@ function JiraNode({ data }) {
         </div>
 
         <div className="node-meta">
-          <div className="node-meta-pill node-state-badge">
-            {formatDocketState(data.docketState)}
-          </div>
-          {showSp && (
-            <div className="node-meta-pill">
-              {storyPointValue(data)} SP
-            </div>
+          {isDayRoot ? (
+            <>
+              <div className="node-meta-pill node-state-badge">
+                {data.dayWorklogCount || 0} Worklogs
+              </div>
+              <div className="node-meta-pill">
+                {formatTime(timeValue)} Logged
+              </div>
+            </>
+          ) : (
+            <>
+              {data.isCompletedSummary ? (
+                <div className="node-meta-pill node-state-badge">
+                  {data.hiddenCount || 0} Items
+                </div>
+              ) : (
+                <div className="node-meta-pill node-state-badge">
+                  {formatDocketState(data.docketState)}
+                </div>
+              )}
+              {showSp && !data.isCompletedSummary && (
+                <div className="node-meta-pill">
+                  {storyPointValue(data)} SP
+                </div>
+              )}
+              <div className="node-meta-pill">
+                {formatTime(timeValue)}
+              </div>
+              <div className="node-meta-pill node-updated">
+                {formatShortDate(data.updatedAt || data.createdAt)}
+              </div>
+            </>
           )}
-          <div className="node-meta-pill">
-            {formatTime(timeValue)}
-          </div>
-          <div className="node-meta-pill node-updated">
-            {formatShortDate(data.updatedAt || data.createdAt)}
-          </div>
         </div>
       </div>
+
+      {data.isCompletedSummary && (
+        <div className="node-summary-action">
+          <button
+            type="button"
+            className="summary-toggle-button nodrag nopan"
+            onPointerDown={stopCanvasEvent}
+            onClick={(event) => toggleSummary(data.id, event)}
+          >
+            Expand
+          </button>
+        </div>
+      )}
+
+      {!data.isCompletedSummary && summaryControls.length > 0 && (
+        <div className="node-summary-controls">
+          {summaryControls
+            .filter((control) => control.expanded)
+            .map((control) => (
+              <button
+                key={control.id}
+                type="button"
+                className="summary-toggle-button nodrag nopan"
+                onPointerDown={stopCanvasEvent}
+                onClick={(event) => toggleSummary(control.id, event)}
+              >
+                Collapse Completed
+              </button>
+            ))}
+        </div>
+      )}
+
+      {!data.isCompletedSummary && data.expandedSummaryId && (
+        <div className="node-summary-controls">
+          <button
+            type="button"
+            className="summary-toggle-button nodrag nopan"
+            onPointerDown={stopCanvasEvent}
+            onClick={(event) => toggleSummary(data.expandedSummaryId, event)}
+          >
+            Collapse Completed
+          </button>
+        </div>
+      )}
 
       {availableChildTypes.length > 0 && (
         <div className="node-child-action">

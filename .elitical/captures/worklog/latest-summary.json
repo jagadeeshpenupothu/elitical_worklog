@@ -1,0 +1,13 @@
+{
+  "capturedAt": "2026-07-16T15:01:38.720Z",
+  "captureRoot": ".elitical/captures/worklog/2026-07-16T15-00-21-043Z",
+  "eventCount": 19,
+  "candidateFound": true,
+  "candidate": {
+    "method": "POST",
+    "url": "https://elitical.sayukth.com/api/1/IssuesBoard?utResCode=200",
+    "status": 200,
+    "requestFile": ".elitical/captures/worklog/2026-07-16T15-00-21-043Z/worklog-create-request.json",
+    "responseFile": ".elitical/captures/worklog/2026-07-16T15-00-21-043Z/worklog-create-response.json"
+  }
+}

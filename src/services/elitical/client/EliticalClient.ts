@@ -42,6 +42,29 @@ function listPayload<T>(payload: unknown, key: string): T[] {
   return [];
 }
 
+function positiveInteger(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function duplicateDocketIdCount(issues: Issue[]) {
+  const seen = new Set<string>();
+  let duplicates = 0;
+
+  issues.forEach((issue) => {
+    if (!issue.id) return;
+
+    if (seen.has(issue.id)) {
+      duplicates += 1;
+      return;
+    }
+
+    seen.add(issue.id);
+  });
+
+  return duplicates;
+}
+
 function requireRecord<T>(payload: unknown, endpoint: string): T {
   if (!isRecord(payload)) {
     throw new EliticalClientError(
@@ -110,9 +133,11 @@ export class EliticalClient implements EliticalClientContract {
 
   async getSprints(projectId: string): Promise<Sprint[]> {
     const response = await this.request({
-      path: "/api/1/Sprint/activeList/projectId",
-      query: {
+      method: "POST",
+      path: "/api/1/Sprint/projectId",
+      body: {
         projectId,
+        sprintStateSet: null,
       },
     });
 
@@ -120,16 +145,47 @@ export class EliticalClient implements EliticalClientContract {
   }
 
   async getIssues(projectId: string): Promise<Issue[]> {
-    const response = await this.request({
+    const baseBody = {
+      projectId,
+      currentPage: 1,
+      pagesize: 25,
+    };
+
+    const firstResponse = await this.request({
       method: "POST",
       path: "/api/1/IssuesBoard",
       referrerPath: "/docket/issues/list",
-      body: {
-        projectId,
-      },
+      body: baseBody,
     });
 
-    return listPayload<Issue>(response.payload, "issues");
+    const totalPage = isRecord(firstResponse.payload)
+      ? positiveInteger(firstResponse.payload.totalPage, 1)
+      : 1;
+    const allDockets = listPayload<Issue>(firstResponse.payload, "issues");
+
+    console.log(`Fetching page 1/${totalPage}`);
+
+    for (let currentPage = 2; currentPage <= totalPage; currentPage += 1) {
+      console.log(`Fetching page ${currentPage}/${totalPage}`);
+
+      const pageResponse = await this.request({
+        method: "POST",
+        path: "/api/1/IssuesBoard",
+        referrerPath: "/docket/issues/list",
+        body: {
+          ...baseBody,
+          currentPage,
+        },
+      });
+
+      allDockets.push(...listPayload<Issue>(pageResponse.payload, "issues"));
+    }
+
+    console.log("Total pages fetched:", totalPage);
+    console.log("Total dockets fetched:", allDockets.length);
+    console.log("Duplicate docket IDs:", duplicateDocketIdCount(allDockets));
+
+    return allDockets;
   }
 
   async getDocket(docketId: string): Promise<Docket> {
@@ -151,7 +207,7 @@ export class EliticalClient implements EliticalClientContract {
       },
     });
 
-    return listPayload<Worklog>(response.payload, "worklogs");
+    return listPayload<Worklog>(response.payload, "worklogList");
   }
 
   async createWorklog(_payload: CreateWorklogPayload): Promise<Worklog> {
