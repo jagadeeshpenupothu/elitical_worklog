@@ -8,11 +8,9 @@ import {
 import GraphView from "./views/GraphView";
 import PlanningView from "./views/PlanningView";
 import {
-  CREATE_NEW_EPIC_ID,
-  PREDEFINED_EPICS,
-} from "./data/predefinedEpics";
-import { PREDEFINED_SPRINTS } from "./data/predefinedSprints";
-import yamlText from "./data/jira.yaml?raw";
+  loadEliticalData,
+  loadEliticalEpicPresets,
+} from "./services/elitical/loadEliticalData";
 import { buildTimeGraph } from "./utils/planningGraph";
 import {
   CATEGORIES,
@@ -25,14 +23,12 @@ import {
   deleteWorkItem,
   generateWorkItemId,
   generateSprintId,
-  normalizeSeedData,
   normalizeWorklogSnapshot,
   stableSnapshotString,
   updateWorkItem,
 } from "./utils/worklogModel";
 import { loadLegacyStoryViewState } from "./utils/storage";
 import {
-  loadCache,
   saveCache,
 } from "./utils/cache";
 import {
@@ -42,6 +38,9 @@ import {
 import "./App.css";
 
 const MAIN_ROOT_ID = "mainRoot";
+const CREATE_NEW_EPIC_ID = "__create_new_epic__";
+const ELITICAL_INITIAL_STATE = loadEliticalData();
+const ELITICAL_EPIC_PRESETS = loadEliticalEpicPresets();
 const PLANNING_VIEWS = [
   { id: "backlog", label: "Backlog View" },
   { id: "timeline", label: "Timeline View" },
@@ -56,19 +55,18 @@ const PLANNING_VIEW_IDS = new Set(PLANNING_VIEWS.map((view) => view.id));
 const GRAPH_TIME_VIEW_IDS = new Set(["day", "week", "month", "range", "timeline"]);
 const EPIC_PRESET_OPTIONS = [
   CREATE_NEW_EPIC_ID,
-  ...PREDEFINED_EPICS.map((epic) => epic.id),
+  ...ELITICAL_EPIC_PRESETS.map((epic) => epic.id),
 ];
-const PREDEFINED_SPRINT_IDS = new Set(PREDEFINED_SPRINTS.map((sprint) => sprint.id));
 
 function epicPresetLabel(id) {
   if (id === CREATE_NEW_EPIC_ID) return "Create New Epic";
 
-  const epic = PREDEFINED_EPICS.find((entry) => entry.id === id);
+  const epic = ELITICAL_EPIC_PRESETS.find((entry) => entry.id === id);
   return epic ? `${epic.id} · ${epic.title}` : id;
 }
 
 function epicPresetDraft(id, fallbackSprint, fallbackDocketState) {
-  const epic = PREDEFINED_EPICS.find((entry) => entry.id === id);
+  const epic = ELITICAL_EPIC_PRESETS.find((entry) => entry.id === id);
 
   if (!epic) {
     return {
@@ -405,33 +403,9 @@ function normalizeStoryStateArtifactRollup(state) {
   };
 }
 
-function withRealSprints(state) {
-  const existingSprints = Array.isArray(state?.sprints) ? state.sprints : [];
-  const rootSprint = existingSprints.find((sprint) => sprint.id === ROOT_ID) || {
-    id: ROOT_ID,
-    title: state?.rootTitle || "Sprint View",
-    docketState: state?.rootDocketState || "concept",
-  };
-  const customSprints = existingSprints.filter(
-    (sprint) =>
-      sprint.id !== ROOT_ID &&
-      !PREDEFINED_SPRINT_IDS.has(sprint.id) &&
-      !/^sprint-\d+$/i.test(sprint.id)
-  );
-
-  return {
-    ...state,
-    sprints: [
-      rootSprint,
-      ...PREDEFINED_SPRINTS,
-      ...customSprints,
-    ],
-  };
-}
-
 function snapshotFromState(state) {
   const result = buildWorklogSnapshot(
-    normalizeStoryStateArtifactRollup(withRealSprints(state))
+    normalizeStoryStateArtifactRollup(state)
   );
 
   if (!result.valid) {
@@ -449,7 +423,7 @@ function normalizeLoadedSnapshot(snapshot) {
   }
 
   return {
-    state: normalizeStoryStateArtifactRollup(withRealSprints(result.state)),
+    state: normalizeStoryStateArtifactRollup(result.state),
     snapshot: snapshotFromState(result.state),
   };
 }
@@ -1731,22 +1705,21 @@ function WorkItemModal({
 }
 
 function App() {
-  const cachedRecord = useMemo(() => loadCache(), []);
-  const cachedSnapshot = useMemo(() => {
-    if (!cachedRecord?.snapshot) return null;
-
+  const importedSnapshot = useMemo(() => {
     try {
-      return normalizeLoadedSnapshot(cachedRecord.snapshot);
+      return snapshotFromState(ELITICAL_INITIAL_STATE);
     } catch {
       return null;
     }
-  }, [cachedRecord]);
+  }, []);
   const [storyState, setStoryState] = useState(
-    cachedSnapshot?.state || null
+    ELITICAL_INITIAL_STATE
   );
   const [selectedId, setSelectedId] = useState(null);
   const [modal, setModal] = useState(null);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(
+    "Imported Elitical data"
+  );
   const [layoutNonce, setLayoutNonce] = useState(1);
   const [viewMode, setViewMode] = useState("sprint");
   const [viewRootId, setViewRootId] = useState(null);
@@ -1763,21 +1736,17 @@ function App() {
     formatDateInput(new Date(new Date().setDate(new Date().getDate() + 14)))
   );
   const [loadState, setLoadState] = useState(
-    cachedSnapshot ? "ready" : "loading"
+    "ready"
   );
   const [syncState, setSyncState] = useState(
-    cachedSnapshot ? "syncing" : "loading"
+    "syncing"
   );
   const [saveState, setSaveState] = useState("idle");
-  const [baseSha, setBaseSha] = useState(
-    cachedSnapshot ? cachedRecord.sha : ""
-  );
+  const [baseSha, setBaseSha] = useState("");
   const [baselineSnapshot, setBaselineSnapshot] = useState(
-    cachedSnapshot?.snapshot || null
+    importedSnapshot
   );
-  const [lastSyncedAt, setLastSyncedAt] = useState(
-    cachedRecord?.lastSyncedAt || ""
-  );
+  const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [legacyState, setLegacyState] = useState(null);
   const [showLegacyNotice, setShowLegacyNotice] = useState(false);
 
@@ -1792,7 +1761,6 @@ function App() {
   const storyStateRef = useRef(storyState);
   const saveRequestIdRef = useRef(0);
   const hasCheckedLegacyRef = useRef(false);
-  const initialSyncStartedRef = useRef(false);
   const currentSnapshot = useMemo(
     () => (storyState ? snapshotFromState(storyState) : null),
     [storyState]
@@ -1991,17 +1959,6 @@ function App() {
       }
     }
   }, [applyLoadedSnapshot, baseSha, checkLegacyState]);
-
-  useEffect(() => {
-    if (initialSyncStartedRef.current) return;
-
-    initialSyncStartedRef.current = true;
-    queueMicrotask(() => {
-      loadRemoteSnapshot({
-        block: !cachedSnapshot,
-      });
-    });
-  }, [cachedSnapshot, loadRemoteSnapshot]);
 
   useEffect(() => {
     if (!dirty) return undefined;
@@ -2477,13 +2434,13 @@ function App() {
 
   const handleUseSampleLocally = useCallback(() => {
     const seedState = normalizeStoryStateArtifactRollup(
-      withRealSprints(normalizeSeedData(yamlText))
+      ELITICAL_INITIAL_STATE
     );
     setStoryState(seedState);
     workItemsRef.current = seedState.workItems;
     setLoadState("ready");
     setSaveState("idle");
-    setMessage("Unsaved local sample data");
+    setMessage("Imported Elitical data");
     setSelectedId(null);
     setViewMode("sprint");
     setViewRootId(null);
@@ -2494,7 +2451,7 @@ function App() {
   const handleUseLegacyState = useCallback(() => {
     if (!legacyState) return;
 
-    const normalized = normalizeStoryStateArtifactRollup(withRealSprints(legacyState));
+    const normalized = normalizeStoryStateArtifactRollup(legacyState);
     setStoryState(normalized);
     workItemsRef.current = normalized.workItems;
     setShowLegacyNotice(false);
@@ -2546,7 +2503,7 @@ function App() {
               Retry
             </button>
             <button type="button" onClick={handleUseSampleLocally}>
-              Use Sample Data Locally
+              Use Imported Elitical Data
             </button>
           </div>
         </section>

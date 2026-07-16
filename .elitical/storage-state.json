@@ -12,7 +12,7 @@
     },
     {
       "name": "JSESSIONID",
-      "value": "A4964A31E69AA964919E256A6AEF6178",
+      "value": "E15F98D890C1BBC4D54EFD80A8FC4B54",
       "domain": "elitical.sayukth.com",
       "path": "/",
       "expires": -1,
@@ -22,7 +22,7 @@
     },
     {
       "name": "hazelcast.sessionId",
-      "value": "HZ804BC1428FC444A8B29330A3C83A642F",
+      "value": "HZCEF3D0CDDB5B4267B429684BECD1A5D4",
       "domain": "elitical.sayukth.com",
       "path": "/",
       "expires": -1,
@@ -44,6 +44,10 @@
           "value": "\"1a06ad69-a69c-11e4-2024-005056901001\""
         },
         {
+          "name": "flutter.selected_service_route",
+          "value": "\"/docket\""
+        },
+        {
           "name": "flutter.isHrOrPMO",
           "value": "false"
         },
@@ -52,8 +56,20 @@
           "value": "\"ACCOUNT_VIEW\""
         },
         {
+          "name": "flutter.sprintName",
+          "value": "\"\""
+        },
+        {
           "name": "flutter.featureIDPrefs",
           "value": "\"\""
+        },
+        {
+          "name": "flutter.projectId",
+          "value": "\"96d70d5d-c0ad-482a-93a1-6572d6935db5\""
+        },
+        {
+          "name": "flutter.projectName",
+          "value": "\"IT Admin\""
         },
         {
           "name": "flutter.companyName",
@@ -84,16 +100,20 @@
           "value": "\"Jagadeesh  Penupothu\""
         },
         {
-          "name": "flutter.sessionTimeout",
-          "value": "900000"
-        },
-        {
           "name": "flutter.zoneId",
           "value": "\"\""
         },
         {
+          "name": "flutter.sessionTimeout",
+          "value": "900000"
+        },
+        {
           "name": "flutter.sessionOrgType",
           "value": "\"Company\""
+        },
+        {
+          "name": "flutter.teamId",
+          "value": "\"736e45ec-deaa-4f40-91d7-e352d0357932\""
         },
         {
           "name": "flutter.branchId",
@@ -129,11 +149,15 @@
         },
         {
           "name": "flutter.authorization",
-          "value": "Bearer eyJ0eXAiOiJKV1QiLCJpdHQiOjE3ODQxMTY0Njg5OTMsImFsZyI6IkhTNTEyIn0.eyJpc3MiOiJzZWN1cmUtYXBpIiwiYXVkIjoic2VjdXJlLWFwaSIsInN1YiI6ImVhNjQ0MTlhLTM2NWUtNDNhNy1iNjlkLWQxMDM2NmRhZGIyMSIsImV4cCI6MTc4NDExODY0Nywicm9sIjpbXX0.LFXoaf9CulDLVa8C5lTdkvvYU_c6VSRQGvGJzbzOInLVxE8B24PiawbMx6zR1WIhmkt33HMeEOfniNN9iDByxQ"
+          "value": "\"Bearer eyJ0eXAiOiJKV1QiLCJpdHQiOjE3ODQxNzM0MzY5OTksImFsZyI6IkhTNTEyIn0.eyJpc3MiOiJzZWN1cmUtYXBpIiwiYXVkIjoic2VjdXJlLWFwaSIsInN1YiI6ImVhNjQ0MTlhLTM2NWUtNDNhNy1iNjlkLWQxMDM2NmRhZGIyMSIsImV4cCI6MTc4NDE3NDMzNiwicm9sIjpbXX0.vZzIV3rFMn6-cTaYSfvsFsuGs0_C0FRTjhOaPWLffGTl5VZdYisHYEz58GqRcHrjQB40XSSw39HanWZcSW7Qpg\""
         },
         {
           "name": "flutter.password",
           "value": "\"Jagadeesh@91211\""
+        },
+        {
+          "name": "flutter.sprintId",
+          "value": "\"\""
         },
         {
           "name": "flutter.zoneName",
@@ -148,12 +172,12 @@
           "value": "[\"Sign in\"]"
         },
         {
-          "name": "flutter.offlineTimeout",
-          "value": "604800000"
-        },
-        {
           "name": "flutter.podId",
           "value": "\"3f06af63-a93c-0001-9797-005056907001\""
+        },
+        {
+          "name": "flutter.offlineTimeout",
+          "value": "604800000"
         },
         {
           "name": "flutter.encMethod",
@@ -161,7 +185,7 @@
         },
         {
           "name": "flutter.s-jwt-token",
-          "value": "HZCED65DDCE22E487AB9B64D2FB95A2008"
+          "value": "\"HZBF6955466CE647C68C778E42F8E74839\""
         },
         {
           "name": "flutter.isRosterEnable",
