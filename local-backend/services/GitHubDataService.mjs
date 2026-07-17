@@ -280,3 +280,75 @@ export async function loadPublishedCacheFiles() {
     },
   };
 }
+
+function withoutWorklogs(payload) {
+  if (Array.isArray(payload)) return payload.map(withoutWorklogs);
+  if (!payload || typeof payload !== "object") return payload;
+
+  const next = Object.fromEntries(
+    Object.entries(payload).map(([key, value]) => [
+      key,
+      key === "worklogs" && Array.isArray(value) ? [] : withoutWorklogs(value),
+    ])
+  );
+
+  if (
+    Array.isArray(payload.worklogs) &&
+    payload.worklogs.length > 0 &&
+    !next.primaryWorklogDate
+  ) {
+    next.primaryWorklogDate =
+      payload.worklogs[0]?.date || payload.worklogs[0]?.worklogDate || "";
+  }
+
+  return next;
+}
+
+export async function loadPublishedGraphFiles() {
+  const env = await githubDataConfig();
+
+  if (!env.ok) {
+    const error = new Error("GitHub data repository is not configured.");
+    error.statusCode = 500;
+    error.missing = env.missing;
+    throw error;
+  }
+
+  const config = env.config;
+  const [graph, metadata] = await Promise.all([
+    loadJsonFile(config, cacheFilePath(config, "graph.json")),
+    loadJsonFile(config, cacheFilePath(config, "metadata.json")),
+  ]);
+
+  return {
+    status: "hit",
+    normalized: withoutWorklogs(graph.payload),
+    metadata: metadata.payload,
+    sha: {
+      graph: graph.sha,
+      metadata: metadata.sha,
+    },
+  };
+}
+
+export async function loadPublishedWorklogsFile() {
+  const env = await githubDataConfig();
+
+  if (!env.ok) {
+    const error = new Error("GitHub data repository is not configured.");
+    error.statusCode = 500;
+    error.missing = env.missing;
+    throw error;
+  }
+
+  const config = env.config;
+  const worklogs = await loadJsonFile(config, cacheFilePath(config, "worklogs.json"));
+
+  return {
+    status: "hit",
+    worklogs: worklogs.payload,
+    sha: {
+      worklogs: worklogs.sha,
+    },
+  };
+}

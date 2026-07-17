@@ -929,7 +929,13 @@ function displayDateForItem(item) {
     ? item.worklogs[0]
     : null;
 
-  return primaryWorklog?.date || item.updatedAt || item.createdAt;
+  return (
+    primaryWorklog?.date ||
+    item.primaryWorklogDate ||
+    item.worklogDate ||
+    item.updatedAt ||
+    item.createdAt
+  );
 }
 
 function toFlowNodes({

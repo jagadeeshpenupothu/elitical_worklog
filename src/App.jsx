@@ -36,7 +36,10 @@ import {
   loadLocalWorklogsCache,
   subscribeToLocalCacheEvents,
 } from "./services/localCacheClient";
-import { loadPublishedData } from "./services/publishedDataClient";
+import {
+  loadPublishedData,
+  loadPublishedWorklogs,
+} from "./services/publishedDataClient";
 import {
   clearJobWorklogDraft,
   loadJobWorklogState,
@@ -60,6 +63,7 @@ const APP_VIEWS = [
 ];
 const PLANNING_VIEW_IDS = new Set(["backlog", "worklog"]);
 const CONTEXT_VIEW_IDS = new Set(["sprint", "epic", "story", "job", "task", "day"]);
+const WORKLOG_DEPENDENT_VIEW_IDS = new Set(["day", "worklog", "dashboard"]);
 const DOCKET_CONTEXT_TYPES = new Set(["epic", "story", "job", "task"]);
 const BROWSER_REFRESH_STATE_KEY = "elitical-worklog.browser-refresh-state.v1";
 
@@ -1982,6 +1986,7 @@ function WorkItemModal({
       ? makeEditDraft(activeItem, fallbackSprint)
       : null;
   const [draft, setDraft] = useState(initialDraft);
+  const editedDraftFieldsRef = useRef(new Set());
   const [error, setError] = useState("");
   const isEditing = mode === "edit";
   const parentId =
@@ -2032,12 +2037,56 @@ function WorkItemModal({
   }
 
   function updateDraft(field, value) {
+    editedDraftFieldsRef.current.add(field);
     setDraft((current) => ({
       ...current,
       [field]: value,
     }));
     setError("");
   }
+
+  useEffect(() => {
+    if (modal.kind !== "details" || !activeItem || !acceptsTime(activeItem.type)) return;
+
+    const primaryWorklog = Array.isArray(activeItem.worklogs)
+      ? activeItem.worklogs[0]
+      : null;
+
+    if (!primaryWorklog) return;
+
+    const updates = {
+      worklogDate: formatDateInput(
+        primaryWorklog.date ||
+          primaryWorklog.worklogDate ||
+          activeItem.updatedAt ||
+          activeItem.createdAt
+      ),
+      time: formatTimeInput(
+        primaryWorklog.timeMinutes ??
+          primaryWorklog.durationMinutes ??
+          activeItem.timeMinutes ??
+          0
+      ),
+      worklogDescription:
+        primaryWorklog.description || primaryWorklog.comment || "",
+    };
+
+    setDraft((current) => {
+      if (!current) return current;
+
+      const editedFields = editedDraftFieldsRef.current;
+      let changed = false;
+      const next = { ...current };
+
+      Object.entries(updates).forEach(([field, value]) => {
+        if (editedFields.has(field) || current[field] === value) return;
+        next[field] = value;
+        changed = true;
+      });
+
+      return changed ? next : current;
+    });
+  }, [activeItem, modal.kind]);
 
   function startInlineEdit(field) {
     if (readOnly) return;
@@ -2169,6 +2218,7 @@ function WorkItemModal({
       return;
     }
 
+    editedDraftFieldsRef.current.clear();
     setDraft(
       isMainRoot
         ? { title: mainTitle || "Genesis" }
@@ -2802,6 +2852,7 @@ function App() {
   const [liveSyncProgress, setLiveSyncProgress] = useState("");
   const [liveSyncSummary, setLiveSyncSummary] = useState(null);
   const [importedWorklogs, setImportedWorklogs] = useState([]);
+  const [publishedWorklogsLoaded, setPublishedWorklogsLoaded] = useState(false);
   const [syncStatusPopoverOpen, setSyncStatusPopoverOpen] = useState(false);
 
   const {
@@ -2995,6 +3046,35 @@ function App() {
     sprints,
     viewMode,
     workItems,
+  ]);
+
+  const ensurePublishedWorklogs = useCallback(async () => {
+    if (!isReadOnlyViewer || publishedWorklogsLoaded) return;
+
+    setMessage("Loading worklogs...");
+
+    try {
+      const result = await loadPublishedWorklogs();
+
+      setImportedWorklogs(result.worklogs.worklogs || []);
+      setPublishedWorklogsLoaded(true);
+      setMessage("Loaded published data");
+    } catch (error) {
+      setMessage(error.message || "Unable to load published worklogs.");
+    }
+  }, [isReadOnlyViewer, publishedWorklogsLoaded]);
+
+  useEffect(() => {
+    if (!isReadOnlyViewer || loadState !== "ready") return;
+    if (!WORKLOG_DEPENDENT_VIEW_IDS.has(viewMode) && !selectedWorklogItem) return;
+
+    Promise.resolve().then(ensurePublishedWorklogs);
+  }, [
+    ensurePublishedWorklogs,
+    isReadOnlyViewer,
+    loadState,
+    selectedWorklogItem,
+    viewMode,
   ]);
 
   useEffect(() => {
@@ -3196,7 +3276,6 @@ function App() {
 
           if (cancelled) return;
 
-          setImportedWorklogs(result.worklogs.worklogs || []);
           applyNormalizedGraphPayload(result, {
             message: "Loaded published data",
             preserveView: false,

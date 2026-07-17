@@ -1,4 +1,4 @@
-import { loadPublishedGraphFiles } from "../../local-backend/services/GitHubDataService.mjs";
+import { loadPublishedWorklogsFile } from "../../local-backend/services/GitHubDataService.mjs";
 
 const JSON_HEADERS = {
   "Content-Type": "application/json",
@@ -21,10 +21,10 @@ export async function handler(event) {
   }
 
   try {
-    return json(200, await loadPublishedGraphFiles());
+    return json(200, await loadPublishedWorklogsFile());
   } catch (error) {
     return json(error.statusCode || 500, {
-      error: error.message || "Unable to load published data.",
+      error: error.message || "Unable to load published worklogs.",
       missing: error.missing || undefined,
     });
   }
