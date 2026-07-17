@@ -36,6 +36,7 @@ import {
   loadLocalWorklogsCache,
   subscribeToLocalCacheEvents,
 } from "./services/localCacheClient";
+import { loadPublishedData } from "./services/publishedDataClient";
 import {
   clearJobWorklogDraft,
   loadJobWorklogState,
@@ -100,6 +101,14 @@ function saveBrowserRefreshState(state) {
   } catch {
     // Ignore storage failures; refresh should still load from the backend cache.
   }
+}
+
+function isHostedViewerRuntime() {
+  if (import.meta.env.VITE_APP_MODE === "desktop") return false;
+  if (import.meta.env.VITE_APP_MODE === "viewer") return true;
+  if (typeof window === "undefined") return false;
+
+  return !["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
 }
 
 function formatType(type) {
@@ -1552,7 +1561,7 @@ function worklogPanelHierarchy(item, itemById) {
   return { epic: null, story: null };
 }
 
-function WorklogPanel({ item, workItems, onClose }) {
+function WorklogPanel({ item, workItems, onClose, readOnly = false }) {
   const [date, setDate] = useState(formatDateInput(new Date()));
   const [durationMinutes, setDurationMinutes] = useState(0);
   const [customDuration, setCustomDuration] = useState("");
@@ -1609,6 +1618,16 @@ function WorklogPanel({ item, workItems, onClose }) {
     setCustomDuration("");
     setDescription("");
 
+    if (readOnly) {
+      setHistory(item.worklogs || []);
+      setPending([]);
+      setLoading(false);
+      setDraftLoaded(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     loadJobWorklogState(item.id)
       .then((state) => {
         if (cancelled) return;
@@ -1644,10 +1663,10 @@ function WorklogPanel({ item, workItems, onClose }) {
     return () => {
       cancelled = true;
     };
-  }, [item.id, item.worklogs]);
+  }, [item.id, item.worklogs, readOnly]);
 
   useEffect(() => {
-    if (!draftLoaded) return undefined;
+    if (!draftLoaded || readOnly) return undefined;
 
     const handle = window.setTimeout(() => {
       saveJobWorklogDraft(item.id, {
@@ -1660,7 +1679,7 @@ function WorklogPanel({ item, workItems, onClose }) {
     }, 650);
 
     return () => window.clearTimeout(handle);
-  }, [date, description, draftLoaded, durationMinutes, item.id]);
+  }, [date, description, draftLoaded, durationMinutes, item.id, readOnly]);
 
   const saveDraft = useCallback(async () => {
     setError("");
@@ -1764,6 +1783,7 @@ function WorklogPanel({ item, workItems, onClose }) {
           </div>
         </section>
 
+        {!readOnly && (
         <section className="worklog-panel-section">
           <div className="worklog-panel-section-title">
             <h3>Worklog</h3>
@@ -1836,6 +1856,7 @@ function WorklogPanel({ item, workItems, onClose }) {
             </button>
           </div>
         </section>
+        )}
 
         <section className="worklog-panel-section">
           <div className="worklog-panel-section-title">
@@ -1897,6 +1918,7 @@ function WorkItemModal({
   onCreateItem,
   onDeleteItem,
   onSetView,
+  readOnly = false,
 }) {
   const [mode, setMode] = useState(
     modal.kind === "create" ? "edit" : "view"
@@ -2018,6 +2040,7 @@ function WorkItemModal({
   }
 
   function startInlineEdit(field) {
+    if (readOnly) return;
     if (modal.kind !== "details") return;
     setMode("view");
     setEditingField(field);
@@ -2046,6 +2069,8 @@ function WorkItemModal({
   }
 
   function handleSave() {
+    if (readOnly) return;
+
     if (!draft.title.trim()) {
       setError("Title is required.");
       return;
@@ -2159,6 +2184,7 @@ function WorkItemModal({
   }
 
   function handleDelete() {
+    if (readOnly) return;
     if (!activeItem) return;
 
     const childCount = descendantCount(workItems, activeItem.id);
@@ -2201,7 +2227,7 @@ function WorkItemModal({
     : `${formatLabel(currentPriority)} · ${formatDocketState(
         currentDocketState
       )} · ${formatWorkTime(calculatedTime)}`;
-  const showFooter = modal.kind === "create" || modal.kind === "details";
+  const showFooter = !readOnly && (modal.kind === "create" || modal.kind === "details");
 
   return (
     <div
@@ -2252,7 +2278,7 @@ function WorkItemModal({
         </header>
 
         <div className="modal-body">
-          {modal.kind === "details" && !isMainRoot && (
+          {modal.kind === "details" && !isMainRoot && !readOnly && (
             <CustomSelectField
               label="Docket State"
               value={draft.docketState || currentDocketState}
@@ -2737,6 +2763,7 @@ function WorkItemModal({
 }
 
 function App() {
+  const isReadOnlyViewer = useMemo(() => isHostedViewerRuntime(), []);
   const isBrowserRefreshStartup = useMemo(
     () => isBrowserReloadNavigation(),
     []
@@ -2803,6 +2830,7 @@ function App() {
       !snapshotEquals(currentSnapshot, baselineSnapshot)
   );
   const canSave =
+    !isReadOnlyViewer &&
     loadState === "ready" &&
     dirty &&
     syncState !== "offline" &&
@@ -3161,8 +3189,24 @@ function App() {
   useEffect(() => {
     let cancelled = false;
 
-    async function loadLocalCache() {
+    async function loadStartupData() {
       try {
+        if (isReadOnlyViewer) {
+          const result = await loadPublishedData();
+
+          if (cancelled) return;
+
+          setImportedWorklogs(result.worklogs.worklogs || []);
+          applyNormalizedGraphPayload(result, {
+            message: "Loaded published data",
+            preserveView: false,
+            updateSummary: true,
+          });
+          setSyncState("synced");
+          setLiveSyncState("synced");
+          return;
+        }
+
         const [result, worklogCache] = await Promise.all([
           loadLocalGraphCache({
             skipBackgroundSync: isBrowserRefreshStartup,
@@ -3229,16 +3273,18 @@ function App() {
         setLoadState("no-cache");
         setSyncState("offline");
         setMessage(
-          error.status === 404
+          isReadOnlyViewer
+            ? error.message || "Unable to load published data."
+            : error.status === 404
             ? "No local cache"
             : error.message || "Unable to load local cache."
         );
       }
     }
 
-    loadLocalCache();
+    loadStartupData();
 
-    const events = isBrowserRefreshStartup
+    const events = isReadOnlyViewer || isBrowserRefreshStartup
       ? null
       : subscribeToLocalCacheEvents({
           onUpdated(payload) {
@@ -3262,13 +3308,18 @@ function App() {
             setSyncState("offline");
             setMessage(payload?.message || "Background sync failed.");
           },
+          onWarning(payload) {
+            if (cancelled) return;
+
+            setMessage(payload?.message || payload?.warning || "GitHub publish warning.");
+          },
         });
 
     return () => {
       cancelled = true;
       events?.close();
     };
-  }, [applyNormalizedGraphPayload, isBrowserRefreshStartup]);
+  }, [applyNormalizedGraphPayload, isBrowserRefreshStartup, isReadOnlyViewer]);
 
   useEffect(() => {
     const handlePageHide = () => {
@@ -3694,7 +3745,7 @@ function App() {
   }, [rootDocketState, viewRootId]);
 
   const handleSaveChanges = useCallback(async () => {
-    if (!canSave || !currentSnapshot) return;
+    if (isReadOnlyViewer || !canSave || !currentSnapshot) return;
 
     const sentSnapshot = currentSnapshot;
     const sentSnapshotString = stableSnapshotString(sentSnapshot);
@@ -3744,6 +3795,7 @@ function App() {
     baseSha,
     canSave,
     currentSnapshot,
+    isReadOnlyViewer,
   ]);
 
   const handleDiscardChanges = useCallback(() => {
@@ -3766,6 +3818,8 @@ function App() {
   }, [baselineSnapshot, dirty]);
 
   const handleReloadRemote = useCallback(async () => {
+    if (isReadOnlyViewer) return;
+
     if (
       dirty &&
       !window.confirm("Reload remote worklog and discard local changes?")
@@ -3775,10 +3829,10 @@ function App() {
 
     setSaveState("idle");
     await loadRemoteSnapshot({ block: false });
-  }, [dirty, loadRemoteSnapshot]);
+  }, [dirty, isReadOnlyViewer, loadRemoteSnapshot]);
 
   const handleSyncFromElitical = useCallback(async () => {
-    if (liveSyncState === "syncing") return;
+    if (isReadOnlyViewer || liveSyncState === "syncing") return;
 
     setSyncStatusPopoverOpen(false);
     setLiveSyncState("syncing");
@@ -3847,6 +3901,7 @@ function App() {
   }, [
     applyNormalizedGraphPayload,
     baseSha,
+    isReadOnlyViewer,
     liveSyncState,
   ]);
 
@@ -3919,8 +3974,12 @@ function App() {
     return (
       <div className="app-container app-state-screen">
         <section className="state-panel">
-          <h1>Loading local cache</h1>
-          <p>Checking the desktop backend for cached Elitical data...</p>
+          <h1>{isReadOnlyViewer ? "Loading published data" : "Loading local cache"}</h1>
+          <p>
+            {isReadOnlyViewer
+              ? "Reading the latest GitHub-published Elitical cache..."
+              : "Checking the desktop backend for cached Elitical data..."}
+          </p>
         </section>
       </div>
     );
@@ -3930,17 +3989,23 @@ function App() {
     return (
       <div className="app-container app-state-screen">
         <section className="state-panel">
-          <h1>No local cache</h1>
-          <p>Run Sync from Elitical once to create the desktop cache.</p>
-          <div className="state-actions">
-            <button
-              type="button"
-              onClick={handleSyncFromElitical}
-              disabled={liveSyncState === "syncing"}
-            >
-              {liveSyncState === "syncing" ? "Syncing..." : "Sync from Elitical"}
-            </button>
-          </div>
+          <h1>{isReadOnlyViewer ? "No published data" : "No local cache"}</h1>
+          <p>
+            {isReadOnlyViewer
+              ? message || "The GitHub data repository does not have a published cache yet."
+              : "Run Sync from Elitical once to create the desktop cache."}
+          </p>
+          {!isReadOnlyViewer && (
+            <div className="state-actions">
+              <button
+                type="button"
+                onClick={handleSyncFromElitical}
+                disabled={liveSyncState === "syncing"}
+              >
+                {liveSyncState === "syncing" ? "Syncing..." : "Sync from Elitical"}
+              </button>
+            </div>
+          )}
           {liveSyncProgress ? <p>{liveSyncProgress}</p> : null}
         </section>
       </div>
@@ -3967,7 +4032,14 @@ function App() {
           <div className="state-actions">
             <button
               type="button"
-              onClick={() => loadRemoteSnapshot({ block: true })}
+              onClick={() => {
+                if (isReadOnlyViewer) {
+                  window.location.reload();
+                  return;
+                }
+
+                loadRemoteSnapshot({ block: true });
+              }}
             >
               Retry
             </button>
@@ -4084,16 +4156,18 @@ function App() {
             )}
           </div>
 
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={handleSyncFromElitical}
-            disabled={liveSyncState === "syncing"}
-          >
-            {liveSyncState === "syncing" ? "Syncing..." : "Sync from Elitical"}
-          </button>
+          {!isReadOnlyViewer && (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={handleSyncFromElitical}
+              disabled={liveSyncState === "syncing"}
+            >
+              {liveSyncState === "syncing" ? "Syncing..." : "Sync from Elitical"}
+            </button>
+          )}
 
-          {dirty && (
+          {!isReadOnlyViewer && dirty && (
             <>
               <button
                 type="button"
@@ -4113,7 +4187,7 @@ function App() {
               </button>
             </>
           )}
-          {saveState === "conflict" && (
+          {!isReadOnlyViewer && saveState === "conflict" && (
             <button type="button" onClick={handleReloadRemote}>
               Reload Remote
             </button>
@@ -4221,6 +4295,7 @@ function App() {
           onStartSprint={handleStartSprint}
           layoutNonce={layoutNonce}
           searchQuery={searchQuery}
+          readOnly={isReadOnlyViewer}
         />
       )}
 
@@ -4241,6 +4316,7 @@ function App() {
           onCreateItem={createItem}
           onDeleteItem={removeWorkItem}
           onSetView={setFocusedView}
+          readOnly={isReadOnlyViewer}
         />
       )}
 
@@ -4249,6 +4325,7 @@ function App() {
           item={selectedWorklogItem}
           workItems={workItems}
           onClose={() => setSelectedId(null)}
+          readOnly={isReadOnlyViewer}
         />
       )}
     </div>
