@@ -139,15 +139,16 @@ export async function loadJsonFile(config, filePath = config.path) {
     console.error("================================");
     console.error("FAILED FILE:", filePath);
     console.error("SHA:", file.sha);
-    console.error("Decoded first 500 chars:");
-    console.error(decoded.substring(0, 500));
-    console.error("Parse error:", err);
+    console.error("Length:", decoded.length);
+    console.error("First 1000 chars:");
+    console.error(decoded.substring(0, 1000));
+    console.error("Last 1000 chars:");
+    console.error(decoded.substring(Math.max(0, decoded.length - 1000)));
+    console.error("Parse error message:", err.message);
     console.error("================================");
 
-    const error = new Error(`GitHub JSON file is malformed: ${filePath}`);
-    error.statusCode = 502;
-    throw error;
-  }
+    throw err;
+}
 }
 
 export async function putJsonFile(config, filePath, payload, { message } = {}) {
