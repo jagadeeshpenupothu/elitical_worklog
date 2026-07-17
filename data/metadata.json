@@ -1,17 +1,32 @@
 {
-  "lastSyncTime": "2026-07-17T05:39:50.282Z",
+  "lastSyncTime": "2026-07-17T12:35:55.060Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
   "graphVersion": 1,
-  "nodeCount": 668,
-  "storyCount": 314,
-  "jobCount": 286,
+  "nodeCount": 671,
+  "storyCount": 315,
+  "jobCount": 288,
   "taskCount": 40,
-  "hash": "3adb5f5f63b9119a4d583147149a7ee79e24669e9580f029fd6e014f62b847a4",
-  "lastSuccessfulSync": "2026-07-17T05:39:50.282Z",
+  "hash": "3f1cc8fdc14e8177cfad0dafae6a41d3b344a935ab5bc81fb1d3722ef56a84f1",
+  "lastSuccessfulSync": "2026-07-17T12:35:55.060Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
+    "4be8ed06-df96-4821-8ea6-c80c5cd8c664": {
+      "docketId": "4be8ed06-df96-4821-8ea6-c80c5cd8c664",
+      "modifiedTimestamp": "1784305675000",
+      "createdTimestamp": "1784303198000"
+    },
+    "e66582b2-3fcb-4814-a774-af7eab379cee": {
+      "docketId": "e66582b2-3fcb-4814-a774-af7eab379cee",
+      "modifiedTimestamp": "1784308117000",
+      "createdTimestamp": "1784302800000"
+    },
+    "b89c7313-a362-419c-9575-37c580be746f": {
+      "docketId": "b89c7313-a362-419c-9575-37c580be746f",
+      "modifiedTimestamp": "1784296202000",
+      "createdTimestamp": "1784296198000"
+    },
     "c22571da-e0d1-47fa-829b-f066e9f41292": {
       "docketId": "c22571da-e0d1-47fa-829b-f066e9f41292",
       "modifiedTimestamp": "1784281415000",
@@ -3352,24 +3367,5 @@
       "modifiedTimestamp": "1724409509000",
       "createdTimestamp": "1724393264000"
     }
-  },
-  "publishedAt": "2026-07-17T05:40:05.246Z",
-  "publishedCommitSha": "f5b493dc7a0786934f24c26fb5d4da8ca3ff33ca",
-  "publishedFiles": [
-    {
-      "path": "data/graph.json",
-      "sha": "5ca90046458307267aef2d40a8da17f280abf018",
-      "commitSha": "b59eb100c78e5307fd4eee92b3d833f3ae42245b"
-    },
-    {
-      "path": "data/worklogs.json",
-      "sha": "575d9552b454ce997a3bf28bae7a03931443a9f0",
-      "commitSha": "7657187f43b87cc7c0891c7d41b67280aba3ebf1"
-    },
-    {
-      "path": "data/metadata.json",
-      "sha": "8373008cf9a22d592717d116296dd23fbfb63874",
-      "commitSha": "f5b493dc7a0786934f24c26fb5d4da8ca3ff33ca"
-    }
-  ]
+  }
 }
