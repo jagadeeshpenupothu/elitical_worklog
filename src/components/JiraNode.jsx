@@ -159,7 +159,7 @@ function nodeIcon(data) {
 }
 
 function JiraNode({ data }) {
-  const availableChildTypes = data.isVirtual && !data.allowChildActions
+  const availableChildTypes = data.allowChildActions === false
     ? []
     : childTypes(data);
   const showSp = hasStoryPoints(data);

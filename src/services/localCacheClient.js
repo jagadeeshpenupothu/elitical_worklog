@@ -60,7 +60,7 @@ export async function loadLocalWorklogsCache() {
   };
 }
 
-export function subscribeToLocalCacheEvents({ onUpdated, onFailed } = {}) {
+export function subscribeToLocalCacheEvents({ onUpdated, onFailed, onWarning } = {}) {
   if (typeof EventSource !== "function") return null;
 
   const events = new EventSource(CACHE_EVENTS_ENDPOINT);
@@ -80,6 +80,14 @@ export function subscribeToLocalCacheEvents({ onUpdated, onFailed } = {}) {
       onFailed?.(JSON.parse(event.data));
     } catch {
       onFailed?.({ message: "Background sync failed." });
+    }
+  });
+
+  events.addEventListener("github-publish-failed", (event) => {
+    try {
+      onWarning?.(JSON.parse(event.data));
+    } catch {
+      onWarning?.({ message: "GitHub publish failed." });
     }
   });
 

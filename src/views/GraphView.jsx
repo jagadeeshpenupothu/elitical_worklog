@@ -721,6 +721,7 @@ function sameNodeData(first, second) {
     a.isDayRoot === b.isDayRoot &&
     a.isProjectNode === b.isProjectNode &&
     a.isSprintNode === b.isSprintNode &&
+    a.allowChildActions === b.allowChildActions &&
     a.hiddenCount === b.hiddenCount &&
     a.hiddenRootCount === b.hiddenRootCount &&
     a.expandedSummaryId === b.expandedSummaryId &&
@@ -946,6 +947,7 @@ function toFlowNodes({
   completedSummaryControls = new Map(),
   searchMatchIds = new Set(),
   daySummary,
+  readOnly = false,
 }) {
   const rootUpdatedAt = workItems.reduce((latest, item) => {
     const itemTime = new Date(item.updatedAt || item.createdAt).getTime();
@@ -984,7 +986,7 @@ function toFlowNodes({
               isVirtual: true,
               isProjectNode: viewMode === "main",
               isSprintNode: viewMode === "sprint",
-              allowChildActions: viewMode !== "day",
+              allowChildActions: !readOnly && viewMode !== "day",
               completedSummaryControls:
                 completedSummaryControls.get(MAIN_ROOT_ID) || [],
               ...actions,
@@ -1018,6 +1020,7 @@ function toFlowNodes({
             selected: selectedId === ROOT_ID,
             isRoot: true,
             isProjectNode: true,
+            allowChildActions: !readOnly,
             completedSummaryControls:
               completedSummaryControls.get(ROOT_ID) || [],
             ...actions,
@@ -1054,7 +1057,7 @@ function toFlowNodes({
               isRoot: true,
               isVirtual: true,
               isSprintNode: true,
-              allowChildActions: true,
+              allowChildActions: !readOnly,
               childParentId: sprint.id,
               completedSummaryControls:
                 completedSummaryControls.get(sprint.id) || [],
@@ -1097,6 +1100,7 @@ function toFlowNodes({
           searchMatch: searchMatchIds.has(item.sourceId || item.id),
           completedSummaryControls:
             completedSummaryControls.get(item.id) || [],
+          allowChildActions: !readOnly,
           ...actions,
         },
       };
@@ -1123,6 +1127,7 @@ export default function GraphView({
   layoutNonce,
   searchQuery = "",
   daySummary,
+  readOnly = false,
 }) {
   const reactFlowRef = useRef(null);
   const initialViewCenteredRef = useRef(false);
@@ -1279,6 +1284,7 @@ export default function GraphView({
         completedSummaryControls,
         searchMatchIds,
         daySummary,
+        readOnly,
       }), renderedWorkItems, rootNodeId, sprints);
 
       return reconcileNodes(currentNodes, nextNodes);
@@ -1296,6 +1302,7 @@ export default function GraphView({
     completedSummaryControls,
     searchMatchIds,
     daySummary,
+    readOnly,
     viewRootId,
     viewMode,
     renderedWorkItems,
@@ -1331,6 +1338,7 @@ export default function GraphView({
         completedSummaryControls,
         searchMatchIds,
         daySummary,
+        readOnly,
       }).map((node) => {
         const measured = measuredById.get(node.id);
 
@@ -1377,6 +1385,7 @@ export default function GraphView({
     completedSummaryControls,
     searchMatchIds,
     daySummary,
+    readOnly,
     viewRootId,
     viewMode,
     showMainRoot,

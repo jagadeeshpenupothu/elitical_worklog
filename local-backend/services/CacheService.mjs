@@ -133,6 +133,18 @@ export class CacheService {
     }
   }
 
+  async updateMetadata(updates = {}) {
+    const current = (await this.readMetadata()) || {};
+    const next = {
+      ...current,
+      ...updates,
+    };
+
+    await this.writeJsonAtomic(this.metadataPath, next);
+
+    return next;
+  }
+
   async saveGraph(graph, { syncedAt, syncIndex } = {}) {
     const previousMetadata = await this.readMetadata();
     const metadata = metadataFor(graph, syncedAt, syncIndex);

@@ -1,5 +1,6 @@
 import http from "node:http";
 import { CacheService } from "./services/CacheService.mjs";
+import { publishCacheFiles } from "./services/GitHubDataService.mjs";
 import { WorklogService } from "./services/WorklogService.mjs";
 
 const DEFAULT_PORT = 3797;
@@ -19,6 +20,57 @@ const progressClients = new Set();
 const cacheClients = new Set();
 const cacheService = new CacheService();
 const worklogService = new WorklogService();
+
+function publishCacheInBackground({ graph, worklogs, metadata }) {
+  sendCacheEvent("github-publish-started", {
+    message: "Publishing latest cache to GitHub...",
+  });
+
+  publishCacheFiles({
+    graph,
+    worklogs,
+    metadata,
+    message: `data: publish Elitical cache ${new Date().toISOString()}`,
+  })
+    .then(async (publishResult) => {
+      const publishedMetadata = await cacheService.updateMetadata({
+        publishedAt: publishResult.publishedAt,
+        publishedCommitSha: publishResult.commitSha,
+        publishedFiles: publishResult.files,
+      });
+      const metadataPublish = await publishCacheFiles({
+        graph,
+        worklogs,
+        metadata: publishedMetadata,
+        message: `data: publish Elitical metadata ${publishResult.publishedAt}`,
+      });
+      const nextMetadata = await cacheService.updateMetadata({
+        publishedAt: metadataPublish.publishedAt,
+        publishedCommitSha: metadataPublish.commitSha || publishResult.commitSha,
+        publishedFiles: metadataPublish.files,
+      });
+      sendCacheEvent("github-publish-complete", {
+        message: "Published latest cache to GitHub.",
+        publish: {
+          ...metadataPublish,
+          metadata: nextMetadata,
+        },
+      });
+    })
+    .catch((error) => {
+      const payload = {
+        warning: "GitHub publish failed.",
+        message:
+          error?.message ||
+          "Elitical sync completed, but the latest cache could not be published to GitHub.",
+        status: error?.statusCode || error?.status || 0,
+      };
+
+      console.warn("[local-backend] GitHub cache publish failed", payload);
+      sendProgress({ phase: "warning", message: payload.message });
+      sendCacheEvent("github-publish-failed", payload);
+    });
+}
 
 function sendJson(res, statusCode, payload) {
   res.writeHead(statusCode, JSON_HEADERS);
@@ -183,6 +235,11 @@ async function runLiveSync({ respond } = {}) {
     };
     printTimingSummary(timings);
     const worklogUpload = await worklogService.uploadPending();
+    publishCacheInBackground({
+      graph: result.normalized,
+      worklogs: worklogCacheWrite.payload,
+      metadata: cacheWrite.metadata,
+    });
     const payload = {
       status: "synced",
       normalized: result.normalized,

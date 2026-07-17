@@ -1,3 +1,9 @@
+import {
+  getGitHubFile as getSharedGitHubFile,
+  githubDataConfigFromEnv,
+  putJsonFile,
+} from "../../local-backend/services/GitHubDataService.mjs";
+
 const SNAPSHOT_SCHEMA_VERSION = 2;
 const LEGACY_SNAPSHOT_SCHEMA_VERSION = 1;
 const MAX_BODY_BYTES = 1_000_000;
@@ -49,37 +55,7 @@ function safeError(statusCode, error, details) {
 }
 
 function requiredEnv() {
-  const config = {
-    token: process.env.GITHUB_TOKEN,
-    owner: process.env.GITHUB_DATA_OWNER,
-    repo: process.env.GITHUB_DATA_REPO,
-    branch: process.env.GITHUB_DATA_BRANCH,
-    path: process.env.GITHUB_DATA_PATH,
-  };
-  const missing = Object.entries(config)
-    .filter(([, value]) => !value)
-    .map(([key]) => key);
-
-  return missing.length > 0
-    ? { ok: false, missing }
-    : { ok: true, config };
-}
-
-function githubHeaders(token) {
-  return {
-    Authorization: `Bearer ${token}`,
-    Accept: "application/vnd.github+json",
-    "X-GitHub-Api-Version": "2022-11-28",
-  };
-}
-
-function githubFileUrl({ owner, repo, path }) {
-  return `https://api.github.com/repos/${encodeURIComponent(
-    owner
-  )}/${encodeURIComponent(repo)}/contents/${path
-    .split("/")
-    .map(encodeURIComponent)
-    .join("/")}`;
+  return githubDataConfigFromEnv();
 }
 
 function normalizeEnum(value, allowed, fallback) {
@@ -98,10 +74,6 @@ function isValidIsoDate(value) {
 
 function decodeBase64(value) {
   return Buffer.from(String(value || ""), "base64").toString("utf8");
-}
-
-function encodeBase64(value) {
-  return Buffer.from(value, "utf8").toString("base64");
 }
 
 function validateWorklog(entry, index, itemId) {
@@ -418,30 +390,7 @@ function validateSnapshot(snapshot) {
 }
 
 async function getGitHubFile(config) {
-  const response = await fetch(`${githubFileUrl(config)}?ref=${encodeURIComponent(config.branch)}`, {
-    headers: githubHeaders(config.token),
-  });
-  const payload = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    if (response.status === 404) {
-      throw Object.assign(new Error("GitHub data file was not found."), {
-        statusCode: 404,
-      });
-    }
-
-    throw Object.assign(new Error(payload?.message || "GitHub load failed."), {
-      statusCode: response.status,
-    });
-  }
-
-  if (!payload?.sha || typeof payload.content !== "string") {
-    throw Object.assign(new Error("GitHub file response was malformed."), {
-      statusCode: 502,
-    });
-  }
-
-  return payload;
+  return getSharedGitHubFile(config, config.path);
 }
 
 async function loadSnapshot(config) {
@@ -512,35 +461,13 @@ async function saveSnapshot(event, config) {
     return safeError(409, "Remote worklog changed since you loaded it.");
   }
 
-  const content = `${JSON.stringify(body.snapshot, null, 2)}\n`;
-  const response = await fetch(githubFileUrl(config), {
-    method: "PUT",
-    headers: {
-      ...githubHeaders(config.token),
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      message: body.commitMessage || "worklog: save snapshot",
-      content: encodeBase64(content),
-      sha: current.sha,
-      branch: config.branch,
-    }),
+  const saved = await putJsonFile(config, config.path, body.snapshot, {
+    message: body.commitMessage || "worklog: save snapshot",
   });
-  const payload = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    return safeError(response.status, payload?.message || "GitHub save failed.");
-  }
-
-  const newSha = payload?.content?.sha;
-
-  if (!newSha) {
-    return safeError(502, "GitHub save response was malformed.");
-  }
 
   return json(200, {
     snapshot: body.snapshot,
-    sha: newSha,
+    sha: saved.sha,
   });
 }
 
