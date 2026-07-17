@@ -1,32 +1,17 @@
 {
-  "lastSyncTime": "2026-07-17T05:13:32.792Z",
+  "lastSyncTime": "2026-07-17T03:38:37.328Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
   "graphVersion": 1,
-  "nodeCount": 668,
-  "storyCount": 314,
+  "nodeCount": 665,
+  "storyCount": 311,
   "jobCount": 286,
   "taskCount": 40,
-  "hash": "5feec9a288665bf127eb5f19b06968eab0433bd7d90d04bbf49435ec217a537c",
-  "lastSuccessfulSync": "2026-07-17T05:13:32.792Z",
+  "hash": "3d2a8c8b50fc3acf625a6060c24a84d115891be56f35d7878f0e22ec23cbce70",
+  "lastSuccessfulSync": "2026-07-17T03:38:37.328Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
-    "c22571da-e0d1-47fa-829b-f066e9f41292": {
-      "docketId": "c22571da-e0d1-47fa-829b-f066e9f41292",
-      "modifiedTimestamp": "1784281415000",
-      "createdTimestamp": "1784281415000"
-    },
-    "0a84c4f1-0a13-4ceb-9aa1-c64d9ab08230": {
-      "docketId": "0a84c4f1-0a13-4ceb-9aa1-c64d9ab08230",
-      "modifiedTimestamp": "1784281509000",
-      "createdTimestamp": "1784279977000"
-    },
-    "05587afd-4de7-4638-b179-195a15ea0248": {
-      "docketId": "05587afd-4de7-4638-b179-195a15ea0248",
-      "modifiedTimestamp": "1784279520000",
-      "createdTimestamp": "1784279493000"
-    },
     "7608c4ec-3473-400e-975e-9376e5c9883e": {
       "docketId": "7608c4ec-3473-400e-975e-9376e5c9883e",
       "modifiedTimestamp": "1784121241000",
@@ -94,7 +79,7 @@
     },
     "400d0792-a903-4cdd-aa9a-a27d5ccfdd72": {
       "docketId": "400d0792-a903-4cdd-aa9a-a27d5ccfdd72",
-      "modifiedTimestamp": "1784280160000",
+      "modifiedTimestamp": "1782931882000",
       "createdTimestamp": "1782931865000"
     },
     "dac3e28d-ae75-4f2e-af71-2b1da4898899": {
@@ -104,7 +89,7 @@
     },
     "3bf9fa6c-2b50-4c4a-b716-408b586cc669": {
       "docketId": "3bf9fa6c-2b50-4c4a-b716-408b586cc669",
-      "modifiedTimestamp": "1784280109000",
+      "modifiedTimestamp": "1782931875000",
       "createdTimestamp": "1782931362000"
     },
     "b6724cc6-b179-4c6c-87e8-974fd1a1ab84": {
@@ -3352,5 +3337,24 @@
       "modifiedTimestamp": "1724409509000",
       "createdTimestamp": "1724393264000"
     }
-  }
+  },
+  "publishedAt": "2026-07-17T05:13:47.994Z",
+  "publishedCommitSha": "f28dfd70db5069aecb049673d048387603493e70",
+  "publishedFiles": [
+    {
+      "path": "data/graph.json",
+      "sha": "de09698c6758f9ef2ab93bceccf17700b6adbb94",
+      "commitSha": "4ebad1a351010cf4f275361da85842b7478abf2f"
+    },
+    {
+      "path": "data/worklogs.json",
+      "sha": "04df5b61ec0fce3fa024990f44236f0727e71cf9",
+      "commitSha": "14af491974e04a6c94dab1d20a1e923b9cee1a74"
+    },
+    {
+      "path": "data/metadata.json",
+      "sha": "e34ba339fb2f1305a686c9fcf80f55b8e89d99ff",
+      "commitSha": "f28dfd70db5069aecb049673d048387603493e70"
+    }
+  ]
 }
