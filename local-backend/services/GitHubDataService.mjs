@@ -5,6 +5,10 @@ function decodeBase64(value) {
   return Buffer.from(String(value || ""), "base64").toString("utf8");
 }
 
+function hasBase64Content(file) {
+  return typeof file?.content === "string" && file.content.trim().length > 0;
+}
+
 function encodeBase64(value) {
   return Buffer.from(value, "utf8").toString("base64");
 }
@@ -115,7 +119,7 @@ export async function getGitHubFile(config, filePath = config.path) {
     throw error;
   }
 
-  if (!payload?.sha || typeof payload.content !== "string") {
+  if (!payload?.sha || (typeof payload.content !== "string" && !payload.download_url)) {
     const error = new Error("GitHub file response was malformed.");
     error.statusCode = 502;
     throw error;
@@ -124,31 +128,44 @@ export async function getGitHubFile(config, filePath = config.path) {
   return payload;
 }
 
+async function loadRawGitHubFile(config, file) {
+  if (!file.download_url) {
+    const error = new Error("GitHub file response did not include downloadable content.");
+    error.statusCode = 502;
+    throw error;
+  }
+
+  const response = await fetch(file.download_url, {
+    headers: githubHeaders(config.token),
+  });
+
+  if (!response.ok) {
+    const error = new Error("GitHub raw file download failed.");
+    error.statusCode = response.status;
+    throw error;
+  }
+
+  return response.text();
+}
+
 export async function loadJsonFile(config, filePath = config.path) {
   const file = await getGitHubFile(config, filePath);
-
-  const decoded = decodeBase64(file.content);
+  const raw = hasBase64Content(file)
+    ? decodeBase64(file.content)
+    : await loadRawGitHubFile(config, file);
 
   try {
     return {
-      payload: JSON.parse(decoded),
+      payload: JSON.parse(raw),
       sha: file.sha,
       path: filePath,
     };
   } catch (err) {
-    console.error("================================");
-    console.error("FAILED FILE:", filePath);
-    console.error("SHA:", file.sha);
-    console.error("Length:", decoded.length);
-    console.error("First 1000 chars:");
-    console.error(decoded.substring(0, 1000));
-    console.error("Last 1000 chars:");
-    console.error(decoded.substring(Math.max(0, decoded.length - 1000)));
-    console.error("Parse error message:", err.message);
-    console.error("================================");
-
-    throw err;
-}
+    const error = new Error(`GitHub data file contained invalid JSON: ${filePath}`);
+    error.statusCode = 502;
+    error.cause = err;
+    throw error;
+  }
 }
 
 export async function putJsonFile(config, filePath, payload, { message } = {}) {
