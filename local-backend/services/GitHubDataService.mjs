@@ -127,14 +127,24 @@ export async function getGitHubFile(config, filePath = config.path) {
 export async function loadJsonFile(config, filePath = config.path) {
   const file = await getGitHubFile(config, filePath);
 
+  const decoded = decodeBase64(file.content);
+
   try {
     return {
-      payload: JSON.parse(decodeBase64(file.content)),
+      payload: JSON.parse(decoded),
       sha: file.sha,
       path: filePath,
     };
-  } catch {
-    const error = new Error("GitHub JSON file is malformed.");
+  } catch (err) {
+    console.error("================================");
+    console.error("FAILED FILE:", filePath);
+    console.error("SHA:", file.sha);
+    console.error("Decoded first 500 chars:");
+    console.error(decoded.substring(0, 500));
+    console.error("Parse error:", err);
+    console.error("================================");
+
+    const error = new Error(`GitHub JSON file is malformed: ${filePath}`);
     error.statusCode = 502;
     throw error;
   }
