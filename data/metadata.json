@@ -1,5 +1,5 @@
 {
-  "lastSyncTime": "2026-07-18T17:29:50.778Z",
+  "lastSyncTime": "2026-07-18T17:39:57.366Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
@@ -9,7 +9,7 @@
   "jobCount": 293,
   "taskCount": 41,
   "hash": "6591a06ea42610099310a4022d78cdebfac8e44f126407039f737e7516aa4a70",
-  "lastSuccessfulSync": "2026-07-18T17:29:50.778Z",
+  "lastSuccessfulSync": "2026-07-18T17:39:57.366Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
     "f5491f8d-b676-400f-a1a8-a762c87a0371": {
@@ -4104,24 +4104,5 @@
       "createdTimestamp": "1724393264000",
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design icons, screens etc..\",\"epicId\":\"\",\"id\":\"d96a6331-6159-4a2f-be8a-2967923b05ca\",\"num\":\"DES-3\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Eagle Eye View UX Works\",\"type\":\"EPIC\",\"updated\":\"1724409509000\"}"
     }
-  },
-  "publishedAt": "2026-07-18T17:30:24.881Z",
-  "publishedCommitSha": "936d4ab852c3a0845e49a9bc532490d665557f22",
-  "publishedFiles": [
-    {
-      "path": "data/graph.json",
-      "sha": "fd260a3d2e833273b0768199194620d7e0ac4b3a",
-      "commitSha": "a83343a9e02ec8f2a62e1f5598ade712465c10c3"
-    },
-    {
-      "path": "data/worklogs.json",
-      "sha": "00cbb134c4485d817531809da9a1704a913c77eb",
-      "commitSha": "2f760a315f0a2617c0d0a048c357eab7c527836a"
-    },
-    {
-      "path": "data/metadata.json",
-      "sha": "74f11c85dc8b3482a956ccfce5dac548d82c6407",
-      "commitSha": "936d4ab852c3a0845e49a9bc532490d665557f22"
-    }
-  ]
+  }
 }
