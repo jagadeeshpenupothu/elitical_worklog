@@ -1,5 +1,5 @@
 {
-  "lastSyncTime": "2026-07-18T08:12:11.213Z",
+  "lastSyncTime": "2026-07-18T08:20:50.540Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
@@ -9,7 +9,7 @@
   "jobCount": 288,
   "taskCount": 40,
   "hash": "45d02487bda4f18948b8f5eede4b95fadc7a9adf86608af7494a664d99ccc476",
-  "lastSuccessfulSync": "2026-07-18T08:12:11.213Z",
+  "lastSuccessfulSync": "2026-07-18T08:20:50.540Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
     "3cb7f9c2-0467-4e76-b45d-eebc68c0664d": {
@@ -3372,24 +3372,5 @@
       "modifiedTimestamp": "1724409509000",
       "createdTimestamp": "1724393264000"
     }
-  },
-  "publishedAt": "2026-07-18T08:12:23.191Z",
-  "publishedCommitSha": "cc13aeecac6dc3feaf5e550f8b377bbbbb391082",
-  "publishedFiles": [
-    {
-      "path": "data/graph.json",
-      "sha": "8a909466ce1c75a12907ce007620235dcbd50fc2",
-      "commitSha": "2ffff1774bcbca590243eb4b3c6bc2ed81b96af2"
-    },
-    {
-      "path": "data/worklogs.json",
-      "sha": "b3fd6f999f8d4fc44b4735493d33452846ba93f5",
-      "commitSha": "626991f1ebf67c62425d61efa7bde91364f6ea5c"
-    },
-    {
-      "path": "data/metadata.json",
-      "sha": "01e908b4019025cf9192f2144ab6180d0449dcc3",
-      "commitSha": "cc13aeecac6dc3feaf5e550f8b377bbbbb391082"
-    }
-  ]
+  }
 }
