@@ -3422,5 +3422,24 @@
       "modifiedTimestamp": "1724409509000",
       "createdTimestamp": "1724393264000"
     }
-  }
+  },
+  "publishedAt": "2026-07-18T16:06:35.247Z",
+  "publishedCommitSha": "e35139166e7d7eccdd55d2b0093a10ee8fadfac2",
+  "publishedFiles": [
+    {
+      "path": "data/graph.json",
+      "sha": "b61e4198b165645c5596defa84bece2619efcf53",
+      "commitSha": "c4ecd448fa19922c6981f3edb540044c196e550f"
+    },
+    {
+      "path": "data/worklogs.json",
+      "sha": "da48e336bc5896cefeaab6d0317dc6c5ff6828ea",
+      "commitSha": "ef8843990a1b99c711b85696e12aabfa2c59537a"
+    },
+    {
+      "path": "data/metadata.json",
+      "sha": "411f5c0f3fcb70f4fc0238fa7841abdc0cdf0d64",
+      "commitSha": "e35139166e7d7eccdd55d2b0093a10ee8fadfac2"
+    }
+  ]
 }
