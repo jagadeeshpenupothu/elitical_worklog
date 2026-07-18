@@ -1,5 +1,5 @@
 {
-  "lastSyncTime": "2026-07-18T18:21:23.152Z",
+  "lastSyncTime": "2026-07-18T18:37:14.529Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
@@ -8,8 +8,8 @@
   "storyCount": 319,
   "jobCount": 293,
   "taskCount": 41,
-  "hash": "2a1769b81b823b95fcfbe255f2b0b10fdfca051e8eee53871ad52b1470e6d414",
-  "lastSuccessfulSync": "2026-07-18T18:21:23.152Z",
+  "hash": "39d3243eb5647cbf67648e89a5cff925fae1cc39ea3e1ab4ee46b457b8f29192",
+  "lastSuccessfulSync": "2026-07-18T18:37:14.529Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
     "f5491f8d-b676-400f-a1a8-a762c87a0371": {
@@ -20,9 +20,9 @@
     },
     "2230aef9-47f5-401b-b190-3853862c7cbe": {
       "docketId": "2230aef9-47f5-401b-b190-3853862c7cbe",
-      "modifiedTimestamp": "1784404802000",
+      "modifiedTimestamp": "1784418787000",
       "createdTimestamp": "1784404802000",
-      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Preperate a description for for VIdeo Posting on socil media for gaptor\",\"epicId\":\"\",\"id\":\"2230aef9-47f5-401b-b190-3853862c7cbe\",\"num\":\"DES-681\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Description Preperation\",\"type\":\"JOB\",\"updated\":\"1784404802000\"}"
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Preperate a description for for VIdeo Posting on socil media for gaptor\",\"epicId\":\"\",\"id\":\"2230aef9-47f5-401b-b190-3853862c7cbe\",\"num\":\"DES-681\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Description Preperation for social media post\",\"type\":\"JOB\",\"updated\":\"1784418787000\"}"
     },
     "a54a37d0-e3e8-4a2b-9b7c-eabd4cde0988": {
       "docketId": "a54a37d0-e3e8-4a2b-9b7c-eabd4cde0988",
@@ -4104,24 +4104,5 @@
       "createdTimestamp": "1724393264000",
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design icons, screens etc..\",\"epicId\":\"\",\"id\":\"d96a6331-6159-4a2f-be8a-2967923b05ca\",\"num\":\"DES-3\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Eagle Eye View UX Works\",\"type\":\"EPIC\",\"updated\":\"1724409509000\"}"
     }
-  },
-  "publishedAt": "2026-07-18T18:21:35.262Z",
-  "publishedCommitSha": "7f055a7ed0db3814144aeae669233282c67ab970",
-  "publishedFiles": [
-    {
-      "path": "data/graph.json",
-      "sha": "5b2b63c12065f6cb5f268cc64ee44826db2d86d2",
-      "commitSha": "fd6db973784ad8090660a8c9707550d910534675"
-    },
-    {
-      "path": "data/worklogs.json",
-      "sha": "90928fe0c79403aa33340f0a429b4c29fc0efa01",
-      "commitSha": "686e7cf325bba6b9d2b54eb33e27e03faa3c7074"
-    },
-    {
-      "path": "data/metadata.json",
-      "sha": "472913be83f4e7df059055f27bf69c5e1d0311e2",
-      "commitSha": "7f055a7ed0db3814144aeae669233282c67ab970"
-    }
-  ]
+  }
 }
