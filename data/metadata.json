@@ -1,17 +1,22 @@
 {
-  "lastSyncTime": "2026-07-18T11:37:47.012Z",
+  "lastSyncTime": "2026-07-18T11:40:29.703Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
   "graphVersion": 1,
-  "nodeCount": 676,
+  "nodeCount": 677,
   "storyCount": 319,
-  "jobCount": 289,
+  "jobCount": 290,
   "taskCount": 40,
-  "hash": "db3976f824ea99c114dc6fadb2523c997571b5b2216afc4a0b8675644da4e7b3",
-  "lastSuccessfulSync": "2026-07-18T11:37:47.012Z",
+  "hash": "0a91657bc7f153dc2cd50c771cfab0141b960a0893b5c2e87d7ef3c6bb3be48b",
+  "lastSuccessfulSync": "2026-07-18T11:40:29.703Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
+    "f4535cba-7753-4241-b9e9-a05e554175df": {
+      "docketId": "f4535cba-7753-4241-b9e9-a05e554175df",
+      "modifiedTimestamp": "1784394595000",
+      "createdTimestamp": "1784394596000"
+    },
     "5da11a50-5e82-47a9-a5d9-e28eef3cf0a1": {
       "docketId": "5da11a50-5e82-47a9-a5d9-e28eef3cf0a1",
       "modifiedTimestamp": "1784391790000",
@@ -3392,24 +3397,5 @@
       "modifiedTimestamp": "1724409509000",
       "createdTimestamp": "1724393264000"
     }
-  },
-  "publishedAt": "2026-07-18T11:38:04.123Z",
-  "publishedCommitSha": "2942f014823ae3e3ed5df70c65cb81d0bdad4ed8",
-  "publishedFiles": [
-    {
-      "path": "data/graph.json",
-      "sha": "b496404faf41f19579bf185816bd84d85f802439",
-      "commitSha": "6e119886ecbb0a7e79f67c805f83a855f51a25a4"
-    },
-    {
-      "path": "data/worklogs.json",
-      "sha": "386abdd767de1224bb0699b3bbfb50183d850225",
-      "commitSha": "e6102d13891ec779f000c317e1b6f637b1db0621"
-    },
-    {
-      "path": "data/metadata.json",
-      "sha": "b66cdddc00cad303d7968dcda2f7258d038fe3c7",
-      "commitSha": "2942f014823ae3e3ed5df70c65cb81d0bdad4ed8"
-    }
-  ]
+  }
 }
