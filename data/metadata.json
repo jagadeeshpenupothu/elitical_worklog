@@ -1,5 +1,5 @@
 {
-  "lastSyncTime": "2026-07-18T17:57:39.242Z",
+  "lastSyncTime": "2026-07-18T18:05:50.951Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
@@ -8,15 +8,15 @@
   "storyCount": 319,
   "jobCount": 293,
   "taskCount": 41,
-  "hash": "4769556799b49a3f35fc36ba5ca3361d183bef0ca5c8dd5aa1270281c91f0be2",
-  "lastSuccessfulSync": "2026-07-18T17:57:39.242Z",
+  "hash": "2a1769b81b823b95fcfbe255f2b0b10fdfca051e8eee53871ad52b1470e6d414",
+  "lastSuccessfulSync": "2026-07-18T18:05:50.951Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
     "f5491f8d-b676-400f-a1a8-a762c87a0371": {
       "docketId": "f5491f8d-b676-400f-a1a8-a762c87a0371",
-      "modifiedTimestamp": "1784408199000",
+      "modifiedTimestamp": "1784417336000",
       "createdTimestamp": "1784408199000",
-      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Add the final slide and watermarks to the video that edited by sashank\",\"epicId\":\"\",\"id\":\"f5491f8d-b676-400f-a1a8-a762c87a0371\",\"num\":\"DES-682\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Gaptor Video Edits\",\"type\":\"JOB\",\"updated\":\"1784408199000\"}"
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Add the final slide and watermarks to the video that edited by sashank previously\",\"epicId\":\"\",\"id\":\"f5491f8d-b676-400f-a1a8-a762c87a0371\",\"num\":\"DES-682\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Gaptor Video Edits for social media post\",\"type\":\"JOB\",\"updated\":\"1784417336000\"}"
     },
     "2230aef9-47f5-401b-b190-3853862c7cbe": {
       "docketId": "2230aef9-47f5-401b-b190-3853862c7cbe",
@@ -4104,24 +4104,5 @@
       "createdTimestamp": "1724393264000",
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design icons, screens etc..\",\"epicId\":\"\",\"id\":\"d96a6331-6159-4a2f-be8a-2967923b05ca\",\"num\":\"DES-3\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Eagle Eye View UX Works\",\"type\":\"EPIC\",\"updated\":\"1724409509000\"}"
     }
-  },
-  "publishedAt": "2026-07-18T17:57:53.272Z",
-  "publishedCommitSha": "22669de6e80e3ae69599ea40e9b6a33741afcdca",
-  "publishedFiles": [
-    {
-      "path": "data/graph.json",
-      "sha": "b0f4d19eeb06370d123cba572c1f564ef8415c9d",
-      "commitSha": "7ed0859c3c25499367c66c28901676c8135a6e5c"
-    },
-    {
-      "path": "data/worklogs.json",
-      "sha": "9a94abfaad51f3f525421cb017b94a0a785173b4",
-      "commitSha": "9bbbd5eb432fdb97e5c448f9e3a587c4983477b1"
-    },
-    {
-      "path": "data/metadata.json",
-      "sha": "844a88d5b8e0ffa1206fc2805ee8ef156f582036",
-      "commitSha": "22669de6e80e3ae69599ea40e9b6a33741afcdca"
-    }
-  ]
+  }
 }
