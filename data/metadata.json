@@ -1,5 +1,5 @@
 {
-  "lastSyncTime": "2026-07-18T16:48:55.614Z",
+  "lastSyncTime": "2026-07-18T17:13:28.963Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
@@ -8,8 +8,8 @@
   "storyCount": 319,
   "jobCount": 293,
   "taskCount": 41,
-  "hash": "754c63f241bbc8ababc60f548cd7b42abad654ef2bb04ec2b1cc10dfc46b5fc1",
-  "lastSuccessfulSync": "2026-07-18T16:48:55.614Z",
+  "hash": "3b661bdfb3aa782344b70142d86daf61e937d1551db5af8ff9a32579ee4bc7bc",
+  "lastSuccessfulSync": "2026-07-18T17:13:28.963Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
     "f5491f8d-b676-400f-a1a8-a762c87a0371": {
@@ -62,9 +62,9 @@
     },
     "127d6379-898a-47e9-942e-f18301a35c6d": {
       "docketId": "127d6379-898a-47e9-942e-f18301a35c6d",
-      "modifiedTimestamp": "1784390560000",
+      "modifiedTimestamp": "1784413789000",
       "createdTimestamp": "1784390560000",
-      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Do work on social media post on gaptor expo\",\"epicId\":\"\",\"id\":\"127d6379-898a-47e9-942e-f18301a35c6d\",\"num\":\"DES-674\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"2\",\"title\":\"Gaptor Social media post on expo\",\"type\":\"STORY\",\"updated\":\"1784390560000\"}"
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Do work on social media post on gaptor expo\",\"epicId\":\"\",\"id\":\"127d6379-898a-47e9-942e-f18301a35c6d\",\"num\":\"DES-674\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"2\",\"title\":\"Gaptor Social media post on FTCCI EXPO\",\"type\":\"STORY\",\"updated\":\"1784413789000\"}"
     },
     "d664193a-d69a-44be-b5ee-18b226b1760e": {
       "docketId": "d664193a-d69a-44be-b5ee-18b226b1760e",
@@ -4104,24 +4104,5 @@
       "createdTimestamp": "1724393264000",
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design icons, screens etc..\",\"epicId\":\"\",\"id\":\"d96a6331-6159-4a2f-be8a-2967923b05ca\",\"num\":\"DES-3\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Eagle Eye View UX Works\",\"type\":\"EPIC\",\"updated\":\"1724409509000\"}"
     }
-  },
-  "publishedAt": "2026-07-18T16:49:09.070Z",
-  "publishedCommitSha": "b5aa699d608608d227b1919648c87d1cbeb36933",
-  "publishedFiles": [
-    {
-      "path": "data/graph.json",
-      "sha": "bff44392e3146b326547eb5ed13fee9db355fb27",
-      "commitSha": "06a182b1bd4aadc2cde634050d79d30d90c87792"
-    },
-    {
-      "path": "data/worklogs.json",
-      "sha": "63a6eb9f1aeba71d9b3ee02c9b2cbd5b6c820aad",
-      "commitSha": "1fb44c250504bcab3aa9e5b6ceb7c5c37f6857fc"
-    },
-    {
-      "path": "data/metadata.json",
-      "sha": "545a25bf1555d69261f055f3c36cd5dcbab3be92",
-      "commitSha": "b5aa699d608608d227b1919648c87d1cbeb36933"
-    }
-  ]
+  }
 }
