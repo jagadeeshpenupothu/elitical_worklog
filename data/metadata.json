@@ -1,17 +1,23 @@
 {
-  "lastSyncTime": "2026-07-18T19:10:34.609Z",
+  "lastSyncTime": "2026-07-18T19:28:22.651Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
   "graphVersion": 1,
-  "nodeCount": 683,
+  "nodeCount": 684,
   "storyCount": 319,
-  "jobCount": 294,
+  "jobCount": 295,
   "taskCount": 41,
-  "hash": "c98cd0666cc7d859c350a4a540de48838dad624a659ea58a0175e8c4193eac9e",
-  "lastSuccessfulSync": "2026-07-18T19:10:34.609Z",
+  "hash": "7c7e0770c3868cea4338860371e93f58aeb452224df17a1f05b4fa4f622f0a71",
+  "lastSuccessfulSync": "2026-07-18T19:28:22.651Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
+    "d690001f-6e4b-4936-b6a3-ca0dde6bf596": {
+      "docketId": "d690001f-6e4b-4936-b6a3-ca0dde6bf596",
+      "modifiedTimestamp": "1784421891000",
+      "createdTimestamp": "1784421891000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"ENHANCEMENT\",\"descr\":\"Do work with varma sir and by updating the cover design of the teja hospital\",\"epicId\":\"\",\"id\":\"d690001f-6e4b-4936-b6a3-ca0dde6bf596\",\"num\":\"DES-684\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Modification and updated of teja hospital cover\",\"type\":\"JOB\",\"updated\":\"1784421891000\"}"
+    },
     "2607d25e-e1f4-41d0-a312-f0c89badaaad": {
       "docketId": "2607d25e-e1f4-41d0-a312-f0c89badaaad",
       "modifiedTimestamp": "1784420914000",
@@ -4110,24 +4116,5 @@
       "createdTimestamp": "1724393264000",
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design icons, screens etc..\",\"epicId\":\"\",\"id\":\"d96a6331-6159-4a2f-be8a-2967923b05ca\",\"num\":\"DES-3\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Eagle Eye View UX Works\",\"type\":\"EPIC\",\"updated\":\"1724409509000\"}"
     }
-  },
-  "publishedAt": "2026-07-18T19:10:50.802Z",
-  "publishedCommitSha": "8839aa3e92c97345d48e8fe40b56c9bb11be024e",
-  "publishedFiles": [
-    {
-      "path": "data/graph.json",
-      "sha": "5732dbd075945db328e50c3c39e201b1c01554d3",
-      "commitSha": "59eebee3163e71ea30fcb992cacdcd277ef3bacf"
-    },
-    {
-      "path": "data/worklogs.json",
-      "sha": "5a49752fc5f5d03a37c5691dbceb24fd9b324160",
-      "commitSha": "cbc51851270f734f2bc9be094f656299c4054133"
-    },
-    {
-      "path": "data/metadata.json",
-      "sha": "49f2cd2f8837a4279332433fb6d35da53ff6f35e",
-      "commitSha": "8839aa3e92c97345d48e8fe40b56c9bb11be024e"
-    }
-  ]
+  }
 }
