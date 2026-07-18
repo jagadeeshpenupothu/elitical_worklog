@@ -4104,5 +4104,24 @@
       "createdTimestamp": "1724393264000",
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design icons, screens etc..\",\"epicId\":\"\",\"id\":\"d96a6331-6159-4a2f-be8a-2967923b05ca\",\"num\":\"DES-3\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Eagle Eye View UX Works\",\"type\":\"EPIC\",\"updated\":\"1724409509000\"}"
     }
-  }
+  },
+  "publishedAt": "2026-07-18T17:22:50.050Z",
+  "publishedCommitSha": "4343df65baff597bc57cd682eb0292e724651634",
+  "publishedFiles": [
+    {
+      "path": "data/graph.json",
+      "sha": "66c7fbaa03289f9eb18f1ad7138a387420e5ce14",
+      "commitSha": "bd54e29eb223be2dd1d32a089cc01b949ad090aa"
+    },
+    {
+      "path": "data/worklogs.json",
+      "sha": "d0c3dc1f8792e8cbd8dadd672b3909a49cc02fc6",
+      "commitSha": "62fcf29a3ea6981b683d753e61ebad627130937b"
+    },
+    {
+      "path": "data/metadata.json",
+      "sha": "32fd24c591ad5f62a5c9a6901f57d0b48031cb08",
+      "commitSha": "4343df65baff597bc57cd682eb0292e724651634"
+    }
+  ]
 }
