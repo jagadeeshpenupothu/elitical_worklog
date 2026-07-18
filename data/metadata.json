@@ -1,17 +1,23 @@
 {
-  "lastSyncTime": "2026-07-18T18:49:08.720Z",
+  "lastSyncTime": "2026-07-18T19:10:34.609Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
   "graphVersion": 1,
-  "nodeCount": 682,
+  "nodeCount": 683,
   "storyCount": 319,
-  "jobCount": 293,
+  "jobCount": 294,
   "taskCount": 41,
-  "hash": "39d3243eb5647cbf67648e89a5cff925fae1cc39ea3e1ab4ee46b457b8f29192",
-  "lastSuccessfulSync": "2026-07-18T18:49:08.720Z",
+  "hash": "c98cd0666cc7d859c350a4a540de48838dad624a659ea58a0175e8c4193eac9e",
+  "lastSuccessfulSync": "2026-07-18T19:10:34.609Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
+    "2607d25e-e1f4-41d0-a312-f0c89badaaad": {
+      "docketId": "2607d25e-e1f4-41d0-a312-f0c89badaaad",
+      "modifiedTimestamp": "1784420914000",
+      "createdTimestamp": "1784420541000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Do correction of Teja Hospitals Cover page Text Corrections in Front side\",\"epicId\":\"\",\"id\":\"2607d25e-e1f4-41d0-a312-f0c89badaaad\",\"num\":\"DES-683\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Telugu Text correction Front Page\",\"type\":\"JOB\",\"updated\":\"1784420914000\"}"
+    },
     "f5491f8d-b676-400f-a1a8-a762c87a0371": {
       "docketId": "f5491f8d-b676-400f-a1a8-a762c87a0371",
       "modifiedTimestamp": "1784417336000",
@@ -4104,24 +4110,5 @@
       "createdTimestamp": "1724393264000",
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design icons, screens etc..\",\"epicId\":\"\",\"id\":\"d96a6331-6159-4a2f-be8a-2967923b05ca\",\"num\":\"DES-3\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Eagle Eye View UX Works\",\"type\":\"EPIC\",\"updated\":\"1724409509000\"}"
     }
-  },
-  "publishedAt": "2026-07-18T18:49:23.799Z",
-  "publishedCommitSha": "c7f2552a5b2c079c5169d737bbea8fbb9e653fc6",
-  "publishedFiles": [
-    {
-      "path": "data/graph.json",
-      "sha": "e302a70dbbed9fa4e9e170164e3d5ad415ef3308",
-      "commitSha": "08b7c25ec44c631c51039d73dd597ae0477b46f2"
-    },
-    {
-      "path": "data/worklogs.json",
-      "sha": "f377ec48905f6f83eb458a1d571780cde47427e1",
-      "commitSha": "cdbc11364c82d850f76ac3633f6b6ce65bbeb70d"
-    },
-    {
-      "path": "data/metadata.json",
-      "sha": "5b0ff55bd347d0733eebb2c2bbb55974160aae8b",
-      "commitSha": "c7f2552a5b2c079c5169d737bbea8fbb9e653fc6"
-    }
-  ]
+  }
 }
