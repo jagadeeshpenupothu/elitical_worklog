@@ -1,17 +1,23 @@
 {
-  "lastSyncTime": "2026-07-19T16:50:35.201Z",
+  "lastSyncTime": "2026-07-19T17:33:02.467Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
   "graphVersion": 1,
-  "nodeCount": 689,
+  "nodeCount": 690,
   "storyCount": 321,
-  "jobCount": 298,
+  "jobCount": 299,
   "taskCount": 41,
-  "hash": "ff356ac160e23706474474d9e4ab0450af0496cddf2a4221861d49623596110f",
-  "lastSuccessfulSync": "2026-07-19T16:50:35.201Z",
+  "hash": "399f2cdb98cf69cd1a6569bf464ad68baf322cad3b1b135408ef494807126808",
+  "lastSuccessfulSync": "2026-07-19T17:33:02.467Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
+    "437d0099-8784-4c60-bba3-686fdf42d788": {
+      "docketId": "437d0099-8784-4c60-bba3-686fdf42d788",
+      "modifiedTimestamp": "1784500981000",
+      "createdTimestamp": "1784500981000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"design sesha visting cards and deliver\",\"epicId\":\"\",\"id\":\"437d0099-8784-4c60-bba3-686fdf42d788\",\"num\":\"DES-690\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Sesha sir visiting cards\",\"type\":\"JOB\",\"updated\":\"1784500981000\"}"
+    },
     "86e2cb03-446d-46b6-91af-8ec151c09a2c": {
       "docketId": "86e2cb03-446d-46b6-91af-8ec151c09a2c",
       "modifiedTimestamp": "1784486667000",
@@ -4146,24 +4152,5 @@
       "createdTimestamp": "1724393264000",
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design icons, screens etc..\",\"epicId\":\"\",\"id\":\"d96a6331-6159-4a2f-be8a-2967923b05ca\",\"num\":\"DES-3\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Eagle Eye View UX Works\",\"type\":\"EPIC\",\"updated\":\"1724409509000\"}"
     }
-  },
-  "publishedAt": "2026-07-19T16:51:04.172Z",
-  "publishedCommitSha": "6c40ee5430b8cc89ae613b111d912dad884b348b",
-  "publishedFiles": [
-    {
-      "path": "data/graph.json",
-      "sha": "dbd99cafa9e278f54d482dcb1e261fa1e434b196",
-      "commitSha": "f703b89af34ade59bd3c4642af2c44cdc4dddc60"
-    },
-    {
-      "path": "data/worklogs.json",
-      "sha": "4538ade7881a8e6927ab431edad7d7d2c333d156",
-      "commitSha": "d4f0ceef3fa4582f20ab8be3d07b09c9b93ff6c7"
-    },
-    {
-      "path": "data/metadata.json",
-      "sha": "a68cabe9756dbbe3910c0a34ba3aa524f1c2d13e",
-      "commitSha": "6c40ee5430b8cc89ae613b111d912dad884b348b"
-    }
-  ]
+  }
 }
