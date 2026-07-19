@@ -1,11 +1,20 @@
-import type { EliticalClient } from "../client/index";
+import type { EliticalClient } from "../client/index.js";
 import type {
   Docket,
   Issue,
   Project,
   Sprint,
   Worklog,
-} from "../models/index";
+} from "../models/index.js";
+import type {
+  AttachmentPayload,
+  CreateDocketPayload,
+  CreateWorklogPayload,
+  EliticalEmployee,
+  EliticalLookupValue,
+  EliticalUser,
+  UpdateDocketPayload,
+} from "../types/index.js";
 
 let nextEliticalProviderId = 1;
 
@@ -37,6 +46,17 @@ export interface EliticalProviderIssue extends Docket {
   type: string;
   eliticalId: string;
   worklogs: EliticalProviderWorklog[];
+}
+
+export interface EliticalProviderUser extends EliticalEmployee {
+  id: string;
+  name: string;
+  eliticalId: string;
+}
+
+export interface EliticalProviderLookupValue extends EliticalLookupValue {
+  id: string;
+  name: string;
 }
 
 function firstString(...values: unknown[]): string {
@@ -101,10 +121,34 @@ function worklogProjectId(worklog: Worklog): string {
 }
 
 function worklogMinutes(worklog: Worklog): number {
-  const minutes = firstNumber(worklog.min, worklog.minutes, worklog.loggedMinutes);
+  const explicitMinutes = firstNumber(
+    worklog.timeMinutes,
+    worklog.durationMinutes,
+    worklog.loggedMinutes
+  );
+
+  if (explicitMinutes > 0) return Math.round(explicitMinutes);
+
+  const minutes = firstNumber(worklog.min, worklog.minutes);
   const hours = firstNumber(worklog.hour, worklog.hours, worklog.loggedHours, worklog.duration);
 
   return Math.round(hours * 60) + minutes;
+}
+
+function lookupId(value: EliticalLookupValue): string {
+  return firstString(value.id, value.code, value.name, value.title);
+}
+
+function lookupName(value: EliticalLookupValue): string {
+  return firstString(value.name, value.title, value.code, value.id);
+}
+
+function userId(user: EliticalEmployee): string {
+  return firstString(user.id, user.employeeId);
+}
+
+function userName(user: EliticalEmployee): string {
+  return firstString(user.name, user.employeeName, user.userName, user.displayName, user.fullName, userId(user));
 }
 
 export class EliticalProvider {
@@ -116,6 +160,22 @@ export class EliticalProvider {
     console.info("[EliticalProvider] constructed", {
       eliticalProviderInstanceId: this.instanceId,
     });
+  }
+
+  async login(): Promise<unknown> {
+    return this.client.login();
+  }
+
+  async logout(): Promise<void> {
+    return this.client.logout();
+  }
+
+  async close(): Promise<void> {
+    await this.client.close();
+  }
+
+  async currentUser(): Promise<EliticalUser> {
+    return this.client.currentUser();
   }
 
   async getProjects(): Promise<EliticalProviderProject[]> {
@@ -157,6 +217,42 @@ export class EliticalProvider {
     });
   }
 
+  async getUsers(projectId: string): Promise<EliticalProviderUser[]> {
+    console.info("[EliticalProvider] getUsers() called", {
+      eliticalProviderInstanceId: this.instanceId,
+      projectId,
+    });
+
+    const users = await this.client.getUsers(projectId);
+
+    return users.map((user) => {
+      const id = userId(user);
+
+      return {
+        ...user,
+        id,
+        eliticalId: id,
+        name: userName(user),
+      };
+    });
+  }
+
+  async getStates(projectId: string): Promise<EliticalProviderLookupValue[]> {
+    return this.normalizeLookupValues(await this.client.getStates(projectId));
+  }
+
+  async getPriorities(): Promise<EliticalProviderLookupValue[]> {
+    return this.normalizeLookupValues(await this.client.getPriorities());
+  }
+
+  async getCategories(): Promise<EliticalProviderLookupValue[]> {
+    return this.normalizeLookupValues(await this.client.getCategories());
+  }
+
+  async getDockets(projectId: string): Promise<EliticalProviderIssue[]> {
+    return this.getIssues(projectId);
+  }
+
   async getIssues(projectId: string): Promise<EliticalProviderIssue[]> {
     console.info("[EliticalProvider] getIssues() called", {
       eliticalProviderInstanceId: this.instanceId,
@@ -190,6 +286,92 @@ export class EliticalProvider {
     return worklogs.map((worklog) => this.toWorklog(worklog, docketId));
   }
 
+  async createEpic(payload: Omit<CreateDocketPayload, "type">): Promise<EliticalProviderIssue> {
+    return this.toIssue(await this.client.createEpic(payload));
+  }
+
+  async createStory(payload: Omit<CreateDocketPayload, "type">): Promise<EliticalProviderIssue> {
+    return this.toIssue(await this.client.createStory(payload));
+  }
+
+  async createTask(payload: Omit<CreateDocketPayload, "type">): Promise<EliticalProviderIssue> {
+    return this.toIssue(await this.client.createTask(payload));
+  }
+
+  async createJob(payload: Omit<CreateDocketPayload, "type">): Promise<EliticalProviderIssue> {
+    return this.toIssue(await this.client.createJob(payload));
+  }
+
+  async updateDocket(docketId: string, updates: UpdateDocketPayload): Promise<EliticalProviderIssue> {
+    return this.toIssue(await this.client.updateDocket(docketId, updates));
+  }
+
+  async updateTitle(docketId: string, title: string): Promise<EliticalProviderIssue> {
+    return this.toIssue(await this.client.updateTitle(docketId, title));
+  }
+
+  async updateDescription(docketId: string, description: string): Promise<EliticalProviderIssue> {
+    return this.toIssue(await this.client.updateDescription(docketId, description));
+  }
+
+  async updateState(docketId: string, stateId: string): Promise<EliticalProviderIssue> {
+    return this.toIssue(await this.client.updateState(docketId, stateId));
+  }
+
+  async updateStoryPoints(docketId: string, storyPoints: number): Promise<EliticalProviderIssue> {
+    return this.toIssue(await this.client.updateStoryPoints(docketId, storyPoints));
+  }
+
+  async updatePriority(docketId: string, priority: string): Promise<EliticalProviderIssue> {
+    return this.toIssue(await this.client.updatePriority(docketId, priority));
+  }
+
+  async updateCategory(docketId: string, category: string): Promise<EliticalProviderIssue> {
+    return this.toIssue(await this.client.updateCategory(docketId, category));
+  }
+
+  async updateAssignee(docketId: string, assigneeId: string): Promise<EliticalProviderIssue> {
+    return this.toIssue(await this.client.updateAssignee(docketId, assigneeId));
+  }
+
+  async updateParent(docketId: string, parentId: string): Promise<EliticalProviderIssue> {
+    return this.toIssue(await this.client.updateParent(docketId, parentId));
+  }
+
+  async updateSprint(docketId: string, sprintId: string): Promise<EliticalProviderIssue> {
+    return this.toIssue(await this.client.updateSprint(docketId, sprintId));
+  }
+
+  async createWorklog(payload: CreateWorklogPayload): Promise<EliticalProviderWorklog> {
+    return this.toWorklog(
+      await this.client.createWorklog(payload),
+      String(payload.docketId || "")
+    );
+  }
+
+  async updateWorklog(payload: CreateWorklogPayload): Promise<EliticalProviderWorklog> {
+    return this.toWorklog(
+      await this.client.updateWorklog(payload),
+      String(payload.docketId || "")
+    );
+  }
+
+  async uploadAttachment(payload: AttachmentPayload): Promise<unknown> {
+    return this.client.uploadAttachment(payload);
+  }
+
+  async deleteAttachment(attachmentId: string): Promise<void> {
+    return this.client.deleteAttachment(attachmentId);
+  }
+
+  private normalizeLookupValues(values: EliticalLookupValue[]): EliticalProviderLookupValue[] {
+    return values.map((value) => ({
+      ...value,
+      id: lookupId(value),
+      name: lookupName(value),
+    }));
+  }
+
   private toIssue(issue: Docket | Issue): EliticalProviderIssue {
     const id = issueId(issue);
     const type = normalizeIssueType(issue);
@@ -218,6 +400,13 @@ export class EliticalProvider {
   private toWorklog(worklog: Worklog, fallbackDocketId: string): EliticalProviderWorklog {
     const id = worklogId(worklog);
     const docketId = worklogDocketId(worklog) || fallbackDocketId;
+    const timeMinutes = worklogMinutes(worklog);
+    const hour = timeMinutes > 0 && firstNumber(worklog.hour, worklog.hours, worklog.loggedHours, worklog.duration) === 0
+      ? Math.floor(timeMinutes / 60)
+      : firstNumber(worklog.hour, worklog.hours, worklog.loggedHours, worklog.duration);
+    const min = timeMinutes > 0 && firstNumber(worklog.min, worklog.minutes) === 0
+      ? timeMinutes % 60
+      : firstNumber(worklog.min, worklog.minutes);
 
     return {
       ...worklog,
@@ -228,7 +417,10 @@ export class EliticalProvider {
       projectId: worklogProjectId(worklog),
       date: firstString(worklog.worklogDate, worklog.date, worklog.createdDate),
       description: firstString(worklog.description, worklog.comment, worklog.note),
-      timeMinutes: worklogMinutes(worklog),
+      hour,
+      min,
+      timeMinutes,
+      durationMinutes: timeMinutes,
     };
   }
 }

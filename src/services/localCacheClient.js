@@ -1,8 +1,26 @@
-const LOCAL_BACKEND_ORIGIN =
-  import.meta.env.VITE_LOCAL_BACKEND_URL || "http://127.0.0.1:3797";
-const CACHE_ENDPOINT = `${LOCAL_BACKEND_ORIGIN}/api/cache`;
-const CACHE_EVENTS_ENDPOINT = `${CACHE_ENDPOINT}/events`;
-const WORKLOGS_ENDPOINT = `${LOCAL_BACKEND_ORIGIN}/api/worklogs`;
+import { localBackendOrigin } from "./backendOrigin";
+
+function cacheEndpoint() {
+  return `${localBackendOrigin()}/api/cache`;
+}
+
+function cacheEventsEndpoint() {
+  return `${cacheEndpoint()}/events`;
+}
+
+function worklogsEndpoint() {
+  return `${localBackendOrigin()}/api/worklogs`;
+}
+
+async function fetchBackend(url, options) {
+  try {
+    return await fetch(url, options);
+  } catch (error) {
+    throw new Error(
+      `Desktop backend request failed for ${url}: ${error?.message || "Unable to connect."}`
+    );
+  }
+}
 
 async function parseCacheResponse(response) {
   let payload = null;
@@ -31,9 +49,9 @@ async function parseCacheResponse(response) {
 
 export async function loadLocalGraphCache({ skipBackgroundSync = false } = {}) {
   const url = skipBackgroundSync
-    ? `${CACHE_ENDPOINT}?skipBackgroundSync=1`
-    : CACHE_ENDPOINT;
-  const response = await fetch(url, {
+    ? `${cacheEndpoint()}?skipBackgroundSync=1`
+    : cacheEndpoint();
+  const response = await fetchBackend(url, {
     headers: {
       Accept: "application/json",
     },
@@ -43,7 +61,7 @@ export async function loadLocalGraphCache({ skipBackgroundSync = false } = {}) {
 }
 
 export async function loadLocalWorklogsCache() {
-  const response = await fetch(WORKLOGS_ENDPOINT, {
+  const response = await fetchBackend(worklogsEndpoint(), {
     headers: {
       Accept: "application/json",
     },
@@ -60,10 +78,32 @@ export async function loadLocalWorklogsCache() {
   };
 }
 
-export function subscribeToLocalCacheEvents({ onUpdated, onFailed, onWarning } = {}) {
+export function subscribeToLocalCacheEvents({
+  onUpdated,
+  onFailed,
+  onWarning,
+  onSyncStarted,
+  onSyncFinished,
+} = {}) {
   if (typeof EventSource !== "function") return null;
 
-  const events = new EventSource(CACHE_EVENTS_ENDPOINT);
+  const events = new EventSource(cacheEventsEndpoint());
+
+  events.addEventListener("sync-started", (event) => {
+    try {
+      onSyncStarted?.(JSON.parse(event.data));
+    } catch {
+      onSyncStarted?.({ message: "Elitical sync started." });
+    }
+  });
+
+  events.addEventListener("sync-finished", (event) => {
+    try {
+      onSyncFinished?.(JSON.parse(event.data));
+    } catch {
+      onSyncFinished?.({ message: "Elitical sync finished." });
+    }
+  });
 
   events.addEventListener("cache-updated", (event) => {
     try {

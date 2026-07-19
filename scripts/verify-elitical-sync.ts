@@ -1,6 +1,6 @@
-import { EliticalAuthService } from "../src/services/elitical/auth/index";
-import { EliticalClient } from "../src/services/elitical/client/index";
-import { EliticalProvider } from "../src/services/elitical/provider/index";
+import { EliticalAuthService } from "../src/services/elitical/auth/index.js";
+import { EliticalClient } from "../src/services/elitical/client/index.js";
+import { EliticalProvider } from "../src/services/elitical/provider/index.js";
 import { createSyncManager } from "../src/services/elitical/sync.js";
 
 function itemId(item: { id?: string; eliticalId?: string; docketId?: string; dktId?: string; cx?: string }): string {

@@ -102,11 +102,6 @@ try {
   );
 }
 
-if (!response) {
-  await browser.close();
-  throw new Error("The browser issued POST /api/1/IssuesBoard, but Playwright returned no response.");
-}
-
 const postBody = request.postData() || "";
 const responseBody = await response.text();
 

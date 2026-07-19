@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { Handle, Position } from "reactflow";
+import { childCreateTypesForNode } from "../utils/nodeCapabilities";
 
 function stopCanvasEvent(event) {
   event.stopPropagation();
@@ -61,13 +62,12 @@ function formatDocketState(value) {
     .join(" ");
 }
 
-function childTypes(data) {
-  if (Array.isArray(data.addChildTypes)) return data.addChildTypes;
-  if (data.type === "main-root") return ["sprint"];
-  if (data.type === "story-root") return ["epic"];
-  if (data.type === "epic") return ["story"];
-  if (data.type === "story") return ["job"];
-  return [];
+function syncLabel(sync) {
+  if (sync?.status === "pending-create") return "Pending Create";
+  if (sync?.status === "pending-update") return "Pending Update";
+  if (sync?.status === "sync-unconfirmed") return "Sync Unconfirmed";
+  if (sync?.status === "sync-failed") return "Sync Failed";
+  return "";
 }
 
 function nodeIcon(data) {
@@ -159,9 +159,12 @@ function nodeIcon(data) {
 }
 
 function JiraNode({ data }) {
-  const availableChildTypes = data.allowChildActions === false
-    ? []
-    : childTypes(data);
+  /*
+   * JiraNode is the shared docket/node presentation surface for graph-based
+   * views. Views decide which projected items to show and where to place them;
+   * docket visuals and actions belong here so features stay consistent.
+   */
+  const availableChildTypes = childCreateTypesForNode(data);
   const showSp = hasStoryPoints(data);
   const timeValue = data.calculatedTimeMinutes || 0;
   const summaryControls = data.completedSummaryControls || [];
@@ -174,6 +177,9 @@ function JiraNode({ data }) {
       return;
     }
     data.onStartChild(type, data.childParentId || data.sourceId || data.id, {
+      sprint: data.childSprint,
+      sprintId: data.childSprintId,
+      isOrphanSprint: data.isOrphanSprint || data.isOrphanSprintContext,
       worklogDate: data.childWorklogDate,
     });
   }
@@ -189,10 +195,19 @@ function JiraNode({ data }) {
         data.selected ? "selected" : ""
       } ${data.searchMatch ? "search-match" : ""} ${
         data.isContextNode || data.isSprintContext ? "sprint-context" : ""
-      } ${isDayRoot ? "day-root" : ""}`}
+      } ${data.isGhost ? "ghost-reference" : ""} ${isDayRoot ? "day-root" : ""}`}
       title={data.title}
     >
       <Handle type="target" position={Position.Top} />
+
+      {data.isGhost && (
+        <div className="node-reference-badge">Reference</div>
+      )}
+      {syncLabel(data.sync) && (
+        <div className={`node-sync-badge sync-${data.sync.status}`}>
+          {syncLabel(data.sync)}
+        </div>
+      )}
 
       <div className="node-collapsed">
         {nodeIcon(data) || (

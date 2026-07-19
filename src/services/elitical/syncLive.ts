@@ -31,6 +31,29 @@ export type EliticalLiveSyncProgress = {
   total?: number;
 };
 
+function maskSecret(value: string | undefined) {
+  if (!value) return "";
+  if (value.length <= 8) return "***";
+
+  return `${value.slice(0, 4)}...${value.slice(-4)}`;
+}
+
+function logRuntimeConfiguration(stage: string) {
+  console.info("[EliticalSyncLive] runtime configuration", {
+    stage,
+    cwd: process.cwd(),
+    envPath: process.env.ELITICAL_ENV_PATH || ".env",
+    baseUrl: process.env.ELITICAL_BASE_URL || "(default)",
+    dataDir: process.env.ELITICAL_DATA_DIR || "",
+    storageStatePath: process.env.ELITICAL_STORAGE_STATE_PATH || "",
+    playwrightBrowsersPath: process.env.PLAYWRIGHT_BROWSERS_PATH || "",
+    hasGithubToken: Boolean(process.env.GITHUB_TOKEN),
+    githubToken: maskSecret(process.env.GITHUB_TOKEN),
+    hasGithubOwner: Boolean(process.env.GITHUB_DATA_OWNER),
+    hasGithubRepo: Boolean(process.env.GITHUB_DATA_REPO),
+  });
+}
+
 export type EliticalLiveSyncOptions = {
   writeOutput?: boolean;
   onProgress?: (progress: EliticalLiveSyncProgress) => void;
@@ -40,13 +63,14 @@ export type EliticalLiveSyncOptions = {
 };
 
 type ClosableAuthService = {
-  closeRuntime: () => Promise<void>;
+  close: () => Promise<void>;
 };
 
 type DocketTimestampIndexEntry = {
   docketId: string;
   modifiedTimestamp: string;
   createdTimestamp: string;
+  fingerprint?: string;
 };
 
 export type EliticalSyncIndex = {
@@ -93,27 +117,50 @@ type WorklogFetchResult = {
 };
 
 async function loadRuntimeModules() {
-  const [
-    { EliticalAuthService },
-    { EliticalClient },
-    { EliticalProvider },
-  ] = await Promise.all([
-    import("./auth/index"),
-    import("./client/index"),
-    import("./provider/index"),
-  ]);
+  try {
+    const [
+      { EliticalAuthService },
+      { EliticalClient },
+      { EliticalProvider },
+    ] = await Promise.all([
+      import("./auth/index.js"),
+      import("./client/index.js"),
+      import("./provider/index.js"),
+    ]);
 
-  return {
-    EliticalAuthService,
-    EliticalClient,
-    EliticalProvider,
-  };
+    console.info("[EliticalSyncLive] runtime modules loaded", {
+      auth: Boolean(EliticalAuthService),
+      client: Boolean(EliticalClient),
+      provider: Boolean(EliticalProvider),
+    });
+
+    return {
+      EliticalAuthService,
+      EliticalClient,
+      EliticalProvider,
+    };
+  } catch (error) {
+    console.error("[EliticalSyncLive] runtime module import failed", {
+      name: error instanceof Error ? error.name : "",
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : "",
+    });
+
+    throw error;
+  }
 }
 
 function loadEnv() {
+  const envPath = process.env.ELITICAL_ENV_PATH || ".env";
+
   try {
-    loadEnvFile(".env");
-  } catch {
+    loadEnvFile(envPath);
+    console.info("[EliticalSyncLive] environment file loaded", { envPath });
+  } catch (error) {
+    console.info("[EliticalSyncLive] environment file not loaded", {
+      envPath,
+      message: error instanceof Error ? error.message : String(error),
+    });
     // Environment files are optional in deployed environments.
   }
 }
@@ -158,6 +205,45 @@ function timestampValue(docket: Record<string, unknown>, keys: string[]) {
   return "";
 }
 
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
+      .join(",")}}`;
+  }
+
+  return JSON.stringify(value ?? "");
+}
+
+function issueFingerprint(docket: Record<string, unknown>) {
+  return stableStringify({
+    id: docketId(docket),
+    type: docketType(docket),
+    num: docketNumber(docket),
+    title: firstText(docket.title, docket.docketName),
+    descr: firstText(docket.descr, docket.description),
+    projectId: firstText(docket.projectId),
+    sprintId: firstText(docket.sprintId),
+    epicId: firstText(docket.epicId),
+    storyId: firstText(docket.storyId),
+    parentId: firstText(docket.parentId, docket.parentDocketId),
+    stateId: firstText(docket.dktStateId, docket.stateId),
+    stateName: firstText(docket.dktStateName, docket.docketState, docket.status),
+    priority: firstText(docket.priority),
+    category: firstText(docket.category),
+    assigneeId: firstText(docket.assigneeId),
+    storyPointEst: firstText(docket.storyPointEst, docket.storyPoints, docket.estimatedStoryPoints),
+    updated: modifiedTimestamp(docket),
+  });
+}
+
 function modifiedTimestamp(docket: Record<string, unknown>) {
   return timestampValue(docket, [
     "modifiedTime",
@@ -195,6 +281,7 @@ function buildSyncIndex({
       docketId: id,
       modifiedTimestamp: modifiedTimestamp(record),
       createdTimestamp: createdTimestamp(record),
+      fingerprint: issueFingerprint(record),
     };
   });
 
@@ -272,7 +359,10 @@ function classifyIssues({
       return;
     }
 
-    if (previous.modifiedTimestamp !== modifiedTimestamp(record)) {
+    if (
+      previous.modifiedTimestamp !== modifiedTimestamp(record) ||
+      (previous.fingerprint && previous.fingerprint !== issueFingerprint(record))
+    ) {
       modified.push(issue);
       return;
     }
@@ -285,6 +375,29 @@ function classifyIssues({
     modifiedIssues: modified,
     unchangedIssues: unchanged,
   };
+}
+
+function baselineStatus({
+  syncIndex,
+  targetProjectId,
+  previousGraph,
+}: {
+  syncIndex: EliticalSyncIndex | null;
+  targetProjectId: string;
+  previousGraph?: Record<string, unknown> | null;
+}) {
+  const docketCount = Object.keys(syncIndex?.dockets || {}).length;
+  const hierarchyCount = previousHierarchyById(previousGraph).size;
+
+  if (!syncIndex) return { valid: false, reason: "no-baseline", docketCount, hierarchyCount };
+  if (!syncIndex.projectId) return { valid: false, reason: "baseline-missing-project", docketCount, hierarchyCount };
+  if (syncIndex.projectId !== targetProjectId) {
+    return { valid: false, reason: "baseline-project-mismatch", docketCount, hierarchyCount };
+  }
+  if (!docketCount) return { valid: false, reason: "baseline-empty-docket-index", docketCount, hierarchyCount };
+  if (!hierarchyCount) return { valid: false, reason: "baseline-missing-cached-hierarchy", docketCount, hierarchyCount };
+
+  return { valid: true, reason: "valid-baseline", docketCount, hierarchyCount };
 }
 
 function mergeHierarchyFields<T extends Record<string, unknown>>(
@@ -607,6 +720,7 @@ export async function importEliticalLiveToNormalized({
   cachedWorklogs = null,
 }: EliticalLiveSyncOptions = {}) {
   loadEnv();
+  logRuntimeConfiguration("after-env");
 
   const startedAt = Date.now();
   const timings = {
@@ -622,8 +736,9 @@ export async function importEliticalLiveToNormalized({
   const progress = (next: EliticalLiveSyncProgress) => onProgress?.(next);
   const { EliticalAuthService, EliticalClient, EliticalProvider } =
     await loadRuntimeModules();
+  logRuntimeConfiguration("after-runtime-modules");
   const authService = new EliticalAuthService({
-    baseUrl: process.env.ELITICAL_BASE_URL || "",
+    baseUrl: process.env.ELITICAL_BASE_URL || undefined,
     dataDir: process.env.ELITICAL_DATA_DIR || undefined,
     storageStatePath: process.env.ELITICAL_STORAGE_STATE_PATH || undefined,
   });
@@ -672,18 +787,19 @@ export async function importEliticalLiveToNormalized({
     const comparisonStartedAt = Date.now();
     const detailTargets = issues.filter((issue) => docketType(issue) !== "EPIC");
     const previousHierarchy = previousHierarchyById(previousGraph);
-    const canAttemptIncremental =
-      Boolean(syncIndex?.projectId === targetProjectId) &&
-      Boolean(syncIndex?.dockets) &&
-      previousHierarchy.size > 0;
-    let incrementalMode = canAttemptIncremental;
-    let incrementalFallback = "";
+    const baseline = baselineStatus({
+      syncIndex,
+      targetProjectId,
+      previousGraph,
+    });
+    let incrementalMode = baseline.valid;
+    let incrementalFallback = baseline.valid ? "" : baseline.reason;
     let newIssues: unknown[] = [];
     let modifiedIssues: unknown[] = [];
     let unchangedIssues: unknown[] = [];
     let detailFetchResult: DetailFetchResult;
 
-    if (canAttemptIncremental) {
+    if (baseline.valid) {
       const classified = classifyIssues({
         issues,
         syncIndex: syncIndex as EliticalSyncIndex,
@@ -800,13 +916,23 @@ export async function importEliticalLiveToNormalized({
         requiresDocketDetail(docketType(issue as Record<string, unknown>))
       ).length
       : 0;
+    const currentIssueIds = new Set(
+      issues.map((issue) => docketId(issue as unknown as Record<string, unknown>)).filter(Boolean)
+    );
+    const removedDockets = incrementalMode
+      ? Object.keys(syncIndex?.dockets || {}).filter((id) => !currentIssueIds.has(id)).length
+      : 0;
     const incremental = {
       mode: incrementalMode ? "incremental" : "full",
-      fallbackReason: incrementalFallback,
+      reason: incrementalMode ? baseline.reason : incrementalFallback,
+      fallbackReason: incrementalMode ? "" : incrementalFallback,
+      baselineDockets: baseline.docketCount,
+      cachedHierarchyDockets: baseline.hierarchyCount,
       issuesBoardItems: issues.length,
       newDockets: newIssues.length,
       modifiedDockets: modifiedIssues.length,
       unchangedDockets: unchangedIssues.length,
+      removedDockets,
       detailRequestsSent: detailFetchResult!.successfulDetailRequests + detailFetchResult!.failedDetailRequests,
       skippedDetailRequests,
       worklogRequestsSent: worklogFetchResult.requestedDockets,
@@ -815,6 +941,17 @@ export async function importEliticalLiveToNormalized({
       syncDurationSeconds: Math.round(durationMs / 1000),
     };
 
+    console.log(`[inbound-sync] mode=${incremental.mode} reason=${incremental.reason}`);
+    console.log(
+      `[inbound-sync] dockets total=${incremental.issuesBoardItems} new=${incremental.newDockets} modified=${incremental.modifiedDockets} unchanged=${incremental.unchangedDockets} removed=${incremental.removedDockets}`
+    );
+    console.log(
+      `[inbound-sync] details fetched=${incremental.detailRequestsSent} reused=${incremental.skippedDetailRequests}`
+    );
+    console.log(
+      `[inbound-sync] worklogs fetched=${incremental.worklogRequestsSent} reused=${incremental.worklogRequestsReused}`
+    );
+    console.log(`[inbound-sync] duration=${incremental.syncDurationSeconds} s`);
     console.log("-------------------------------------");
     console.log("IssuesBoard items:", incremental.issuesBoardItems);
     console.log("New dockets:", incremental.newDockets);
@@ -861,6 +998,6 @@ export async function importEliticalLiveToNormalized({
       syncedAt,
     };
   } finally {
-    await (authService as unknown as ClosableAuthService).closeRuntime();
+    await (authService as unknown as ClosableAuthService).close();
   }
 }

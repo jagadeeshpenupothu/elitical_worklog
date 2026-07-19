@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
     "scripts": {
-  "dev": "netlify dev",
+  "dev": "node scripts/dev.mjs",
+  "dev:netlify": "netlify dev",
   "dev:desktop": "node scripts/dev-desktop.mjs",
   "dev:vite": "vite --host 127.0.0.1 --port 5177 --strictPort",
   "backend:local": "tsx local-backend/server.mjs",

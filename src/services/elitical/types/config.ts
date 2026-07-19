@@ -7,6 +7,8 @@ export interface EliticalConfig {
   headless: boolean;
   loginTimeoutMs: number;
   verificationTimeoutMs: number;
+  requestTimeoutMs: number;
+  mutationRequestTimeoutMs: number;
   verificationPath: string;
 }
 
@@ -18,5 +20,7 @@ export interface EliticalConfigInput {
   headless?: boolean;
   loginTimeoutMs?: number;
   verificationTimeoutMs?: number;
+  requestTimeoutMs?: number;
+  mutationRequestTimeoutMs?: number;
   verificationPath?: string;
 }

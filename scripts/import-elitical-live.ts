@@ -1,4 +1,4 @@
-import { importEliticalLiveToNormalized } from "../src/services/elitical/syncLive";
+import { importEliticalLiveToNormalized } from "../src/services/elitical/syncLive.js";
 
 async function main() {
   const result = await importEliticalLiveToNormalized({

@@ -1,7 +1,7 @@
 export {
   EliticalAuthError,
   type EliticalAuthErrorCode,
-} from "./EliticalAuthError";
-export { EliticalAuthService } from "./EliticalAuthService";
-export { resolveEliticalConfig } from "./EliticalConfig";
-export type { EliticalAuthServiceContract } from "../types";
+} from "./EliticalAuthError.js";
+export { EliticalAuthService } from "./EliticalAuthService.js";
+export { resolveEliticalConfig } from "./EliticalConfig.js";
+export type { EliticalAuthServiceContract } from "../types/index.js";

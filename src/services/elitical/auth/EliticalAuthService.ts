@@ -16,9 +16,9 @@ import type {
   EliticalConfig,
   EliticalConfigInput,
   EliticalSession,
-} from "../types";
-import { EliticalAuthError } from "./EliticalAuthError";
-import { resolveEliticalConfig } from "./EliticalConfig";
+} from "../types/index.js";
+import { EliticalAuthError } from "./EliticalAuthError.js";
+import { resolveEliticalConfig } from "./EliticalConfig.js";
 
 type VerificationPayload = {
   employeeId?: string;
@@ -141,6 +141,43 @@ function summarizeStorage(storage: Record<string, string>) {
   };
 }
 
+function tokenDiagnostic(value: string | undefined | null) {
+  if (!value) {
+    return {
+      present: false,
+      length: 0,
+    };
+  }
+
+  return {
+    present: true,
+    length: value.length,
+  };
+}
+
+function safeResponseHeaderDiagnostic(headers: Record<string, string> | null | undefined) {
+  if (!headers) return {};
+
+  const safeHeaderNames = [
+    "cache-control",
+    "content-length",
+    "content-type",
+    "date",
+    "expires",
+    "pragma",
+  ];
+
+  return safeHeaderNames.reduce<Record<string, string>>((safeHeaders, headerName) => {
+    const value = headers[headerName];
+
+    if (value !== undefined) {
+      safeHeaders[headerName] = value;
+    }
+
+    return safeHeaders;
+  }, {});
+}
+
 function verificationUrl(config: EliticalConfig) {
   const url = new URL(config.verificationPath, `${config.baseUrl}/`);
 
@@ -191,6 +228,18 @@ export class EliticalAuthService implements EliticalAuthServiceContract {
     this.config = resolveEliticalConfig(config);
     console.info("[EliticalAuthService] constructed", {
       authServiceInstanceId: this.instanceId,
+      baseUrl: this.config.baseUrl,
+      storageStatePath: this.config.storageStatePath,
+      browserType: this.config.browserType,
+      headless: this.config.headless,
+      loginTimeoutMs: this.config.loginTimeoutMs,
+      verificationTimeoutMs: this.config.verificationTimeoutMs,
+      requestTimeoutMs: this.config.requestTimeoutMs,
+      mutationRequestTimeoutMs: this.config.mutationRequestTimeoutMs,
+      verificationPath: this.config.verificationPath,
+      envPath: process.env.ELITICAL_ENV_PATH || "",
+      dataDir: process.env.ELITICAL_DATA_DIR || "",
+      playwrightBrowsersPath: process.env.PLAYWRIGHT_BROWSERS_PATH || "",
     });
   }
 
@@ -265,6 +314,10 @@ export class EliticalAuthService implements EliticalAuthServiceContract {
         { cause: error }
       );
     }
+  }
+
+  async close(): Promise<void> {
+    await this.closeRuntime({ persistSession: true });
   }
 
   async restoreSession(): Promise<EliticalSession | null> {
@@ -370,7 +423,7 @@ export class EliticalAuthService implements EliticalAuthServiceContract {
     try {
       const response = await this.sendAuthenticatedRequest(request);
 
-      if (response.status !== 401) {
+      if (response.status !== 401 || request.retryOnUnauthorized === false) {
         return response;
       }
 
@@ -394,6 +447,10 @@ export class EliticalAuthService implements EliticalAuthServiceContract {
     const context = await this.ensureAuthenticatedContext();
     const page = await this.ensurePage(context);
     const endpoint = requestUrl(this.config, request);
+    const method = request.method || "GET";
+    const defaultTimeoutMs = ["POST", "PUT", "PATCH", "DELETE"].includes(method)
+      ? this.config.mutationRequestTimeoutMs
+      : this.config.requestTimeoutMs;
     const referrer = request.referrerPath
       ? new URL(request.referrerPath, `${this.config.baseUrl}/`).toString()
       : undefined;
@@ -452,6 +509,14 @@ export class EliticalAuthService implements EliticalAuthServiceContract {
               fetchOptions.referrer = requestReferrer;
             }
 
+            const bodyRecord =
+              body && typeof body === "object" && !Array.isArray(body)
+                ? (body as Record<string, unknown>)
+                : {};
+            const cookieNames = document.cookie
+              .split(";")
+              .map((cookie) => cookie.trim().split("=")[0])
+              .filter(Boolean);
             const response = await window.fetch(targetEndpoint, fetchOptions);
             const responseHeaders = Object.fromEntries(response.headers.entries());
             const refreshedAuthorization = responseHeaders.authorization;
@@ -481,6 +546,54 @@ export class EliticalAuthService implements EliticalAuthServiceContract {
               statusText: response.statusText,
               payload,
               headers: responseHeaders,
+              requestDiagnostics: {
+                headerNames: Object.keys(headers),
+                authorization: {
+                  present: Boolean(authorization),
+                  length: authorization?.length || 0,
+                },
+                sJwtToken: {
+                  present: Boolean(sJwtToken),
+                  length: sJwtToken?.length || 0,
+                },
+                browserContext: {
+                  pageUrl: window.location.href,
+                  origin: window.location.origin,
+                  documentReferrer: document.referrer,
+                  requestedReferrer: requestReferrer || "",
+                  cookieCount: cookieNames.length,
+                  cookieNames,
+                },
+                fetchOptions: {
+                  method,
+                  accept: headers.Accept,
+                  contentType: headers["Content-Type"],
+                  hasBody: body !== undefined,
+                },
+                response: {
+                  finalUrl: response.url,
+                  redirected: response.redirected,
+                },
+                body: {
+                  keyCount: Object.keys(bodyRecord).length,
+                  keys: Object.keys(bodyRecord),
+                  type: String(bodyRecord.type || ""),
+                  projectId: String(bodyRecord.projectId || ""),
+                  projectName: String(bodyRecord.projectName || ""),
+                  epicId: String(bodyRecord.epicId || ""),
+                  storyId: String(bodyRecord.storyId || ""),
+                  sprintId: String(bodyRecord.sprintId || ""),
+                  sprintName: String(bodyRecord.sprintName || ""),
+                  assigneeId: String(bodyRecord.assigneeId || ""),
+                  dktStateId: String(bodyRecord.dktStateId || ""),
+                  category: String(bodyRecord.category || ""),
+                  priority: String(bodyRecord.priority || ""),
+                  storyPointEst: bodyRecord.storyPointEst,
+                  hasNoSprint: bodyRecord.hasNoSprint,
+                  hasImgAttachmentDtoSet: Array.isArray(bodyRecord.imgAttachmentDtoSet),
+                  hasVideoAttachmentDtoSet: Array.isArray(bodyRecord.videoAttachmentDtoSet),
+                },
+              },
             };
           } finally {
             window.clearTimeout(timeout);
@@ -488,10 +601,10 @@ export class EliticalAuthService implements EliticalAuthServiceContract {
         },
         {
           endpoint,
-          method: request.method || "GET",
+          method,
           body: request.body,
           referrer,
-          timeoutMs: request.timeoutMs || this.config.verificationTimeoutMs,
+          timeoutMs: request.timeoutMs || defaultTimeoutMs,
         }
       );
 
@@ -502,19 +615,38 @@ export class EliticalAuthService implements EliticalAuthServiceContract {
       ).headers;
       const refreshedAuthorization = Boolean(responseHeaders?.authorization);
       const refreshedSJwtToken = Boolean(responseHeaders?.["s-jwt-token"]);
+      const requestDiagnostics = (
+        response as EliticalAuthenticatedResponse & {
+          requestDiagnostics?: unknown;
+        }
+      ).requestDiagnostics;
 
       console.info("[EliticalAuthService] authenticatedRequest response", {
         endpoint,
-        method: request.method || "GET",
+        method,
         referrer: referrer || "",
         httpStatus: response.status,
         ok: response.ok,
         refreshedAuthorization,
         refreshedSJwtToken,
+        requestDiagnostics,
       });
 
       if (response.ok && refreshedAuthorization) {
         await this.persistSession(context);
+      }
+
+      if (!response.ok) {
+        console.error("[EliticalAuthService] authenticatedRequest unsuccessful response", {
+          authServiceInstanceId: this.instanceId,
+          endpoint,
+          method: request.method || "GET",
+          status: response.status,
+          statusText: response.statusText,
+          responseHeaders: safeResponseHeaderDiagnostic(responseHeaders),
+          requestDiagnostics,
+          callStack: new Error().stack,
+        });
       }
 
       if (response.status === 401) {
@@ -655,7 +787,9 @@ export class EliticalAuthService implements EliticalAuthServiceContract {
           requestUrl: this.config.baseUrl,
           httpStatus: originResponse?.status() || 0,
           finalUrl: page.url(),
-          responseHeaders: originResponse ? await originResponse.allHeaders() : {},
+          responseHeaders: originResponse
+            ? safeResponseHeaderDiagnostic(await originResponse.allHeaders())
+            : {},
         });
       } catch (error) {
         console.info("[EliticalAuthService] verification origin network error", {
@@ -670,7 +804,6 @@ export class EliticalAuthService implements EliticalAuthServiceContract {
 
     let browserState: {
       locationHref: string;
-      cookie: string;
       localStorage: Record<string, string>;
       sessionStorage: Record<string, string>;
     };
@@ -690,12 +823,11 @@ export class EliticalAuthService implements EliticalAuthServiceContract {
           sessionStorageEntries[key] = window.sessionStorage.getItem(key) || "";
         }
 
-      return {
-        locationHref: document.location.href,
-        cookie: document.cookie,
+        return {
+          locationHref: document.location.href,
           localStorage: localStorageEntries,
           sessionStorage: sessionStorageEntries,
-      };
+        };
       });
     } catch (error) {
       console.info("[EliticalAuthService] unable to read verification browser state", {
@@ -708,9 +840,10 @@ export class EliticalAuthService implements EliticalAuthServiceContract {
 
     console.info("[EliticalAuthService] verification browser state", {
       locationHref: browserState.locationHref,
-      cookie: browserState.cookie,
       localStorage: summarizeStorage(browserState.localStorage),
       sessionStorage: summarizeStorage(browserState.sessionStorage),
+      authorization: tokenDiagnostic(browserState.localStorage["flutter.authorization"]),
+      sJwtToken: tokenDiagnostic(browserState.localStorage["flutter.s-jwt-token"]),
     });
     console.info("[EliticalAuthService] verification request", {
       url: endpoint,
@@ -798,8 +931,8 @@ export class EliticalAuthService implements EliticalAuthServiceContract {
       method: "GET",
       httpStatus: result.status,
       finalUrl: result.finalUrl,
-      responseHeaders: result.headers,
-      responseBodyFirst1000: result.body.slice(0, 1000),
+      responseHeaders: safeResponseHeaderDiagnostic(result.headers),
+      responseBodyLength: result.body.length,
       networkError: result.error || "",
     });
 
@@ -887,7 +1020,7 @@ export class EliticalAuthService implements EliticalAuthServiceContract {
     }
   }
 
-  private async closeRuntime() {
+  private async closeRuntime({ persistSession = false } = {}) {
     const page = this.page;
     const context = this.context;
     const browser = this.browser;
@@ -895,6 +1028,17 @@ export class EliticalAuthService implements EliticalAuthServiceContract {
     this.page = null;
     this.context = null;
     this.browser = null;
+
+    if (persistSession && context) {
+      try {
+        await this.persistSession(context);
+      } catch (error) {
+        console.warn("[EliticalAuthService] Unable to persist session during close.", {
+          authServiceInstanceId: this.instanceId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
 
     await page?.close();
     await context?.close();

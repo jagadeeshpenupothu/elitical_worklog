@@ -16,7 +16,7 @@ function encodeBase64(value) {
 function loadDotEnv() {
   if (process.env.GITHUB_TOKEN && process.env.GITHUB_DATA_OWNER) return;
 
-  return fs.readFile(".env", "utf8")
+  return fs.readFile(process.env.ELITICAL_ENV_PATH || ".env", "utf8")
     .then((raw) => {
       raw.split(/\r?\n/).forEach((line) => {
         const trimmed = line.trim();

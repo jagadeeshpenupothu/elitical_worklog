@@ -1,4 +1,4 @@
-import type { EliticalSession } from "./session";
+import type { EliticalSession } from "./session.js";
 
 export interface EliticalAuthServiceContract {
   initialize(): Promise<void>;
@@ -6,4 +6,5 @@ export interface EliticalAuthServiceContract {
   logout(): Promise<void>;
   restoreSession(): Promise<EliticalSession | null>;
   hasValidSession(): Promise<boolean>;
+  close(): Promise<void>;
 }

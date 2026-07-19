@@ -1,6 +1,6 @@
-import { EliticalAuthService } from "../src/services/elitical/auth/index";
-import { EliticalClient } from "../src/services/elitical/client/index";
-import type { Issue, Project } from "../src/services/elitical/models/index";
+import { EliticalAuthService } from "../src/services/elitical/auth/index.js";
+import { EliticalClient } from "../src/services/elitical/client/index.js";
+import type { Issue, Project } from "../src/services/elitical/models/index.js";
 
 function entityId(entity: Pick<Project, "id" | "projectId" | "cx">): string {
   return String(entity.id || entity.projectId || entity.cx || "");

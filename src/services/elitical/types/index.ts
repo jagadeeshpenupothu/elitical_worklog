@@ -2,17 +2,24 @@ export type {
   EliticalBrowserType,
   EliticalConfig,
   EliticalConfigInput,
-} from "./config";
+} from "./config.js";
 export type {
   EliticalAuthServiceContract,
-} from "./auth";
+} from "./auth.js";
 export type {
+  AttachmentPayload,
   EliticalAuthenticatedRequest,
   EliticalAuthenticatedResponse,
+  CreateDocketPayload,
   CreateWorklogPayload,
+  EliticalDocketType,
+  EliticalEmployee,
+  EliticalLookupValue,
+  EliticalRequestMethod,
   EliticalClientContract,
-} from "./client";
+  UpdateDocketPayload,
+} from "./client.js";
 export type {
   EliticalSession,
   EliticalUser,
-} from "./session";
+} from "./session.js";

@@ -56,7 +56,7 @@ function metadataForWorklogs(cache = {}) {
 }
 
 export class WorklogService {
-  constructor({ cacheDir = path.resolve("local-backend/cache") } = {}) {
+  constructor({ cacheDir = process.env.ELITICAL_CACHE_DIR || path.resolve("local-backend/cache") } = {}) {
     this.cacheDir = cacheDir;
     this.draftsPath = path.join(cacheDir, "worklog-drafts.json");
     this.pendingPath = path.join(cacheDir, "pending-worklogs.json");

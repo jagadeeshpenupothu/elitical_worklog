@@ -3,14 +3,17 @@ import process from "node:process";
 import type {
   EliticalConfig,
   EliticalConfigInput,
-} from "../types";
-import { EliticalAuthError } from "./EliticalAuthError";
+} from "../types/index.js";
+import { EliticalAuthError } from "./EliticalAuthError.js";
 
 const DEFAULT_STORAGE_STATE_FILE = "storage-state.json";
 const DEFAULT_BROWSER_TYPE = "chromium";
 const DEFAULT_LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 const DEFAULT_VERIFICATION_TIMEOUT_MS = 15 * 1000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30 * 1000;
+const DEFAULT_MUTATION_REQUEST_TIMEOUT_MS = 60 * 1000;
 const DEFAULT_VERIFICATION_PATH = "/api/1/UserSessionDto";
+const DEFAULT_BASE_URL = "https://elitical.sayukth.com";
 
 function envBoolean(value: string | undefined, fallback: boolean) {
   if (value === undefined) return fallback;
@@ -18,7 +21,7 @@ function envBoolean(value: string | undefined, fallback: boolean) {
 }
 
 function configuredBaseUrl(input?: EliticalConfigInput) {
-  return input?.baseUrl || process.env.ELITICAL_BASE_URL || "";
+  return input?.baseUrl || process.env.ELITICAL_BASE_URL || DEFAULT_BASE_URL;
 }
 
 function configuredStorageStatePath(input?: EliticalConfigInput) {
@@ -63,6 +66,14 @@ export function resolveEliticalConfig(
       input.verificationTimeoutMs ||
       Number(process.env.ELITICAL_VERIFICATION_TIMEOUT_MS) ||
       DEFAULT_VERIFICATION_TIMEOUT_MS,
+    requestTimeoutMs:
+      input.requestTimeoutMs ||
+      Number(process.env.ELITICAL_REQUEST_TIMEOUT_MS) ||
+      DEFAULT_REQUEST_TIMEOUT_MS,
+    mutationRequestTimeoutMs:
+      input.mutationRequestTimeoutMs ||
+      Number(process.env.ELITICAL_MUTATION_REQUEST_TIMEOUT_MS) ||
+      DEFAULT_MUTATION_REQUEST_TIMEOUT_MS,
     verificationPath:
       input.verificationPath ||
       process.env.ELITICAL_VERIFICATION_PATH ||

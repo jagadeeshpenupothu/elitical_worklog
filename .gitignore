@@ -3,6 +3,8 @@ node_modules/
 
 # Build output
 dist/
+build/
+release/
 
 # Netlify local development files
 .netlify/
@@ -30,3 +32,10 @@ pnpm-debug.log*
 *.tmp
 *.temp
 .cache/
+
+# Local runtime state
+local-backend/cache/sync-queue.json
+
+# Accidental generated files
+/node
+/jira-flow@0.0.0

@@ -1,4 +1,8 @@
 import { useMemo, useState } from "react";
+import {
+  buildProjectedHierarchy,
+  isReferenceNode,
+} from "../utils/hierarchyProjection";
 
 const VIEW_LABELS = {
   backlog: "Backlog View",
@@ -75,19 +79,24 @@ function optionValues(items, field) {
 }
 
 function PlanningCard({ item, onOpenDetails, actionLabel = "Open" }) {
+  const isReference = isReferenceNode(item);
+
   return (
     <button
       type="button"
-      className="planning-card"
-      onClick={() => onOpenDetails(item.id)}
+      className={`planning-card ${isReference ? "planning-card-reference" : ""}`}
+      onClick={() => {
+        if (!isReference) onOpenDetails(item.id);
+      }}
+      disabled={isReference}
     >
       <span>{item.title}</span>
       <small>
-        {item.type} · {item.docketState}
+        {isReference ? "Reference " : ""}{item.type} · {item.docketState}
         {item.storyPoints ? ` · ${item.storyPoints} SP` : ""}
         {itemLoggedHours(item) ? ` · ${itemLoggedHours(item).toFixed(1)}h logged` : ""}
       </small>
-      <strong>{actionLabel}</strong>
+      <strong>{isReference ? "Reference" : actionLabel}</strong>
     </button>
   );
 }
@@ -106,6 +115,7 @@ function PlanningStats({ stats }) {
 export default function PlanningView({
   viewMode,
   workItems,
+  allWorkItems = workItems,
   sprints,
   onOpenDetails,
 }) {
@@ -131,6 +141,17 @@ export default function PlanningView({
       return true;
     });
   }, [filters, workItems]);
+  const hasActiveFilter = Object.values(filters).some(Boolean);
+  const projectedItems = useMemo(
+    () =>
+      buildProjectedHierarchy({
+        items: filteredItems,
+        allItems: allWorkItems,
+        scopes: sprints,
+        enabled: hasActiveFilter,
+      }).items,
+    [allWorkItems, filteredItems, hasActiveFilter, sprints]
+  );
 
   const stats = useMemo(() => allStats(filteredItems), [filteredItems]);
   const epicOptions = useMemo(
@@ -146,7 +167,7 @@ export default function PlanningView({
   }
 
   function renderWorklog() {
-    const jobs = filteredItems.filter((item) => item.type === "job");
+    const jobs = projectedItems.filter((item) => item.type === "job");
     const entries = jobs.flatMap((item) =>
       (item.worklogs || []).map((entry) => ({
         item,
@@ -210,7 +231,7 @@ export default function PlanningView({
   function renderBacklog() {
     return (
       <div className="planning-list">
-        {filteredItems
+        {projectedItems
           .filter((item) => !item.sprint)
           .map((item) => (
             <PlanningCard

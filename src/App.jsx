@@ -14,9 +14,7 @@ import {
   ROOT_ID,
   buildWorklogSnapshot,
   calculateStoryPoints,
-  createWorkItem,
   deleteWorkItem,
-  generateWorkItemId,
   generateSprintId,
   normalizeWorklogSnapshot,
   stableSnapshotString,
@@ -31,6 +29,7 @@ import {
   saveWorklogSnapshot,
 } from "./services/worklogApi";
 import { syncLiveEliticalData } from "./services/elitical/syncLiveClient";
+import { syncPendingToElitical } from "./services/syncClient";
 import {
   loadLocalGraphCache,
   loadLocalWorklogsCache,
@@ -46,6 +45,18 @@ import {
   saveJobWorklogDraft,
   submitJobWorklog,
 } from "./services/worklogEngineClient";
+import {
+  createEliticalDocket,
+  updateEliticalDocket,
+} from "./services/eliticalEditClient";
+import {
+  ORPHAN_SPRINT_TITLE,
+  isOrphanSprintId,
+  isReferenceNode,
+  projectionScopeIdForItem,
+  scopesWithOrphanSprint,
+} from "./utils/hierarchyProjection";
+import { childCreateTypesForCanonicalType } from "./utils/nodeCapabilities";
 import "./App.css";
 
 const MAIN_ROOT_ID = "mainRoot";
@@ -107,10 +118,41 @@ function saveBrowserRefreshState(state) {
   }
 }
 
+function normalizeSyncQueueSummary(summary = {}) {
+  const actionableCount = Number(
+    summary.actionableCount ?? summary.pendingCount ?? 0
+  );
+  const mutationActionableCount = Number(
+    summary.mutationActionableCount ?? summary.retryablePendingCount ?? 0
+  );
+  const reconciliationActionableCount = Number(
+    summary.reconciliationActionableCount ?? summary.unconfirmedCount ?? 0
+  );
+
+  return {
+    ...summary,
+    actionableCount,
+    pendingCount: actionableCount,
+    mutationActionableCount,
+    reconciliationActionableCount,
+    retryablePendingCount: Number(
+      summary.retryablePendingCount ?? mutationActionableCount
+    ),
+    unconfirmedCount: Number(
+      summary.unconfirmedCount ?? reconciliationActionableCount
+    ),
+    failedCount: Number(summary.failedCount ?? 0),
+    blockedCount: Number(summary.blockedCount ?? 0),
+    operations: Array.isArray(summary.operations) ? summary.operations : [],
+  };
+}
+
 function isHostedViewerRuntime() {
+  if (typeof window !== "undefined" && window.eliticalDesktop?.isDesktop) return false;
   if (import.meta.env.VITE_APP_MODE === "desktop") return false;
   if (import.meta.env.VITE_APP_MODE === "viewer") return true;
   if (typeof window === "undefined") return false;
+  if (window.location.protocol === "file:") return false;
 
   return !["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
 }
@@ -122,13 +164,11 @@ function formatType(type) {
 }
 
 function makeCreateDraft(type, sprint, docketState) {
-  const now = new Date().toISOString();
-
   return {
     title: "",
     description: "",
     worklogDescription: "",
-    worklogDate: formatDateInput(now),
+    worklogDate: "",
     category: "feature",
     priority: "info",
     sprint,
@@ -163,21 +203,490 @@ function makeEditDraft(item, fallbackSprint) {
   const primaryWorklog = Array.isArray(item.worklogs)
     ? item.worklogs[0]
     : null;
+  const persistedSprintId = persistedDocketSprintId(item);
+  const worklogDurationMinutes = durationMinutesForWorklogDraft(primaryWorklog, item);
 
   return {
     title: item.title || "",
     description: item.description || "",
-    worklogDescription: primaryWorklog?.description || item.description || "",
-    worklogDate: formatDateInput(
-      primaryWorklog?.date || item.updatedAt || item.createdAt
-    ),
+    worklogId: primaryWorklog?.id || primaryWorklog?.worklogId || "",
+    worklogDescription: primaryWorklog?.description || primaryWorklog?.comment || "",
+    worklogDate: primaryWorklog ? formatDateInput(primaryWorklog.date || primaryWorklog.worklogDate) : "",
     category: item.category || "feature",
     priority: item.priority || "info",
     sprint: item.sprint || fallbackSprint,
+    sprintId: persistedSprintId,
+    sprintName: item.sprint || fallbackSprint,
     docketState: item.docketState || "concept",
+    stateId: item.elitical?.stateId || item.dktStateId || "",
+    stateName: item.docketState || item.dktStateName || "concept",
+    assigneeId: item.elitical?.assigneeId || item.assigneeId || "",
+    assigneeName: item.elitical?.assigneeName || item.assignee || "",
+    parentId: item.parentId || "",
+    epicId: item.elitical?.epicId || item.epicId || item.parentId || "",
     storyPoints: item.storyPoints || 0,
-    time: formatTimeInput(primaryWorklog?.timeMinutes || item.timeMinutes || 0),
+    time: formatTimeInput(worklogDurationMinutes),
   };
+}
+
+function positiveNumber(...values) {
+  const match = values.find((value) => Number.isFinite(Number(value)) && Number(value) > 0);
+
+  return match === undefined ? 0 : Number(match);
+}
+
+function durationFromHourMinute(source = {}) {
+  const hours = Number(source.hour ?? source.hours ?? source.loggedHours ?? source.duration ?? 0);
+  const minutes = Number(source.min ?? source.minutes ?? 0);
+
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return 0;
+
+  const totalMinutes = Math.round(hours) * 60 + Math.min(59, Math.max(0, Math.round(minutes)));
+
+  return totalMinutes > 0 ? totalMinutes : 0;
+}
+
+function durationMinutesForWorklogDraft(worklog, item = {}) {
+  if (!worklog) return positiveNumber(item.timeMinutes, item.durationMinutes);
+
+  return (
+    positiveNumber(worklog.timeMinutes, worklog.durationMinutes) ||
+    durationFromHourMinute(worklog) ||
+    positiveNumber(item.timeMinutes, item.durationMinutes) ||
+    durationFromHourMinute(worklog.sync?.remoteBaseline)
+  );
+}
+
+function lookupId(value) {
+  return String(value?.id || value?.eliticalId || value?.code || value?.name || value?.title || "").trim();
+}
+
+function lookupName(value) {
+  return String(value?.name || value?.title || value?.label || value?.code || value?.id || "").trim();
+}
+
+function isSyntheticOptionId(id) {
+  const value = String(id || "").trim();
+
+  return (
+    !value ||
+    value === ROOT_ID ||
+    isOrphanSprintId(value) ||
+    value.startsWith("reference-") ||
+    value.startsWith("ghost-") ||
+    value.startsWith("virtual-") ||
+    value.startsWith("local-docket-")
+  );
+}
+
+function normalizeLookupOptions(values = []) {
+  const seen = new Set();
+
+  return values
+    .map((value) => ({
+      ...value,
+      id: lookupId(value),
+      name: lookupName(value),
+    }))
+    .filter((value) => {
+      if (!value.id || seen.has(value.id)) return false;
+
+      seen.add(value.id);
+      return true;
+    });
+}
+
+function sortLookupOptions(options = []) {
+  return [...options].sort((a, b) =>
+    String(a.name || a.title || a.id || "").localeCompare(
+      String(b.name || b.title || b.id || "")
+    )
+  );
+}
+
+function remoteIdForOptionItem(item) {
+  return String(item?.sync?.remoteId || item?.elitical?.remoteId || item?.remoteId || item?.id || "").trim();
+}
+
+function buildLocalStateOptions(item, workItems = []) {
+  const sameProject = (entry) =>
+    !item?.elitical?.projectId ||
+    !entry?.elitical?.projectId ||
+    entry.elitical.projectId === item.elitical.projectId;
+
+  return sortLookupOptions(
+    normalizeLookupOptions(
+      workItems
+        .filter((entry) => sameProject(entry) && entry?.elitical?.stateId)
+        .map((entry) => ({
+          id: entry.elitical.stateId,
+          name: entry.docketState || entry.elitical.stateName || entry.dktStateName || entry.elitical.stateId,
+        }))
+    )
+  );
+}
+
+function buildLocalAssigneeOptions(item, workItems = []) {
+  const sameProject = (entry) =>
+    !item?.elitical?.projectId ||
+    !entry?.elitical?.projectId ||
+    entry.elitical.projectId === item.elitical.projectId;
+
+  return sortLookupOptions(
+    normalizeLookupOptions(
+      workItems
+        .filter((entry) => sameProject(entry) && entry?.elitical?.assigneeId)
+        .map((entry) => ({
+          id: entry.elitical.assigneeId,
+          name: entry.elitical.assigneeName || entry.assignee || entry.elitical.assigneeId,
+        }))
+    )
+  );
+}
+
+function buildLocalSprintOptions(sprints = []) {
+  return sortLookupOptions(
+    normalizeLookupOptions(
+      sprints
+        .filter((sprint) => sprint.id && !isSyntheticOptionId(sprint.id))
+        .map((sprint) => ({
+          id: sprint.id,
+          name: sprint.title || sprint.name || sprint.id,
+        }))
+    )
+  );
+}
+
+function buildLocalEpicOptions(item, workItems = []) {
+  const sameProject = (entry) =>
+    !item?.elitical?.projectId ||
+    !entry?.elitical?.projectId ||
+    entry.elitical.projectId === item.elitical.projectId;
+
+  return sortLookupOptions(
+    normalizeLookupOptions(
+      workItems
+        .filter((entry) => entry.type === "epic" && sameProject(entry))
+        .map((entry) => ({
+          id: entry.id,
+          remoteId: remoteIdForOptionItem(entry),
+          name: entry.title || entry.id,
+        }))
+        .filter((entry) => !isSyntheticOptionId(entry.id) && !isSyntheticOptionId(entry.remoteId))
+    )
+  );
+}
+
+function fallbackLookupOptions(values = []) {
+  return values.map((value) => ({
+    id: value,
+    name: formatLabel(value),
+  }));
+}
+
+function optionLabel(options, id, fallback = "") {
+  if (!id) return fallback;
+
+  return options.find((option) => option.id === id)?.name || fallback || id;
+}
+
+function nativeEnumValue(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function sprintNameForId(sprints = [], sprintId = "") {
+  return sprints.find((sprint) => sprint.id === sprintId)?.title ||
+    sprints.find((sprint) => sprint.id === sprintId)?.name ||
+    "";
+}
+
+function supportedUpdatePayloadForItem(item, updates = {}, { workItems = [], sprints = [] } = {}) {
+  const sdkUpdates = {};
+  const nextStateId = updates.dktStateId ?? updates.stateId;
+  const nextStateName = updates.dktStateName ?? updates.stateName ?? updates.docketState;
+
+  if (
+    Object.prototype.hasOwnProperty.call(updates, "title") &&
+    String(updates.title || "").trim() !== String(item.title || "").trim()
+  ) {
+    sdkUpdates.title = String(updates.title || "").trim();
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(updates, "description") &&
+    String(updates.description || "").trim() !== String(item.description || "").trim()
+  ) {
+    sdkUpdates.description = String(updates.description || "").trim();
+  }
+
+  if (
+    (
+      Object.prototype.hasOwnProperty.call(updates, "dktStateId") ||
+      Object.prototype.hasOwnProperty.call(updates, "stateId")
+    ) &&
+    String(nextStateId || "").trim() &&
+    String(nextStateId || "").trim() !== String(item.elitical?.stateId || item.dktStateId || "").trim()
+  ) {
+    sdkUpdates.dktStateId = String(nextStateId || "").trim();
+    sdkUpdates.dktStateName = String(nextStateName || "").trim();
+    sdkUpdates.docketState = String(updates.docketState || nextStateName || "").trim();
+    sdkUpdates.elitical = {
+      ...(updates.elitical || item.elitical || {}),
+      stateId: sdkUpdates.dktStateId,
+    };
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(updates, "assigneeId") &&
+    String(updates.assigneeId || "").trim() !== String(item.elitical?.assigneeId || item.assigneeId || "").trim()
+  ) {
+    sdkUpdates.assigneeId = String(updates.assigneeId || "").trim();
+    sdkUpdates.assignee = String(updates.assignee || updates.assigneeName || item.assignee || "").trim();
+    sdkUpdates.elitical = {
+      ...(sdkUpdates.elitical || updates.elitical || item.elitical || {}),
+      assigneeId: sdkUpdates.assigneeId,
+    };
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(updates, "sprintId") &&
+    String(updates.sprintId || "").trim() &&
+    String(updates.sprintId || "").trim() !== String(item.elitical?.sprintId || item.sprintId || "").trim() &&
+    !isOrphanSprintId(updates.sprintId)
+  ) {
+    sdkUpdates.sprintId = String(updates.sprintId || "").trim();
+    sdkUpdates.sprintName = String(updates.sprintName || sprintNameForId(sprints, updates.sprintId)).trim();
+    sdkUpdates.hasNoSprint = false;
+    sdkUpdates.sprint = sdkUpdates.sprintName;
+    sdkUpdates.elitical = {
+      ...(sdkUpdates.elitical || updates.elitical || item.elitical || {}),
+      sprintId: sdkUpdates.sprintId,
+    };
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(updates, "category") &&
+    nativeEnumValue(updates.category) !== nativeEnumValue(item.category)
+  ) {
+    sdkUpdates.category = nativeEnumValue(updates.category);
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(updates, "priority") &&
+    nativeEnumValue(updates.priority) !== nativeEnumValue(item.priority)
+  ) {
+    sdkUpdates.priority = nativeEnumValue(updates.priority);
+  }
+
+  if (
+    item.type === "story" &&
+    Object.prototype.hasOwnProperty.call(updates, "parentId") &&
+    updates.parentId !== item.parentId &&
+    !isReferenceNode(workItems.find((entry) => entry.id === updates.parentId)) &&
+    !String(updates.parentId || "").startsWith("local-docket-") &&
+    !isSyntheticOptionId(updates.epicId || updates.parentId)
+  ) {
+    sdkUpdates.parentId = updates.parentId;
+    sdkUpdates.epicId = updates.epicId || updates.parentId;
+  }
+
+  if (
+    item.type === "story" &&
+    Object.prototype.hasOwnProperty.call(updates, "storyPoints") &&
+    Number(updates.storyPoints || 0) !== Number(item.storyPoints || 0)
+  ) {
+    sdkUpdates.storyPoints = Number(updates.storyPoints || 0);
+    sdkUpdates.storyPointEst = Number(updates.storyPoints || 0);
+  }
+
+  return sdkUpdates;
+}
+
+function optionIdForValue(options, value, fallback = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+
+  if (!normalized) return fallback;
+
+  const matched = options.find((option) =>
+    [option.id, option.code, option.name, option.title]
+      .some((candidate) => String(candidate || "").trim().toLowerCase() === normalized)
+  );
+
+  return matched?.id || fallback || value;
+}
+
+function mergeOption(options, id, name) {
+  if (!id || options.some((option) => option.id === id)) return options;
+
+  return [
+    ...options,
+    {
+      id,
+      name: name || id,
+    },
+  ];
+}
+
+function localDocketStateValue(label, current) {
+  const normalized = String(label || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, "-");
+
+  return DOCKET_STATES.includes(normalized) ? normalized : current || "concept";
+}
+
+function createTypesForParent(parentId, workItems) {
+  const parent = workItems.find((item) => item.id === parentId);
+
+  return childCreateTypesForCanonicalType(parent?.type);
+}
+
+function projectIdForCreate(parentId, workItems, sprints) {
+  const parent = workItems.find((item) => item.id === parentId);
+
+  if (parent?.elitical?.projectId) return parent.elitical.projectId;
+
+  const sprint = sprints.find((entry) => entry.id === parentId);
+
+  return (
+    sprint?.projectId ||
+    sprints.find((entry) => entry.projectId)?.projectId ||
+    workItems.find((item) => item.elitical?.projectId)?.elitical?.projectId ||
+    ""
+  );
+}
+
+function sprintIdForCreate(parentId, sprintId, workItems, sprints) {
+  if (sprintId) return sprintId;
+  if (sprints.some((entry) => entry.id === parentId && parentId !== ROOT_ID)) return parentId;
+
+  const parent = workItems.find((item) => item.id === parentId);
+
+  return parent?.elitical?.sprintId || parent?.sprintId || "";
+}
+
+function nativeStorySprintForCreate(parentId, sprintId, workItems, sprints) {
+  const selectedSprintId = sprintIdForCreate(parentId, sprintId, workItems, sprints);
+  const selectedSprint = sprints.find((entry) => entry.id === selectedSprintId);
+  const activeSprint = sprints.find(
+    (entry) =>
+      entry.id &&
+      entry.id !== ROOT_ID &&
+      String(entry.sprintState || "").toUpperCase() === "IN_PROGRESS"
+  );
+  const fallbackSprint = sprints.find((entry) => entry.id && entry.id !== ROOT_ID);
+  const sprint = selectedSprint || activeSprint || fallbackSprint || null;
+
+  return {
+    sprintId: sprint?.id || selectedSprintId || "",
+    sprintName: sprint?.title || sprint?.name || "",
+  };
+}
+
+function nativeStoryAssigneeIdForCreate(parentId, payload, workItems) {
+  const parent = workItems.find((item) => item.id === parentId);
+  const assignedItem = workItems.find((item) => item.elitical?.assigneeId);
+
+  return (
+    payload.assigneeId ||
+    parent?.elitical?.assigneeId ||
+    assignedItem?.elitical?.assigneeId ||
+    ""
+  );
+}
+
+function nativeStoryProjectNameForCreate(parentId, workItems, sprints, fallback) {
+  const parent = workItems.find((item) => item.id === parentId);
+  const projectSprint = sprints.find((entry) => entry.projectName || entry.name || entry.title);
+
+  return (
+    parent?.elitical?.projectName ||
+    projectSprint?.projectName ||
+    projectSprint?.name ||
+    fallback ||
+    ""
+  );
+}
+
+function canonicalDocketIdForUpdate(item) {
+  if (!item || item.isVirtual || isOrphanSprintId(item.id)) return "";
+
+  const id = isReferenceNode(item)
+    ? item.sourceItemId || item.sourceDocketId || item.sourceId
+    : item.id;
+  const value = String(id || "").trim();
+
+  if (
+    !value ||
+    value === "virtual-orphan-sprint" ||
+    value.startsWith("reference-") ||
+    value.startsWith("ghost-") ||
+    value.startsWith("virtual-")
+  ) {
+    return "";
+  }
+
+  return value;
+}
+
+function resolveCanonicalWorkItem(id, workItems = []) {
+  const value = String(id || "").trim();
+
+  if (!value) return null;
+
+  return workItems.find((item) => item.id === value) ||
+    workItems.find((item) =>
+      [item.sourceItemId, item.sourceDocketId, item.sourceId, item.elitical?.remoteId, item.sync?.remoteId]
+        .some((candidate) => String(candidate || "").trim() === value)
+    ) ||
+    null;
+}
+
+function parentPayloadForCreate(type, parentId, workItems) {
+  const parent = workItems.find((item) => item.id === parentId);
+
+  if (type === "epic") return {};
+  if ((type === "story" || type === "task") && parent?.type === "epic") {
+    return {
+      parentId,
+      epicId: parentId,
+    };
+  }
+  if (type === "job" && parent?.type === "story") {
+    return {
+      parentId,
+      storyId: parentId,
+      epicId: parent.elitical?.epicId || parent.parentId || "",
+    };
+  }
+
+  return {
+    parentId,
+  };
+}
+
+function validateCreatePayload(payload, workItems, sprints) {
+  const type = String(payload.type || "").trim();
+  const title = String(payload.title || "").trim();
+  const parentId = String(payload.parentId || "").trim();
+  const validTypes =
+    payload.isOrphanSprint && parentId === ROOT_ID
+      ? ["epic"]
+      : createTypesForParent(parentId, workItems, sprints);
+
+  if (!["epic", "story", "task", "job"].includes(type)) {
+    return "Choose a docket type.";
+  }
+  if (!validTypes.includes(type)) {
+    return "Choose a valid parent for this docket type.";
+  }
+  if (!title) return "Title is required.";
+  if (type !== "epic" && !workItems.some((item) => item.id === parentId)) {
+    return "A valid parent is required.";
+  }
+
+  return "";
 }
 
 function parseTimeInput(value) {
@@ -294,7 +803,50 @@ function formatWorkTime(minutes) {
 }
 
 function acceptsTime(type) {
-  return type === "story" || type === "job";
+  return type === "story" || type === "task" || type === "job";
+}
+
+function worklogDraftFromFields(draft = {}) {
+  const totalMinutes = parseTimeInput(draft.time);
+  const hour = Math.floor(totalMinutes / 60);
+  const min = totalMinutes % 60;
+
+  return {
+    id: draft.worklogId || "",
+    comment: String(draft.worklogDescription || "").trim(),
+    worklogDate: draft.worklogDate || "",
+    hour,
+    min,
+  };
+}
+
+function isMeaningfulWorklogDraft(draft = {}) {
+  const worklog = worklogDraftFromFields(draft);
+
+  return Boolean(
+    worklog.comment ||
+    worklog.worklogDate ||
+    Number(worklog.hour) > 0 ||
+    Number(worklog.min) > 0
+  );
+}
+
+function validateWorklogDraft(draft = {}) {
+  if (!isMeaningfulWorklogDraft(draft)) return "";
+
+  const worklog = worklogDraftFromFields(draft);
+
+  if (!worklog.comment) return "Worklog comment is required.";
+  if (!worklog.worklogDate) return "Worklog date is required.";
+  if (Number(worklog.hour) < 0 || Number(worklog.min) < 0) {
+    return "Worklog time cannot be negative.";
+  }
+  if (Number(worklog.min) > 59) return "Worklog minutes must be between 0 and 59.";
+  if (Number(worklog.hour) === 0 && Number(worklog.min) === 0) {
+    return "Worklog time is required.";
+  }
+
+  return "";
 }
 
 function parentLabel(parentId, workItems) {
@@ -492,8 +1044,8 @@ function ancestorsForMatches(items, predicate) {
   return items.filter((item) => visibleIds.has(item.id));
 }
 
-function sprintIdForItem(item) {
-  return item?.elitical?.sprintId || item?.sprintId || "";
+function displaySprintIdForItem(item) {
+  return projectionScopeIdForItem(item);
 }
 
 function sprintSortTime(sprint) {
@@ -525,9 +1077,14 @@ function updatedSortTime(item) {
 }
 
 function defaultDocketContextId(workItems = [], type) {
-  return workItems
+  const matches = workItems
     .filter((item) => item.type === type)
-    .sort((first, second) => updatedSortTime(second) - updatedSortTime(first))[0]?.id || "";
+    .sort((first, second) => updatedSortTime(second) - updatedSortTime(first));
+  const scopedMatch = matches.find((item) =>
+    displaySprintIdForItem(item)
+  );
+
+  return scopedMatch?.id || matches[0]?.id || "";
 }
 
 function contextOptionLabel(option, viewMode) {
@@ -540,7 +1097,11 @@ function contextOptionLabel(option, viewMode) {
 
 function contextOptionMeta(option, viewMode) {
   if (!option) return "";
-  if (viewMode === "sprint") return option.sprintState || option.state || option.code || "";
+  if (viewMode === "sprint") {
+    if (isOrphanSprintId(option.id)) return "No Sprint";
+
+    return option.sprintState || option.state || option.code || "";
+  }
 
   return [formatType(option.type), option.sprint].filter(Boolean).join(" · ");
 }
@@ -673,29 +1234,6 @@ function applyImportedWorklogs(workItems = [], importedWorklogs = []) {
   });
 }
 
-function rootAncestorIdForItem(item, itemById) {
-  let current = item;
-
-  while (current?.parentId && current.parentId !== ROOT_ID) {
-    current = itemById.get(current.parentId);
-  }
-
-  return current?.id || item?.id || "";
-}
-
-function addAncestors(item, itemById, contextIds) {
-  let parentId = item?.parentId;
-
-  while (parentId && parentId !== ROOT_ID) {
-    const parent = itemById.get(parentId);
-
-    if (!parent) break;
-
-    contextIds.add(parent.id);
-    parentId = parent.parentId;
-  }
-}
-
 function addDescendants(itemId, childrenByParent, selectedIds) {
   const pending = [itemId];
 
@@ -728,9 +1266,7 @@ function buildContextGraph({
   const itemById = new Map(workItems.map((item) => [item.id, item]));
   const sprintById = new Map(sprints.map((sprint) => [sprint.id, sprint]));
   const selectedIds = new Set();
-  const contextIds = new Set();
   const selectedSprintIds = new Set();
-  const branchSprintTitles = new Map();
   const dayAggregates = new Map();
   const childrenByParent = workItems.reduce((acc, item) => {
     if (!acc.has(item.parentId)) acc.set(item.parentId, []);
@@ -740,10 +1276,10 @@ function buildContextGraph({
 
   if (viewMode === "sprint") {
     workItems.forEach((item) => {
-      if (sprintIdForItem(item) !== selectedId) return;
+      if (displaySprintIdForItem(item) !== selectedId) return;
 
       selectedIds.add(item.id);
-      addAncestors(item, itemById, contextIds);
+      selectedSprintIds.add(selectedId);
     });
   } else if (viewMode === "day") {
     workItems.forEach((item) => {
@@ -753,20 +1289,9 @@ function buildContextGraph({
 
       selectedIds.add(item.id);
       dayAggregates.set(item.id, aggregate);
-      addAncestors(item, itemById, contextIds);
 
-      const sprintId = sprintIdForItem(item);
-      const sprint = sprintById.get(sprintId);
-
-      if (!sprint) return;
-
-      selectedSprintIds.add(sprintId);
-
-      const rootAncestorId = rootAncestorIdForItem(item, itemById);
-
-      if (rootAncestorId && !branchSprintTitles.has(rootAncestorId)) {
-        branchSprintTitles.set(rootAncestorId, sprint.title);
-      }
+      const sprintId = displaySprintIdForItem(item);
+      if (sprintById.has(sprintId)) selectedSprintIds.add(sprintId);
     });
   } else if (viewMode === "epic") {
     if (itemById.has(selectedId)) {
@@ -778,7 +1303,6 @@ function buildContextGraph({
 
     if (selected) {
       selectedIds.add(selected.id);
-      addAncestors(selected, itemById, contextIds);
       addDescendants(selected.id, childrenByParent, selectedIds);
     }
   } else if (viewMode === "job" || viewMode === "task") {
@@ -786,16 +1310,16 @@ function buildContextGraph({
 
     if (selected) {
       selectedIds.add(selected.id);
-      addAncestors(selected, itemById, contextIds);
     }
   }
 
-  contextIds.forEach((id) => {
-    if (selectedIds.has(id)) contextIds.delete(id);
+  selectedIds.forEach((id) => {
+    const sprintId = displaySprintIdForItem(itemById.get(id));
+    if (sprintById.has(sprintId)) selectedSprintIds.add(sprintId);
   });
 
   const contextWorkItems = workItems
-    .filter((item) => selectedIds.has(item.id) || contextIds.has(item.id))
+    .filter((item) => selectedIds.has(item.id))
     .map((item) => {
       const aggregate = dayAggregates.get(item.id);
       const dayItem =
@@ -813,40 +1337,19 @@ function buildContextGraph({
               dayWorklogComments: aggregate.comments,
             }
           : item;
-      const next =
-        contextIds.has(dayItem.id) && !selectedIds.has(dayItem.id)
-          ? {
-              ...dayItem,
-              worklogs: [],
-              timeMinutes: 0,
-              isContextNode: true,
-            }
-          : selectedIds.has(dayItem.id)
-          ? {
-              ...dayItem,
-              isContextPrimary: true,
-            }
-          : dayItem;
-      const branchSprintTitle =
-        viewMode === "day" && dayItem.parentId === ROOT_ID
-          ? branchSprintTitles.get(dayItem.id)
-          : "";
 
-      return branchSprintTitle && next.sprint !== branchSprintTitle
+      return selectedIds.has(dayItem.id)
         ? {
-            ...next,
-            sprint: branchSprintTitle,
+            ...dayItem,
+            isContextPrimary: true,
           }
-        : next;
+        : dayItem;
     });
 
   return {
     workItems: contextWorkItems,
-    rootId: viewMode === "epic" ? selectedId : null,
-    sprints:
-      viewMode === "day"
-        ? sprints.filter((sprint) => selectedSprintIds.has(sprint.id))
-        : [],
+    rootId: null,
+    sprints: sprints.filter((sprint) => selectedSprintIds.has(sprint.id)),
   };
 }
 
@@ -1496,6 +1999,403 @@ function TextAreaField({ label, value, onChange, wide = false }) {
   );
 }
 
+function validEditableParent(item, parentId, workItems) {
+  const parent = workItems.find((entry) => entry.id === parentId);
+
+  if (item.type === "epic") return true;
+  if (item.type === "story") return parent?.type === "epic";
+  if (item.type === "task") return parent?.type === "epic";
+  if (item.type === "job") return parent?.type === "story";
+
+  return false;
+}
+
+function parentOptionsForItem(item, workItems) {
+  if (item.type === "story" || item.type === "task") {
+    return workItems.filter((entry) => entry.type === "epic");
+  }
+
+  if (item.type === "job") {
+    return workItems.filter((entry) => entry.type === "story");
+  }
+
+  return [];
+}
+
+function persistedDocketSprintId(item) {
+  if (!item) return "";
+  if (item.elitical) return item.elitical.sprintId || "";
+
+  return item.sprintId || "";
+}
+
+function localPropertyLookups(item, workItems = [], sprints = []) {
+  const sameProject = (entry) =>
+    !item?.elitical?.projectId ||
+    !entry?.elitical?.projectId ||
+    entry.elitical.projectId === item.elitical.projectId;
+
+  return {
+    users: buildLocalAssigneeOptions(item, workItems),
+    states: buildLocalStateOptions(item, workItems),
+    priorities: normalizeLookupOptions([
+      ...fallbackLookupOptions(PRIORITIES),
+      ...workItems
+        .filter((entry) => sameProject(entry) && entry?.priority)
+        .map((entry) => ({
+          id: entry.priority,
+          name: formatLabel(entry.priority),
+        })),
+    ]),
+    categories: normalizeLookupOptions([
+      ...fallbackLookupOptions(CATEGORIES),
+      ...workItems
+        .filter((entry) => sameProject(entry) && entry?.category)
+        .map((entry) => ({
+          id: entry.category,
+          name: formatLabel(entry.category),
+        })),
+    ]),
+    sprints: buildLocalSprintOptions(sprints),
+  };
+}
+
+function PropertyPanel({
+  item,
+  workItems,
+  sprints,
+  onClose,
+  onSave,
+  readOnly = false,
+}) {
+  const persistedSprintId = persistedDocketSprintId(item);
+  const persistedSprintLabel = persistedSprintId ? item?.sprint || "" : "";
+  const initialDraft = useMemo(() => ({
+    title: item?.title || "",
+    description: item?.description || "",
+    stateId: item?.elitical?.stateId || item?.dktStateId || "",
+    priority: item?.priority || "",
+    category: item?.category || "",
+    storyPoints: item?.storyPoints ?? 0,
+    assigneeId: item?.elitical?.assigneeId || "",
+    parentId: item?.parentId || "",
+    epicId: item?.elitical?.epicId || item?.epicId || item?.parentId || "",
+    sprintId: persistedSprintId,
+  }), [item, persistedSprintId]);
+  const [draft, setDraft] = useState(initialDraft);
+  const lookups = useMemo(
+    () => localPropertyLookups(item, workItems, sprints),
+    [item, workItems, sprints]
+  );
+  const [saveState, setSaveState] = useState("idle");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setDraft(initialDraft);
+    setError("");
+    setSaveState("idle");
+  }, [initialDraft]);
+
+  if (!item) return null;
+
+  const stateOptions = mergeOption(lookups.states, initialDraft.stateId, item.docketState);
+  const priorityOptions = mergeOption(
+    lookups.priorities.length ? lookups.priorities : fallbackLookupOptions(PRIORITIES),
+    optionIdForValue(lookups.priorities, initialDraft.priority, initialDraft.priority),
+    formatLabel(initialDraft.priority)
+  );
+  const categoryOptions = mergeOption(
+    lookups.categories.length ? lookups.categories : fallbackLookupOptions(CATEGORIES),
+    optionIdForValue(lookups.categories, initialDraft.category, initialDraft.category),
+    formatLabel(initialDraft.category)
+  );
+  const userOptions = mergeOption(
+    lookups.users,
+    initialDraft.assigneeId,
+    item.assignee
+  );
+  const sprintOptions = buildLocalSprintOptions(sprints);
+  const parentOptions = item.type === "story" ? buildLocalEpicOptions(item, workItems) : [];
+  const priorityValue = optionIdForValue(priorityOptions, draft.priority, draft.priority);
+  const categoryValue = optionIdForValue(categoryOptions, draft.category, draft.category);
+  const initialPriorityValue = optionIdForValue(
+    priorityOptions,
+    initialDraft.priority,
+    initialDraft.priority
+  );
+  const initialCategoryValue = optionIdForValue(
+    categoryOptions,
+    initialDraft.category,
+    initialDraft.category
+  );
+  const hasChanges =
+    draft.title !== initialDraft.title ||
+    draft.description !== initialDraft.description ||
+    draft.stateId !== initialDraft.stateId ||
+    priorityValue !== initialPriorityValue ||
+    categoryValue !== initialCategoryValue ||
+    Number(draft.storyPoints || 0) !== Number(initialDraft.storyPoints || 0) ||
+    draft.assigneeId !== initialDraft.assigneeId ||
+    draft.parentId !== initialDraft.parentId ||
+    draft.sprintId !== initialDraft.sprintId;
+
+  function updateDraft(field, value) {
+    setDraft((current) => ({
+      ...current,
+      [field]: value,
+    }));
+    setError("");
+    setSaveState("idle");
+  }
+
+  function updateDraftFields(fields) {
+    setDraft((current) => ({
+      ...current,
+      ...fields,
+    }));
+    setError("");
+    setSaveState("idle");
+  }
+
+  function resetDraft() {
+    setDraft(initialDraft);
+    setError("");
+    setSaveState("idle");
+  }
+
+  async function handleSave() {
+    if (readOnly || saveState === "saving") return;
+
+    const title = draft.title.trim();
+
+    if (!title) {
+      setError("Title is required.");
+      return;
+    }
+
+    if (!validEditableParent(item, draft.parentId, workItems)) {
+      setError("Choose a valid parent for this work item type.");
+      return;
+    }
+
+    const localChangedFields = new Set();
+    const localUpdates = {
+      title,
+      description: draft.description.trim(),
+      docketState: localDocketStateValue(
+        optionLabel(stateOptions, draft.stateId, item.docketState),
+        item.docketState
+      ),
+      priority: priorityValue,
+      category: categoryValue,
+      assignee: optionLabel(userOptions, draft.assigneeId, item.assignee),
+      parentId: draft.parentId,
+      epicId: draft.epicId,
+      sprint: optionLabel(sprintOptions, draft.sprintId, ""),
+      elitical: {
+        ...(item.elitical || {}),
+        stateId: draft.stateId,
+        assigneeId: draft.assigneeId,
+        sprintId: draft.sprintId,
+      },
+    };
+    const sdkUpdates = supportedUpdatePayloadForItem(item, {
+      ...localUpdates,
+      dktStateId: draft.stateId,
+      dktStateName: localUpdates.docketState,
+      assigneeId: draft.assigneeId,
+      sprintId: draft.sprintId,
+      sprintName: localUpdates.sprint,
+      category: categoryValue,
+      priority: priorityValue,
+      parentId: draft.parentId,
+      storyPoints: item.type === "story" ? Number(draft.storyPoints || 0) : undefined,
+    }, { workItems, sprints });
+
+    if (title !== initialDraft.title) {
+      localChangedFields.add("title");
+    }
+    if (draft.description.trim() !== initialDraft.description) {
+      localChangedFields.add("description");
+    }
+    if (draft.stateId && draft.stateId !== initialDraft.stateId) {
+      localChangedFields.add("docketState");
+      localChangedFields.add("elitical");
+    }
+    if (priorityValue !== initialPriorityValue) {
+      localChangedFields.add("priority");
+    }
+    if (categoryValue !== initialCategoryValue) {
+      localChangedFields.add("category");
+    }
+    if (draft.assigneeId !== initialDraft.assigneeId) {
+      localChangedFields.add("assignee");
+      localChangedFields.add("elitical");
+    }
+    if (draft.parentId !== initialDraft.parentId) {
+      localChangedFields.add("parentId");
+    }
+    if (draft.sprintId !== initialDraft.sprintId) {
+      localChangedFields.add("sprint");
+      localChangedFields.add("elitical");
+    }
+
+    if (item.type === "story") {
+      const storyPoints = Number(draft.storyPoints || 0);
+
+      localUpdates.storyPoints = storyPoints;
+
+      if (storyPoints !== Number(initialDraft.storyPoints || 0)) {
+        localChangedFields.add("storyPoints");
+      }
+    }
+
+    setSaveState("saving");
+
+    const result = await onSave(item, {
+      sdkUpdates,
+      localUpdates,
+      localChangedFields: Array.from(localChangedFields),
+    });
+
+    if (!result.ok) {
+      setSaveState("failed");
+      setError(result.error);
+      return;
+    }
+
+    setSaveState("saved");
+  }
+
+  return (
+    <aside className="worklog-panel" aria-label="Property panel">
+      <div className="worklog-panel-card">
+        <header>
+          <div>
+            <span className="modal-kicker">{formatType(item.type)}</span>
+            <h2>{item.title}</h2>
+            <p>Local properties</p>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close">
+            x
+          </button>
+        </header>
+
+        <section className="worklog-panel-section">
+          <ModalSection title="Basic Information">
+            <TextField
+              label="Title"
+              value={draft.title}
+              onChange={(value) => updateDraft("title", value)}
+            />
+            <TextAreaField
+              label="Description"
+              value={draft.description}
+              onChange={(value) => updateDraft("description", value)}
+              wide
+            />
+          </ModalSection>
+
+          <ModalSection title="Workflow">
+            <CustomSelectField
+              label="Status"
+              value={draft.stateId}
+              options={stateOptions.map((option) => option.id)}
+              onChange={(value) => updateDraft("stateId", value)}
+              getOptionLabel={(value) => optionLabel(stateOptions, value, formatLabel(value))}
+            />
+            <CustomSelectField
+              label="Priority"
+              value={priorityValue}
+              options={priorityOptions.map((option) => option.id)}
+              onChange={(value) => updateDraft("priority", value)}
+              getOptionLabel={(value) => optionLabel(priorityOptions, value, formatLabel(value))}
+            />
+            <CustomSelectField
+              label="Category"
+              value={categoryValue}
+              options={categoryOptions.map((option) => option.id)}
+              onChange={(value) => updateDraft("category", value)}
+              getOptionLabel={(value) => optionLabel(categoryOptions, value, formatLabel(value))}
+            />
+            {item.type === "story" && (
+              <TextField
+                label="Story Points"
+                type="number"
+                value={draft.storyPoints}
+                onChange={(value) => updateDraft("storyPoints", value)}
+              />
+            )}
+            <CustomSelectField
+              label="Assignee"
+              value={draft.assigneeId}
+              options={userOptions.map((option) => option.id)}
+              onChange={(value) => updateDraft("assigneeId", value)}
+              getOptionLabel={(value) => optionLabel(userOptions, value, item.assignee)}
+              wide
+            />
+          </ModalSection>
+
+          <ModalSection title="Hierarchy">
+            <ReadOnlyField label="Type" value={formatType(item.type)} />
+            {parentOptions.length > 0 ? (
+              <CustomSelectField
+                label="Parent"
+                value={draft.parentId}
+                options={parentOptions.map((option) => option.id)}
+                onChange={(value) => {
+                  const selectedEpic = parentOptions.find((option) => option.id === value);
+                  updateDraftFields({
+                    parentId: value,
+                    epicId: selectedEpic?.remoteId || value,
+                  });
+                }}
+                getOptionLabel={(value) => optionLabel(parentOptions, value, parentLabel(value, workItems))}
+                wide
+              />
+            ) : (
+              <ReadOnlyField label="Parent" value={parentLabel(draft.parentId, workItems)} />
+            )}
+            <CustomSelectField
+              label="Sprint"
+              value={draft.sprintId}
+              options={sprintOptions.map((option) => option.id)}
+              onChange={(value) => updateDraft("sprintId", value)}
+              getOptionLabel={(value) => optionLabel(sprintOptions, value, persistedSprintLabel)}
+              wide
+            />
+          </ModalSection>
+
+          {error && <p className="modal-error">{error}</p>}
+        </section>
+
+        {!readOnly && (
+          <footer className="modal-footer">
+            <div className="modal-footer-danger" />
+            <div className="modal-footer-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={resetDraft}
+                disabled={!hasChanges || saveState === "saving"}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={!hasChanges || saveState === "saving"}
+              >
+                {saveState === "saving" ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </footer>
+        )}
+      </div>
+    </aside>
+  );
+}
+
 const WORKLOG_DURATION_OPTIONS = [
   { label: "15m", minutes: 15 },
   { label: "30m", minutes: 30 },
@@ -1987,10 +2887,18 @@ function WorkItemModal({
       : null;
   const [draft, setDraft] = useState(initialDraft);
   const editedDraftFieldsRef = useRef(new Set());
+  const commitInFlightRef = useRef(false);
   const [error, setError] = useState("");
+  const [saveState, setSaveState] = useState("idle");
   const isEditing = mode === "edit";
   const parentId =
     modal.kind === "create" ? modal.parentId : activeItem?.parentId;
+  const createTypeOptions =
+    modal.kind === "create"
+      ? createTypesForParent(parentId, workItems, sprints)
+      : [];
+  const selectedItemType =
+    modal.kind === "create" ? draft?.type || modal.type : itemType;
   const currentCategory = activeItem?.category || draft?.category || "feature";
   const currentPriority = activeItem?.priority || draft?.priority || "info";
   const currentDocketState = isRoot
@@ -2003,10 +2911,24 @@ function WorkItemModal({
   const currentSprint = isSprint || isMainRoot
     ? rootTitle
     : activeItem?.sprint || draft?.sprint || fallbackSprint;
-  const hasWorklog = acceptsTime(itemType);
+  const modalStateOptions = activeItem ? mergeOption(
+    buildLocalStateOptions(activeItem, workItems),
+    draft?.stateId || "",
+    draft?.stateName || currentDocketState
+  ) : [];
+  const modalAssigneeOptions = activeItem ? mergeOption(
+    buildLocalAssigneeOptions(activeItem, workItems),
+    draft?.assigneeId || "",
+    draft?.assigneeName || activeItem.assignee
+  ) : [];
+  const modalSprintOptions = buildLocalSprintOptions(sprints);
+  const modalEpicOptions = activeItem?.type === "story"
+    ? buildLocalEpicOptions(activeItem, workItems)
+    : [];
+  const hasWorklog = acceptsTime(selectedItemType);
   const contextLabel =
     modal.kind === "create"
-      ? `Create ${formatType(itemType)}`
+      ? `Create ${formatType(selectedItemType)}`
       : isMainRoot
       ? "Main"
       : isSprint
@@ -2016,13 +2938,23 @@ function WorkItemModal({
         ).toUpperCase()}`;
 
   useEffect(() => {
+    setDraft(initialDraft);
+    editedDraftFieldsRef.current.clear();
+    commitInFlightRef.current = false;
+    setError("");
+    setSaveState("idle");
+    setEditingField(null);
+    setMode(modal.kind === "create" ? "edit" : "view");
+  }, [modal.id, modal.kind]);
+
+  useEffect(() => {
     function handleKeyDown(event) {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") discardAndClose();
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  });
 
   if (
     !draft ||
@@ -2045,6 +2977,15 @@ function WorkItemModal({
     setError("");
   }
 
+  function updateDraftFields(fields) {
+    Object.keys(fields || {}).forEach((field) => editedDraftFieldsRef.current.add(field));
+    setDraft((current) => ({
+      ...current,
+      ...fields,
+    }));
+    setError("");
+  }
+
   useEffect(() => {
     if (modal.kind !== "details" || !activeItem || !acceptsTime(activeItem.type)) return;
 
@@ -2062,10 +3003,7 @@ function WorkItemModal({
           activeItem.createdAt
       ),
       time: formatTimeInput(
-        primaryWorklog.timeMinutes ??
-          primaryWorklog.durationMinutes ??
-          activeItem.timeMinutes ??
-          0
+        durationMinutesForWorklogDraft(primaryWorklog, activeItem)
       ),
       worklogDescription:
         primaryWorklog.description || primaryWorklog.comment || "",
@@ -2089,36 +3027,63 @@ function WorkItemModal({
   }, [activeItem, modal.kind]);
 
   function startInlineEdit(field) {
-    if (readOnly) return;
+    if (readOnly || saveState === "saving") return;
     if (modal.kind !== "details") return;
     setMode("view");
     setEditingField(field);
   }
 
+  function finishInlineEdit() {
+    setEditingField(null);
+  }
+
+  function updateWorklogTimePart(part, value) {
+    const [currentHours, currentMinutes] = String(draft.time || "00:00")
+      .split(":")
+      .map((entry) => Number(entry));
+    const nextHours = part === "hour" ? Number(value || 0) : currentHours || 0;
+    const nextMinutes = part === "min" ? Number(value || 0) : currentMinutes || 0;
+
+    updateDraft(
+      "time",
+      `${String(Math.max(0, nextHours)).padStart(2, "0")}:${String(Math.max(0, Math.min(59, nextMinutes))).padStart(2, "0")}`
+    );
+  }
+
+  function worklogTimePart(part) {
+    const [hours, minutes] = String(draft.time || "00:00").split(":");
+
+    return part === "hour" ? String(Number(hours || 0)) : String(Number(minutes || 0));
+  }
+
   function primaryWorklogPayload() {
     if (!hasWorklog) return undefined;
+    if (!isMeaningfulWorklogDraft(draft)) return undefined;
 
     const otherWorklogs =
       modal.kind === "details" && Array.isArray(activeItem?.worklogs)
         ? activeItem.worklogs.slice(1)
         : [];
-    const fallbackDate =
-      modal.kind === "details"
-        ? primaryWorklogDate(activeItem)
-        : new Date().toISOString();
+    const worklog = worklogDraftFromFields(draft);
 
     return [
       {
-        date: dateInputToIso(draft.worklogDate, fallbackDate),
-        description: draft.worklogDescription.trim(),
-        timeMinutes: parseTimeInput(draft.time),
+        id: worklog.id,
+        date: dateInputToIso(worklog.worklogDate, worklog.worklogDate),
+        worklogDate: dateInputToIso(worklog.worklogDate, worklog.worklogDate),
+        description: worklog.comment,
+        comment: worklog.comment,
+        hour: worklog.hour,
+        min: worklog.min,
+        timeMinutes: worklog.hour * 60 + worklog.min,
       },
       ...otherWorklogs,
     ];
   }
 
-  function handleSave() {
+  async function commitModalDraft({ closeAfterCommit = false } = {}) {
     if (readOnly) return;
+    if (commitInFlightRef.current || saveState === "saving") return;
 
     if (!draft.title.trim()) {
       setError("Title is required.");
@@ -2126,12 +3091,19 @@ function WorkItemModal({
     }
 
     if (isMainRoot) {
+      if (modal.kind === "details" && editedDraftFieldsRef.current.size === 0) {
+        if (closeAfterCommit) onClose();
+        return;
+      }
+
       const result = onSaveMain({
         title: draft.title,
       });
       if (result.ok) {
+        editedDraftFieldsRef.current.clear();
         setMode("view");
         setEditingField(null);
+        if (closeAfterCommit) onClose();
       } else {
         setError(result.error);
       }
@@ -2139,6 +3111,11 @@ function WorkItemModal({
     }
 
     if (isSprint) {
+      if (modal.kind === "details" && editedDraftFieldsRef.current.size === 0) {
+        if (closeAfterCommit) onClose();
+        return;
+      }
+
       const result = isRoot ? onSaveRoot({
         title: draft.title,
         docketState: draft.docketState,
@@ -2156,8 +3133,10 @@ function WorkItemModal({
         updatedAt: draft.updatedAt,
       });
       if (result.ok) {
+        editedDraftFieldsRef.current.clear();
         setMode("view");
         setEditingField(null);
+        if (closeAfterCommit) onClose();
       }
       else setError(result.error);
       return;
@@ -2168,26 +3147,66 @@ function WorkItemModal({
       title: draft.title.trim(),
       description: draft.description.trim(),
       sprint: draft.sprint.trim() || fallbackSprint,
+      sprintId: modal.kind === "create" ? modal.sprintId || "" : draft.sprintId || "",
+      isOrphanSprint: modal.kind === "create" ? Boolean(modal.isOrphanSprint) : false,
       docketState: draft.docketState || "concept",
-      type: itemType,
+      type: selectedItemType,
       createdAt:
-        modal.kind === "create" && itemType === "epic"
+        modal.kind === "create" && selectedItemType === "epic"
           ? draft.createdAt || modal.worklogDate
           : draft.createdAt,
       updatedAt:
-        modal.kind === "create" && itemType === "epic"
+        modal.kind === "create" && selectedItemType === "epic"
           ? draft.updatedAt || draft.createdAt || modal.worklogDate
           : draft.updatedAt,
       storyPoints:
-        itemType === "story"
+        selectedItemType === "story"
           ? Number(draft.storyPoints || 0)
           : undefined,
-      timeMinutes: acceptsTime(itemType)
+      timeMinutes: acceptsTime(selectedItemType)
         ? parseTimeInput(draft.time)
         : undefined,
       worklogs: primaryWorklogPayload(),
+      worklog:
+        hasWorklog && isMeaningfulWorklogDraft(draft)
+          ? worklogDraftFromFields(draft)
+          : undefined,
     };
-    const result =
+
+    if (hasWorklog && isMeaningfulWorklogDraft(draft)) {
+      const worklogValidationError = validateWorklogDraft(draft);
+
+      if (worklogValidationError) {
+        setError(worklogValidationError);
+        return;
+      }
+    }
+
+    if (modal.kind === "create") {
+      const validationError = validateCreatePayload(
+        {
+          ...payload,
+          parentId: modal.parentId,
+        },
+        workItems,
+        sprints
+      );
+
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
+    }
+
+    if (modal.kind === "details" && editedDraftFieldsRef.current.size === 0) {
+      if (closeAfterCommit) onClose();
+      return;
+    }
+
+    commitInFlightRef.current = true;
+    setSaveState("saving");
+
+    const result = await Promise.resolve(
       modal.kind === "create"
         ? onCreateItem({
             ...payload,
@@ -2195,13 +3214,22 @@ function WorkItemModal({
           })
         : onSaveItem(activeItem.id, {
             ...payload,
-            parentId: activeItem.parentId,
-          });
+            parentId: activeItem.type === "story"
+              ? draft.parentId || activeItem.parentId
+              : activeItem.parentId,
+          })
+    );
 
     if (!result.ok) {
+      commitInFlightRef.current = false;
+      setSaveState("failed");
       setError(result.error);
       return;
     }
+
+    setSaveState("saved");
+    editedDraftFieldsRef.current.clear();
+    commitInFlightRef.current = false;
 
     if (modal.kind === "create") {
       onClose();
@@ -2210,14 +3238,14 @@ function WorkItemModal({
 
     setMode("view");
     setEditingField(null);
+    if (closeAfterCommit) onClose();
   }
 
-  function handleCancel() {
-    if (modal.kind === "create") {
-      onClose();
-      return;
-    }
+  function handleSave() {
+    return commitModalDraft({ closeAfterCommit: modal.kind === "details" });
+  }
 
+  function discardAndClose() {
     editedDraftFieldsRef.current.clear();
     setDraft(
       isMainRoot
@@ -2229,8 +3257,31 @@ function WorkItemModal({
         : makeEditDraft(activeItem, fallbackSprint)
     );
     setError("");
+    setSaveState("idle");
     setMode("view");
     setEditingField(null);
+    commitInFlightRef.current = false;
+    onClose();
+  }
+
+  function handleCancel() {
+    discardAndClose();
+  }
+
+  function handleBackdropMouseDown(event) {
+    if (event.target !== event.currentTarget) return;
+
+    if (readOnly) {
+      discardAndClose();
+      return;
+    }
+
+    if (modal.kind === "details") {
+      commitModalDraft({ closeAfterCommit: true });
+      return;
+    }
+
+    discardAndClose();
   }
 
   function handleDelete() {
@@ -2265,7 +3316,7 @@ function WorkItemModal({
     ? totals.timeById[activeItem.id] || 0
     : 0;
   const headerSummary = modal.kind === "create"
-    ? `${formatType(itemType)} · ${parentLabel(parentId, workItems)}`
+    ? `${formatType(selectedItemType)} · ${parentLabel(parentId, workItems)}`
     : isMainRoot
     ? `${sprints.length} Sprint${sprints.length === 1 ? "" : "s"} · ${
         totals.rootTotal
@@ -2282,7 +3333,7 @@ function WorkItemModal({
   return (
     <div
       className="modal-backdrop"
-      onMouseDown={onClose}
+      onMouseDown={handleBackdropMouseDown}
     >
       <section
         className={`modal-card ${isEditing ? "modal-card-edit" : "modal-card-view"}`}
@@ -2310,7 +3361,7 @@ function WorkItemModal({
                 type="button"
                 onClick={() => {
                   onSetView(activeItem.id);
-                  onClose();
+                  discardAndClose();
                 }}
               >
                 Set View
@@ -2319,7 +3370,7 @@ function WorkItemModal({
             <button
               type="button"
               className="icon-button"
-              onClick={onClose}
+              onClick={discardAndClose}
               aria-label="Close"
             >
               ×
@@ -2328,14 +3379,26 @@ function WorkItemModal({
         </header>
 
         <div className="modal-body">
-          {modal.kind === "details" && !isMainRoot && !readOnly && (
-            <CustomSelectField
-              label="Docket State"
-              value={draft.docketState || currentDocketState}
-              options={DOCKET_STATES}
-              onChange={(value) => updateDraft("docketState", value)}
-              wide
-            />
+          {modal.kind === "details" && activeItem && !readOnly && (
+            modalStateOptions.length > 0 ? (
+              <CustomSelectField
+                label="Docket State"
+                value={draft.stateId || ""}
+                options={modalStateOptions.map((option) => option.id)}
+                onChange={(value) => {
+                  const stateName = optionLabel(modalStateOptions, value, currentDocketState);
+                  updateDraftFields({
+                    stateId: value,
+                    stateName,
+                    docketState: localDocketStateValue(stateName, currentDocketState),
+                  });
+                }}
+                getOptionLabel={(value) => optionLabel(modalStateOptions, value, currentDocketState)}
+                wide
+              />
+            ) : (
+              <ReadOnlyField label="Docket State" value={currentDocketState} wide />
+            )
           )}
 
           {!isEditing ? (
@@ -2350,7 +3413,7 @@ function WorkItemModal({
                       editingField={editingField}
                       onEdit={startInlineEdit}
                       onChange={(value) => updateDraft("title", value)}
-                      onCommit={handleSave}
+                      onCommit={finishInlineEdit}
                       wide
                     />
                   </ModalSection>
@@ -2382,7 +3445,7 @@ function WorkItemModal({
                       editingField={editingField}
                       onEdit={startInlineEdit}
                       onChange={(value) => updateDraft("title", value)}
-                      onCommit={handleSave}
+                      onCommit={finishInlineEdit}
                       wide
                     />
                     {activeSprint && (
@@ -2444,7 +3507,7 @@ function WorkItemModal({
                       editingField={editingField}
                       onEdit={startInlineEdit}
                       onChange={(value) => updateDraft("title", value)}
-                      onCommit={handleSave}
+                      onCommit={finishInlineEdit}
                     />
                     <InlineField
                       label="Description"
@@ -2456,42 +3519,35 @@ function WorkItemModal({
                       onChange={(value) =>
                         updateDraft("description", value)
                       }
-                      onCommit={handleSave}
+                      onCommit={finishInlineEdit}
                     />
                   </ModalSection>
                   {hasWorklog && (
                     <ModalSection title="Worklog" className="worklog-section">
-                      <InlineField
-                        label="Date"
-                        field="worklogDate"
-                        value={draft.worklogDate}
+                      <TextField
+                        label="Worklog Date"
                         type="date"
-                        editingField={editingField}
-                        onEdit={startInlineEdit}
+                        value={draft.worklogDate}
                         onChange={(value) => updateDraft("worklogDate", value)}
-                        onCommit={handleSave}
                       />
-                      <InlineField
-                        label="Time"
-                        field="time"
-                        value={draft.time}
-                        editingField={editingField}
-                        onEdit={startInlineEdit}
-                        onChange={(value) => updateDraft("time", value)}
-                        onCommit={handleSave}
-                        badge
+                      <TextField
+                        label="Hours"
+                        type="number"
+                        value={worklogTimePart("hour")}
+                        onChange={(value) => updateWorklogTimePart("hour", value)}
                       />
-                      <InlineField
-                        label="Description"
-                        field="worklogDescription"
+                      <TextField
+                        label="Minutes"
+                        type="number"
+                        value={worklogTimePart("min")}
+                        onChange={(value) => updateWorklogTimePart("min", value)}
+                      />
+                      <TextAreaField
+                        label="Comment"
                         value={draft.worklogDescription}
-                        type="textarea"
-                        editingField={editingField}
-                        onEdit={startInlineEdit}
                         onChange={(value) =>
                           updateDraft("worklogDescription", value)
                         }
-                        onCommit={handleSave}
                         wide
                       />
                     </ModalSection>
@@ -2528,7 +3584,7 @@ function WorkItemModal({
                         editingField={editingField}
                         onEdit={startInlineEdit}
                         onChange={(value) => updateDraft("storyPoints", value)}
-                        onCommit={handleSave}
+                        onCommit={finishInlineEdit}
                         badge
                       />
                     )}
@@ -2538,13 +3594,63 @@ function WorkItemModal({
                       label="Type"
                       value={formatType(activeItem.type)}
                     />
-                    <ReadOnlyField
-                      label={parentFieldLabel(activeItem.parentId, workItems)}
-                      value={parentLabel(activeItem.parentId, workItems)}
-                    />
-                    <ReadOnlyField label="Sprint" value={currentSprint} />
-                    {activeItem.assignee && (
-                      <ReadOnlyField label="Assignee" value={activeItem.assignee} />
+                    {activeItem.type === "story" && modalEpicOptions.length > 0 ? (
+                      <CustomSelectField
+                        label="Epic"
+                        value={draft.parentId || activeItem.parentId}
+                        options={modalEpicOptions.map((option) => option.id)}
+                        onChange={(value) => {
+                          const selectedEpic = modalEpicOptions.find((option) => option.id === value);
+                          updateDraftFields({
+                            parentId: value,
+                            epicId: selectedEpic?.remoteId || value,
+                          });
+                        }}
+                        getOptionLabel={(value) => optionLabel(modalEpicOptions, value, parentLabel(value, workItems))}
+                        wide
+                      />
+                    ) : (
+                      <ReadOnlyField
+                        label={parentFieldLabel(activeItem.parentId, workItems)}
+                        value={parentLabel(activeItem.parentId, workItems)}
+                      />
+                    )}
+                    {modalSprintOptions.length > 0 ? (
+                      <CustomSelectField
+                        label="Sprint"
+                        value={draft.sprintId || ""}
+                        options={modalSprintOptions.map((option) => option.id)}
+                        onChange={(value) => {
+                          const sprintName = optionLabel(modalSprintOptions, value, currentSprint);
+                          updateDraftFields({
+                            sprintId: value,
+                            sprintName,
+                            sprint: sprintName,
+                          });
+                        }}
+                        getOptionLabel={(value) => optionLabel(modalSprintOptions, value, currentSprint)}
+                      />
+                    ) : (
+                      <ReadOnlyField label="Sprint" value={currentSprint} />
+                    )}
+                    {modalAssigneeOptions.length > 0 ? (
+                      <CustomSelectField
+                        label="Assignee"
+                        value={draft.assigneeId || ""}
+                        options={modalAssigneeOptions.map((option) => option.id)}
+                        onChange={(value) => {
+                          const assigneeName = optionLabel(modalAssigneeOptions, value, activeItem.assignee);
+                          updateDraftFields({
+                            assigneeId: value,
+                            assigneeName,
+                            assignee: assigneeName,
+                          });
+                        }}
+                        getOptionLabel={(value) => optionLabel(modalAssigneeOptions, value, activeItem.assignee)}
+                        wide
+                      />
+                    ) : (
+                      activeItem.assignee && <ReadOnlyField label="Assignee" value={activeItem.assignee} />
                     )}
                   </ModalSection>
                   <section className="modal-section modal-section-untitled">
@@ -2643,13 +3749,13 @@ function WorkItemModal({
               {!isSprint && !isMainRoot && hasWorklog && (
                 <ModalSection title="Worklog">
                   <TextField
-                    label="Date"
+                    label="Worklog Date"
                     type="date"
                     value={draft.worklogDate}
                     onChange={(value) => updateDraft("worklogDate", value)}
                   />
                   <TextAreaField
-                    label="Description"
+                    label="Comment"
                     value={draft.worklogDescription}
                     onChange={(value) =>
                       updateDraft("worklogDescription", value)
@@ -2657,10 +3763,16 @@ function WorkItemModal({
                     wide
                   />
                   <TextField
-                    label="Time"
-                    value={draft.time}
-                    placeholder="HH:MM"
-                    onChange={(value) => updateDraft("time", value)}
+                    label="Hours"
+                    type="number"
+                    value={worklogTimePart("hour")}
+                    onChange={(value) => updateWorklogTimePart("hour", value)}
+                  />
+                  <TextField
+                    label="Minutes"
+                    type="number"
+                    value={worklogTimePart("min")}
+                    onChange={(value) => updateWorklogTimePart("min", value)}
                   />
                 </ModalSection>
               )}
@@ -2690,12 +3802,24 @@ function WorkItemModal({
                         onChange={(value) => updateDraft("priority", value)}
                       />
 
-                      <SelectField
-                        label="Docket State"
-                        value={draft.docketState || "concept"}
-                        options={DOCKET_STATES}
-                        onChange={(value) => updateDraft("docketState", value)}
-                      />
+                      {modalStateOptions.length > 0 ? (
+                        <CustomSelectField
+                          label="Docket State"
+                          value={draft.stateId || ""}
+                          options={modalStateOptions.map((option) => option.id)}
+                          onChange={(value) => {
+                            const stateName = optionLabel(modalStateOptions, value, currentDocketState);
+                            updateDraftFields({
+                              stateId: value,
+                              stateName,
+                              docketState: localDocketStateValue(stateName, currentDocketState),
+                            });
+                          }}
+                          getOptionLabel={(value) => optionLabel(modalStateOptions, value, currentDocketState)}
+                        />
+                      ) : (
+                        <ReadOnlyField label="Docket State" value={currentDocketState} />
+                      )}
                     </>
                   )}
                 </ModalSection>
@@ -2703,20 +3827,80 @@ function WorkItemModal({
 
               {!isSprint && !isMainRoot && (
                 <ModalSection title="Hierarchy">
-                  <ReadOnlyField label="Type" value={formatType(itemType)} />
-                  <ReadOnlyField
-                    label={parentFieldLabel(parentId, workItems)}
-                    value={parentLabel(parentId, workItems)}
-                  />
-                  <ReadOnlyField label="Sprint" value={draft.sprint} />
+                  {modal.kind === "create" && createTypeOptions.length > 1 ? (
+                    <SelectField
+                      label="Type"
+                      value={selectedItemType}
+                      options={createTypeOptions}
+                      onChange={(value) => updateDraft("type", value)}
+                    />
+                  ) : (
+                    <ReadOnlyField label="Type" value={formatType(selectedItemType)} />
+                  )}
+                  {activeItem?.type === "story" && modalEpicOptions.length > 0 ? (
+                    <CustomSelectField
+                      label="Epic"
+                      value={draft.parentId || activeItem.parentId}
+                      options={modalEpicOptions.map((option) => option.id)}
+                      onChange={(value) => {
+                        const selectedEpic = modalEpicOptions.find((option) => option.id === value);
+                        updateDraftFields({
+                          parentId: value,
+                          epicId: selectedEpic?.remoteId || value,
+                        });
+                      }}
+                      getOptionLabel={(value) => optionLabel(modalEpicOptions, value, parentLabel(value, workItems))}
+                      wide
+                    />
+                  ) : (
+                    <ReadOnlyField
+                      label={parentFieldLabel(parentId, workItems)}
+                      value={parentLabel(parentId, workItems)}
+                    />
+                  )}
+                  {modalSprintOptions.length > 0 ? (
+                    <CustomSelectField
+                      label="Sprint"
+                      value={draft.sprintId || ""}
+                      options={modalSprintOptions.map((option) => option.id)}
+                      onChange={(value) => {
+                        const sprintName = optionLabel(modalSprintOptions, value, draft.sprint);
+                        updateDraftFields({
+                          sprintId: value,
+                          sprintName,
+                          sprint: sprintName,
+                        });
+                      }}
+                      getOptionLabel={(value) => optionLabel(modalSprintOptions, value, draft.sprint)}
+                    />
+                  ) : (
+                    <ReadOnlyField label="Sprint" value={draft.sprint} />
+                  )}
+                  {modalAssigneeOptions.length > 0 && (
+                    <CustomSelectField
+                      label="Assignee"
+                      value={draft.assigneeId || ""}
+                      options={modalAssigneeOptions.map((option) => option.id)}
+                      onChange={(value) => {
+                        const assigneeName = optionLabel(modalAssigneeOptions, value, draft.assigneeName);
+                        updateDraftFields({
+                          assigneeId: value,
+                          assigneeName,
+                          assignee: assigneeName,
+                        });
+                      }}
+                      getOptionLabel={(value) => optionLabel(modalAssigneeOptions, value, draft.assigneeName)}
+                      wide
+                    />
+                  )}
                 </ModalSection>
               )}
 
               {modal.kind !== "create" ||
-              itemType === "story" ||
-              acceptsTime(itemType) ? (
+              selectedItemType === "story" ||
+              acceptsTime(selectedItemType) ? (
                 <ModalSection title="Effort & Time">
-                  {itemType === "story" && (
+                  {selectedItemType === "story" && (
                     <TextField
                       label="Story Points"
                       type="number"
@@ -2725,7 +3909,7 @@ function WorkItemModal({
                     />
                   )}
 
-                  {acceptsTime(itemType) && !hasWorklog && (
+                  {acceptsTime(selectedItemType) && !hasWorklog && (
                     <TextField
                       label="Time"
                       value={draft.time}
@@ -2798,11 +3982,22 @@ function WorkItemModal({
                 type="button"
                 className="secondary-button"
                 onClick={handleCancel}
+                disabled={saveState === "saving"}
               >
                 Cancel
               </button>
-              <button type="button" onClick={handleSave}>
-                {modal.kind === "create" ? "Create Work Item" : "Save"}
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saveState === "saving"}
+              >
+                {saveState === "saving"
+                  ? modal.kind === "create"
+                    ? "Creating..."
+                    : "Saving..."
+                  : modal.kind === "create"
+                  ? "Create Work Item"
+                  : "Save Changes"}
               </button>
             </div>
           </footer>
@@ -2851,6 +4046,15 @@ function App() {
   const [liveSyncState, setLiveSyncState] = useState("idle");
   const [liveSyncProgress, setLiveSyncProgress] = useState("");
   const [liveSyncSummary, setLiveSyncSummary] = useState(null);
+  const [syncQueueSummary, setSyncQueueSummary] = useState({
+    pendingCount: 0,
+    actionableCount: 0,
+    mutationActionableCount: 0,
+    reconciliationActionableCount: 0,
+    unconfirmedCount: 0,
+    failedCount: 0,
+    operations: [],
+  });
   const [importedWorklogs, setImportedWorklogs] = useState([]);
   const [publishedWorklogsLoaded, setPublishedWorklogsLoaded] = useState(false);
   const [syncStatusPopoverOpen, setSyncStatusPopoverOpen] = useState(false);
@@ -2892,13 +4096,17 @@ function App() {
     [workItems]
   );
   const isContextView = CONTEXT_VIEW_IDS.has(viewMode);
+  const graphScopeOptions = useMemo(
+    () => scopesWithOrphanSprint(sprints, workItems),
+    [sprints, workItems]
+  );
   const contextOptions = useMemo(
-    () => contextOptionsForView({ viewMode, sprints, workItems }),
-    [sprints, viewMode, workItems]
+    () => contextOptionsForView({ viewMode, sprints: graphScopeOptions, workItems }),
+    [graphScopeOptions, viewMode, workItems]
   );
   const selectedContextId =
     contextSelections[viewMode] ||
-    defaultContextSelection({ viewMode, sprints, workItems });
+    defaultContextSelection({ viewMode, sprints: graphScopeOptions, workItems });
   const selectedContextOption = useMemo(
     () =>
       viewMode === "day"
@@ -2914,7 +4122,7 @@ function App() {
       isContextView
         ? buildContextGraph({
             workItems,
-            sprints,
+            sprints: graphScopeOptions,
             viewMode,
             selectedId: selectedContextOption?.id || "",
           })
@@ -2923,7 +4131,7 @@ function App() {
             rootId: null,
             sprints: [],
           },
-    [isContextView, selectedContextOption, sprints, viewMode, workItems]
+    [graphScopeOptions, isContextView, selectedContextOption, viewMode, workItems]
   );
   const visibleWorkItems = useMemo(
     () => descendantsIncluding(contextGraph.workItems, viewRootId),
@@ -2934,15 +4142,15 @@ function App() {
     [searchQuery, visibleWorkItems]
   );
   const searchedSprints = useMemo(() => {
-    if (viewMode !== "main" || !searchQuery.trim()) return sprints;
+    if (viewMode !== "main" || !searchQuery.trim()) return graphScopeOptions;
 
-    return sprints.filter((sprint) => sprintMatchesQuery(sprint, searchQuery));
-  }, [searchQuery, sprints, viewMode]);
+    return graphScopeOptions.filter((sprint) => sprintMatchesQuery(sprint, searchQuery));
+  }, [graphScopeOptions, searchQuery, viewMode]);
   const graphWorkItems = searchedWorkItems;
   const graphSprints =
     viewMode === "main"
       ? searchedSprints
-      : viewMode === "day"
+      : isContextView
       ? contextGraph.sprints
       : [];
   const graphMainTitle =
@@ -2978,11 +4186,16 @@ function App() {
   const isPlanningView = PLANNING_VIEW_IDS.has(viewMode);
   const usesPlanningSurface = isPlanningView;
   const isDashboardView = viewMode === "dashboard";
-  const selectedWorklogItem = selectedId
+  const showGraphEmptyState =
+    graphWorkItems.length === 0 &&
+    !usesPlanningSurface &&
+    !isDashboardView &&
+    viewMode !== "main";
+  const selectedEditableItem = selectedId
     ? workItems.find(
         (item) =>
           item.id === selectedId &&
-          ["story", "job", "task"].includes(item.type)
+          ["epic", "story", "job", "task"].includes(item.type)
       )
     : null;
   const currentAppView = APP_VIEWS.find((view) => view.id === viewMode);
@@ -3066,14 +4279,14 @@ function App() {
 
   useEffect(() => {
     if (!isReadOnlyViewer || loadState !== "ready") return;
-    if (!WORKLOG_DEPENDENT_VIEW_IDS.has(viewMode) && !selectedWorklogItem) return;
+    if (!WORKLOG_DEPENDENT_VIEW_IDS.has(viewMode) && !selectedEditableItem) return;
 
     Promise.resolve().then(ensurePublishedWorklogs);
   }, [
     ensurePublishedWorklogs,
     isReadOnlyViewer,
     loadState,
-    selectedWorklogItem,
+    selectedEditableItem,
     viewMode,
   ]);
 
@@ -3240,6 +4453,7 @@ function App() {
     setSyncState("synced");
     setSaveState("idle");
     setLastSyncedAt(syncedAt);
+    setSyncQueueSummary(normalizeSyncQueueSummary(result.syncQueue));
     setMessage(nextMessage);
     setLayoutNonce((value) => value + 1);
 
@@ -3385,12 +4599,33 @@ function App() {
             if (cancelled) return;
 
             setSyncState("offline");
+            setLiveSyncState("failed");
+            setLiveSyncProgress(payload?.message || payload?.error || "Background sync failed.");
             setMessage(payload?.message || "Background sync failed.");
           },
           onWarning(payload) {
             if (cancelled) return;
 
             setMessage(payload?.message || payload?.warning || "GitHub publish warning.");
+          },
+          onSyncStarted(payload) {
+            if (cancelled) return;
+
+            const nextMessage = payload?.message || "Syncing from Elitical...";
+
+            setSyncState("syncing");
+            setLiveSyncState("syncing");
+            setLiveSyncProgress(nextMessage);
+            setMessage(nextMessage);
+          },
+          onSyncFinished(payload) {
+            if (cancelled) return;
+
+            setSyncState("synced");
+            setLiveSyncState((current) => (current === "syncing" ? "synced" : current));
+            setLiveSyncProgress((current) =>
+              current === "Sync Complete" ? current : payload?.message || ""
+            );
           },
         });
 
@@ -3445,19 +4680,21 @@ function App() {
   }, []);
 
   const handleSelectNode = useCallback((id) => {
-    setSelectedId(id);
+    const selectedItem = resolveCanonicalWorkItem(id, workItemsRef.current);
+    const selectedId = selectedItem?.id || id;
 
-    if (id) {
-      const selectedItem = workItemsRef.current.find((item) => item.id === id);
+    setSelectedId(selectedId);
 
-      if (["story", "job", "task"].includes(selectedItem?.type)) {
+    if (selectedId) {
+
+      if (["epic", "story", "job", "task"].includes(selectedItem?.type)) {
         setModal(null);
         return;
       }
 
       setModal({
         kind: "details",
-        id,
+        id: selectedId,
       });
     } else {
       setModal(null);
@@ -3498,105 +4735,156 @@ function App() {
     setLayoutNonce((value) => value + 1);
   }, []);
 
-  const createItem = useCallback((payload) => {
+  const createItem = useCallback(async (payload) => {
     const currentWorkItems = workItemsRef.current;
-    const id = payload.id || generateWorkItemId(currentWorkItems, payload.type);
-    const result = createWorkItem(currentWorkItems, {
-      ...payload,
-      id,
-    });
-
-    if (!result.ok) {
-      setMessage(result.error);
-      return result;
-    }
-
-    const normalized = normalizeArtifactRollup(
-      result.items,
-      rootDocketState
+    const parentId = payload.parentId || ROOT_ID;
+    const isOrphanSprintCreate = Boolean(payload.isOrphanSprint);
+    const validationError = validateCreatePayload(
+      {
+        ...payload,
+        parentId,
+      },
+      currentWorkItems,
+      sprints
     );
 
-    setStoryState((current) => ({
-      ...current,
-      rootDocketState: normalized.rootDocketState,
-      workItems: normalized.workItems,
-    }));
-    workItemsRef.current = normalized.workItems;
-    setSelectedId(result.item.id);
-    setMessage("Unsaved Changes");
-    setLayoutNonce((value) => value + 1);
+    if (validationError) {
+      setMessage(validationError);
+      return {
+        ok: false,
+        error: validationError,
+      };
+    }
 
-    return result;
-  }, [rootDocketState]);
+    const type = payload.type;
+    const sprintId = isOrphanSprintCreate
+      ? ""
+      : sprintIdForCreate(parentId, payload.sprintId, currentWorkItems, sprints);
+    const usesNativeDocketCreatePayload = ["story", "job", "task", "epic"].includes(type);
+    const nativeStorySprint =
+      type === "story" && !isOrphanSprintCreate
+        ? nativeStorySprintForCreate(parentId, payload.sprintId, currentWorkItems, sprints)
+        : null;
+    const createPayload = {
+      ...parentPayloadForCreate(type, parentId, currentWorkItems),
+      type,
+      title: payload.title,
+      description: payload.description || "",
+      descr: payload.description || "",
+      projectId: projectIdForCreate(parentId, currentWorkItems, sprints),
+      projectName:
+        usesNativeDocketCreatePayload
+          ? nativeStoryProjectNameForCreate(parentId, currentWorkItems, sprints, rootTitle)
+          : undefined,
+      sprintId: nativeStorySprint?.sprintId || sprintId,
+      sprintName: nativeStorySprint?.sprintName || undefined,
+      sprint: isOrphanSprintCreate
+        ? ""
+        : payload.sprint || nativeStorySprint?.sprintName || sprints.find((sprint) => sprint.id === sprintId)?.title || "",
+      docketState: payload.docketState || "concept",
+      category:
+        usesNativeDocketCreatePayload
+          ? String(payload.category || "ENHANCEMENT").toUpperCase()
+          : payload.category || "feature",
+      priority:
+        usesNativeDocketCreatePayload
+          ? String(payload.priority || "MINOR").toUpperCase()
+          : payload.priority || "info",
+      assigneeId:
+        usesNativeDocketCreatePayload
+          ? nativeStoryAssigneeIdForCreate(parentId, payload, currentWorkItems)
+          : payload.assigneeId,
+      storyPoints: type === "story" ? Number(payload.storyPoints || 0) : undefined,
+      storyPointEst: type === "story" ? Number(payload.storyPoints || 0) : undefined,
+      hasNoSprint: type === "story" ? isOrphanSprintCreate : undefined,
+      imgAttachmentDtoSet: type === "story" ? [] : undefined,
+      videoAttachmentDtoSet: type === "story" ? [] : undefined,
+      worklog: acceptsTime(type) && payload.worklog ? payload.worklog : undefined,
+    };
+
+    try {
+      setMessage("Creating docket locally...");
+
+      const result = await createEliticalDocket(createPayload);
+
+      applyNormalizedGraphPayload(result, {
+        message: result.message || `Created ${formatType(type)} locally`,
+        preserveView: true,
+      });
+      setSelectedId(result.item?.id || result.docket?.id || null);
+
+      return {
+        ok: true,
+        item: result.item,
+        docket: result.docket,
+      };
+    } catch (error) {
+      const message =
+        error.payload?.message ||
+        error.payload?.error ||
+        error.message ||
+        "Unable to create Elitical docket.";
+
+      setMessage(message);
+
+      return {
+        ok: false,
+        error: message,
+      };
+    }
+  }, [applyNormalizedGraphPayload, sprints]);
 
   const handleStartChild = useCallback((type, parentId, options = {}) => {
     const currentWorkItems = workItemsRef.current;
     const sprintParent = sprints.find((sprint) => sprint.id === parentId);
+    const isOrphanSprintCreate =
+      Boolean(options.isOrphanSprint) || isOrphanSprintId(parentId);
     const actualParentId =
-      type === "epic" && sprintParent ? ROOT_ID : parentId;
-    const fallbackSprint = sprintParent
+      type === "epic" && (sprintParent || isOrphanSprintCreate)
+        ? ROOT_ID
+        : parentId;
+    const sprintId = isOrphanSprintCreate
+      ? ""
+      : sprintParent
+      ? sprintParent.id
+      : sprintIdForCreate(actualParentId, options.sprintId, currentWorkItems, sprints);
+    const fallbackSprint = isOrphanSprintCreate
+      ? ORPHAN_SPRINT_TITLE
+      : sprintParent
       ? sprintParent.title
-      : inheritedSprint(actualParentId, currentWorkItems, rootTitle);
+      : options.sprint || inheritedSprint(actualParentId, currentWorkItems, rootTitle);
     const fallbackDocketState = inheritedDocketState(
       actualParentId,
       currentWorkItems,
       sprintParent?.docketState || rootDocketState
     );
 
-    if (type === "epic") {
-      setModal({
-        kind: "create",
-        type,
-        parentId: actualParentId,
-        sprint: fallbackSprint,
-        docketState: fallbackDocketState,
-        worklogDate: options.worklogDate,
-      });
-      return;
-    }
-
-    const typeLabel = formatType(type);
-    const worklogDate = options.worklogDate || new Date().toISOString();
-
-    createItem({
-      title: `New ${typeLabel}`,
-      description: "",
-      category: "feature",
-      priority: "info",
-      sprint: fallbackSprint,
-      docketState: fallbackDocketState,
+    setModal({
+      kind: "create",
       type,
       parentId: actualParentId,
-      createdAt: options.worklogDate || undefined,
-      updatedAt: options.worklogDate || undefined,
-      storyPoints: type === "story" ? 0 : undefined,
-      timeMinutes: acceptsTime(type) ? 0 : undefined,
-      worklogs: acceptsTime(type)
-        ? [
-            {
-              date: worklogDate,
-              description: "",
-              timeMinutes: 0,
-            },
-          ]
-        : undefined,
+      sprint: fallbackSprint,
+      sprintId,
+      isOrphanSprint: isOrphanSprintCreate,
+      docketState: fallbackDocketState,
+      worklogDate: options.worklogDate,
     });
-  }, [createItem, rootDocketState, rootTitle, sprints]);
+  }, [rootDocketState, rootTitle, sprints]);
 
   const openDetailsModal = useCallback((id) => {
-    const selectedItem = workItemsRef.current.find((item) => item.id === id);
+    const selectedItem = resolveCanonicalWorkItem(id, workItemsRef.current);
+    const canonicalId = selectedItem?.id || id;
 
-    setSelectedId(id);
-
-    if (selectedItem?.type === "job") {
+    if (!selectedItem || !["epic", "story", "job", "task"].includes(selectedItem.type)) {
+      setSelectedId(canonicalId || null);
       setModal(null);
-      setMessage("");
       return;
     }
 
+    setSelectedId(canonicalId);
     setModal({
       kind: "details",
-      id,
+      id: canonicalId,
     });
     setMessage("");
   }, []);
@@ -3794,6 +5082,160 @@ function App() {
     return result;
   }, [rootDocketState]);
 
+  const saveEditableWorkItem = useCallback(async (item, {
+    sdkUpdates = {},
+    localUpdates = {},
+    localChangedFields = [],
+  } = {}) => {
+    const sdkFieldCount = Object.keys(sdkUpdates).length;
+
+    try {
+      let remoteResult = null;
+
+      if (sdkFieldCount > 0) {
+        const canonicalDocketId = canonicalDocketIdForUpdate(item);
+
+        if (!canonicalDocketId) {
+          return {
+            ok: false,
+            error: "Cannot update a reference, ghost, virtual, or orphan docket node.",
+          };
+        }
+
+        setMessage("Saving locally...");
+        remoteResult = await updateEliticalDocket(canonicalDocketId, sdkUpdates);
+
+        if (remoteResult?.normalized?.appState) {
+          applyNormalizedGraphPayload(remoteResult, {
+            message: remoteResult.message || "Saved locally",
+            preserveView: true,
+          });
+        } else {
+          setMessage(remoteResult?.message || "Saved locally");
+        }
+      }
+
+      const remoteFields = new Set(Object.keys(sdkUpdates));
+      const changedLocalFields = localChangedFields.length
+        ? localChangedFields
+        : Object.keys(localUpdates);
+      const localOnlyUpdates = {};
+
+      changedLocalFields.forEach((field) => {
+        if (remoteFields.has(field)) return;
+        if (Object.prototype.hasOwnProperty.call(localUpdates, field)) {
+          localOnlyUpdates[field] = localUpdates[field];
+        }
+      });
+
+      const shouldSaveLocalOnly = Object.keys(localOnlyUpdates).length > 0;
+
+      if (!shouldSaveLocalOnly) {
+        setMessage(remoteResult?.message || (sdkFieldCount > 0 ? "Saved locally" : "No changes"));
+
+        return {
+          ok: true,
+          update: remoteResult?.update || null,
+          reconciliation: remoteResult?.reconciliation || null,
+        };
+      }
+
+      if (localOnlyUpdates.worklog) {
+        const canonicalDocketId = canonicalDocketIdForUpdate(item);
+
+        if (!canonicalDocketId) {
+          return {
+            ok: false,
+            error: "Cannot update a reference, ghost, virtual, or orphan docket node.",
+          };
+        }
+
+        setMessage("Saving worklog locally...");
+        remoteResult = await updateEliticalDocket(canonicalDocketId, {
+          worklog: localOnlyUpdates.worklog,
+        });
+        delete localOnlyUpdates.worklog;
+
+        if (remoteResult?.normalized?.appState) {
+          applyNormalizedGraphPayload(remoteResult, {
+            message: remoteResult.message || "Saved worklog locally",
+            preserveView: true,
+          });
+        } else {
+          setMessage(remoteResult?.message || "Saved worklog locally");
+        }
+      }
+
+      if (!Object.keys(localOnlyUpdates).length) {
+        return {
+          ok: true,
+          update: remoteResult?.update || null,
+          reconciliation: remoteResult?.reconciliation || null,
+        };
+      }
+
+      const result = saveWorkItem(item.id, {
+        ...localOnlyUpdates,
+        type: item.type,
+      });
+
+      if (!result.ok) return result;
+
+      setMessage(sdkFieldCount > 0 ? remoteResult?.message || "Saved locally" : "No changes");
+
+      if (
+        localOnlyUpdates.parentId !== undefined &&
+        localOnlyUpdates.parentId !== item.parentId
+      ) {
+        setLayoutNonce((value) => value + 1);
+      }
+
+      return {
+        ok: true,
+      };
+    } catch (error) {
+      const message = error.payload?.message || error.payload?.error || error.message || "Elitical save failed.";
+
+      setMessage(message);
+
+      return {
+        ok: false,
+        error: message,
+      };
+    }
+  }, [applyNormalizedGraphPayload, saveWorkItem]);
+
+  const saveModalWorkItem = useCallback(async (id, updates = {}) => {
+    const item = workItemsRef.current.find((entry) => entry.id === id);
+
+    if (!item) {
+      return {
+        ok: false,
+        error: "Work item was not found.",
+      };
+    }
+
+    const localChangedFields = Object.keys(updates || {});
+    const sdkUpdates = supportedUpdatePayloadForItem(item, updates, {
+      workItems: workItemsRef.current,
+      sprints,
+    });
+
+    if (Object.keys(sdkUpdates).length || updates.worklog) {
+      return saveEditableWorkItem(item, {
+        sdkUpdates,
+        localUpdates: {
+          ...updates,
+          title: String(updates.title || "").trim(),
+          description: String(updates.description || "").trim(),
+        },
+        localChangedFields,
+      });
+    }
+
+    return saveWorkItem(id, updates);
+  }, [saveEditableWorkItem, saveWorkItem, sprints]);
+
   const removeWorkItem = useCallback((item) => {
     const result = deleteWorkItem(workItemsRef.current, item.id);
 
@@ -3944,11 +5386,10 @@ function App() {
       setLiveSyncProgress("Sync Complete");
     } catch (error) {
       const errorMessage =
-        error.status === 401
-          ? "Authentication failed."
-          : error.status === 502
-          ? "Unable to contact Elitical."
-          : error.message || "Elitical import failed.";
+        error.payload?.message ||
+        error.payload?.error ||
+        error.message ||
+        "Elitical import failed.";
 
       setLiveSyncState("failed");
       setLiveSyncProgress(errorMessage);
@@ -3984,6 +5425,63 @@ function App() {
     liveSyncState,
   ]);
 
+  const handleSyncToElitical = useCallback(async () => {
+    if (isReadOnlyViewer || liveSyncState === "syncing") return;
+
+    if (!syncQueueSummary.actionableCount) {
+      setMessage("Everything is synced.");
+      return;
+    }
+
+    setSyncStatusPopoverOpen(false);
+    setLiveSyncState("syncing");
+    setLiveSyncProgress("Syncing pending changes to Elitical...");
+    setSyncState("syncing");
+    setMessage("Syncing pending changes to Elitical...");
+
+    try {
+      const result = await syncPendingToElitical({
+        onProgress(progress) {
+          if (progress?.message) {
+            setLiveSyncProgress(progress.message);
+          }
+        },
+      });
+      const worklogCache = await loadLocalWorklogsCache().catch(() => null);
+
+      setImportedWorklogs(worklogCache?.worklogs || []);
+      const { normalizedSnapshot, syncedAt } = applyNormalizedGraphPayload(result, {
+        message: result.message || "Sync to Elitical complete",
+        preserveView: true,
+        updateSummary: true,
+      });
+      saveCache({
+        snapshot: normalizedSnapshot,
+        sha: baseSha,
+        lastSyncedAt: syncedAt,
+      });
+      setLiveSyncState(result.syncSummary?.failed ? "failed" : "synced");
+      setLiveSyncProgress(result.message || "Sync to Elitical complete");
+    } catch (error) {
+      const errorMessage =
+        error.payload?.message ||
+        error.payload?.error ||
+        error.message ||
+        "Sync to Elitical failed.";
+
+      setLiveSyncState("failed");
+      setLiveSyncProgress(errorMessage);
+      setSyncState("offline");
+      setMessage(errorMessage);
+    }
+  }, [
+    applyNormalizedGraphPayload,
+    baseSha,
+    isReadOnlyViewer,
+    liveSyncState,
+    syncQueueSummary.actionableCount,
+  ]);
+
   const handleUseLegacyState = useCallback(() => {
     if (!legacyState) return;
 
@@ -4007,7 +5505,7 @@ function App() {
     liveSyncState === "syncing"
       ? "🔄 Syncing..."
     : liveSyncState === "failed"
-      ? "Elitical Sync Failed"
+      ? liveSyncProgress || message || "Elitical sync failed"
       : saveState === "failed"
       ? "Save failed"
       : saveState === "saving"
@@ -4016,6 +5514,8 @@ function App() {
       ? "Offline"
     : syncState === "syncing" || syncState === "loading"
       ? "Syncing..."
+      : syncQueueSummary.actionableCount
+      ? `Pending Sync (${syncQueueSummary.actionableCount})`
       : "✓ Synced";
   const syncStatusSummary = liveSyncSummary || {
     status: liveSyncState === "failed" ? "Failed" : "Success",
@@ -4035,6 +5535,10 @@ function App() {
   const syncIncremental = syncStatusSummary.incremental || {};
   const syncStatusRows = [
     ["Status", syncStatusSummary.status || (liveSyncState === "failed" ? "Failed" : "Success")],
+    ["Actionable Sync Items", syncQueueSummary.actionableCount || 0],
+    ["Pending Mutations", syncQueueSummary.mutationActionableCount || 0],
+    ["Unconfirmed Creates", syncQueueSummary.unconfirmedCount || 0],
+    ["Sync Failures", syncQueueSummary.failedCount || 0],
     ["Last Synced", syncStatusSummary.syncedAt ? formatTimestamp(syncStatusSummary.syncedAt) : "-"],
     ["Duration", syncStatusSummary.durationMs ? `${Math.round(syncStatusSummary.durationMs / 1000)} sec` : "-"],
     ["Projects", syncStatusCounts.projects ?? "-"],
@@ -4238,6 +5742,19 @@ function App() {
           {!isReadOnlyViewer && (
             <button
               type="button"
+              className="primary-button"
+              onClick={handleSyncToElitical}
+              disabled={liveSyncState === "syncing" || !syncQueueSummary.actionableCount}
+            >
+              {liveSyncState === "syncing"
+                ? "Syncing..."
+                : `Sync to Elitical${syncQueueSummary.actionableCount ? ` (${syncQueueSummary.actionableCount})` : ""}`}
+            </button>
+          )}
+
+          {!isReadOnlyViewer && (
+            <button
+              type="button"
               className="secondary-button"
               onClick={handleSyncFromElitical}
               disabled={liveSyncState === "syncing"}
@@ -4330,7 +5847,7 @@ function App() {
         />
       ) : null}
 
-      {graphWorkItems.length === 0 && !usesPlanningSurface && !isDashboardView && viewMode !== "main" && (
+      {showGraphEmptyState && (
         <div className="empty-canvas-state">
           <h2>{viewMode === "day" ? "No work logged" : "No work assigned"}</h2>
           <p>
@@ -4345,6 +5862,7 @@ function App() {
         <PlanningView
           viewMode={viewMode}
           workItems={searchedWorkItems}
+          allWorkItems={workItems}
           sprints={searchedSprints}
           onOpenDetails={openDetailsModal}
         />
@@ -4356,9 +5874,10 @@ function App() {
           totals={totals}
           lastSyncedAt={lastSyncedAt}
         />
-      ) : (
+      ) : showGraphEmptyState ? null : (
         <GraphView
           workItems={graphWorkItems}
+          allWorkItems={workItems}
           mainTitle={graphMainTitle}
           rootTitle={graphRootTitle}
           rootDocketState={rootDocketState}
@@ -4391,19 +5910,26 @@ function App() {
           onSaveMain={saveMainTitle}
           onSaveRoot={saveRootTitle}
           onSaveSprint={saveSprint}
-          onSaveItem={saveWorkItem}
+          onSaveItem={saveModalWorkItem}
           onCreateItem={createItem}
           onDeleteItem={removeWorkItem}
           onSetView={setFocusedView}
-          readOnly={isReadOnlyViewer}
+          readOnly={
+            isReadOnlyViewer ||
+            modal.id === MAIN_ROOT_ID ||
+            modal.id === ROOT_ID ||
+            sprints.some((sprint) => sprint.id === modal.id)
+          }
         />
       )}
 
-      {selectedWorklogItem && (
-        <WorklogPanel
-          item={selectedWorklogItem}
+      {selectedEditableItem && (
+        <PropertyPanel
+          item={selectedEditableItem}
           workItems={workItems}
+          sprints={sprints}
           onClose={() => setSelectedId(null)}
+          onSave={saveEditableWorkItem}
           readOnly={isReadOnlyViewer}
         />
       )}

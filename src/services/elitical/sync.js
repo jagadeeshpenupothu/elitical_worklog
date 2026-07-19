@@ -1,4 +1,3 @@
-import { eliticalApiClient } from "./api.js";
 import {
   clearStoredSession,
   consumeSessionFromUrl,
@@ -6,21 +5,11 @@ import {
   getStoredSession,
   setStoredSession,
 } from "./auth.js";
-import { updateDocket } from "./docket.js";
-import {
-  getAssignedEpics,
-  getAssignedJobs,
-  getAssignedProject,
-  getAssignedStories,
-  getAssignedWorklogs,
-  getCurrentEmployee,
-  getCurrentSprint,
-} from "./employee.js";
-import { createWorklog, updateWorklog, deleteWorklog } from "./worklog.js";
 import { ROOT_ID } from "../../utils/worklogModel";
 
 let nextSyncManagerId = 1;
 const PRODUCTION_READ_CONCURRENCY = 6;
+const DEFAULT_ELITICAL_BASE_URL = "https://elitical.sayukth.com";
 
 function diagnosticError(error) {
   return {
@@ -57,7 +46,10 @@ function productionConfig() {
   const viteEnv = import.meta?.env || {};
 
   return {
-    baseUrl: nodeEnv.ELITICAL_BASE_URL || viteEnv.VITE_ELITICAL_BASE_URL || "",
+    baseUrl:
+      nodeEnv.ELITICAL_BASE_URL ||
+      viteEnv.VITE_ELITICAL_BASE_URL ||
+      DEFAULT_ELITICAL_BASE_URL,
     dataDir: nodeEnv.ELITICAL_DATA_DIR || viteEnv.VITE_ELITICAL_DATA_DIR || undefined,
     storageStatePath:
       nodeEnv.ELITICAL_STORAGE_STATE_PATH ||
@@ -105,8 +97,7 @@ async function resolveProvider(provider) {
   });
 
   if (!provider && !canUseProductionRuntime()) {
-    console.info("[EliticalSync] resolveProvider() using browser API client path");
-    return null;
+    throw new Error("Elitical SDK provider is required in the browser runtime.");
   }
 
   if (!provider) {
@@ -512,7 +503,6 @@ export async function downloadExtensionData({
 }
 
 export async function downloadOfficialData({
-  client = eliticalApiClient,
   provider = null,
 } = {}) {
   console.info("[EliticalSync] downloadOfficialData() entered");
@@ -523,7 +513,6 @@ export async function downloadOfficialData({
       hasProvider: Boolean(productionProvider),
     });
 
-  if (productionProvider) {
     console.info("[EliticalSync] downloadOfficialData() calling provider.getProjects()");
     const projects = await productionProvider.getProjects();
     console.info("[EliticalSync] provider.getProjects() resolved", {
@@ -616,64 +605,6 @@ export async function downloadOfficialData({
     });
 
     return officialData;
-  }
-
-  const [
-    employee,
-    project,
-    sprint,
-    epicsPayload,
-    storiesPayload,
-    jobsPayload,
-    worklogsPayload,
-  ] = await Promise.all([
-    getCurrentEmployee(client),
-    getAssignedProject(client),
-    getCurrentSprint(client),
-    getAssignedEpics(client),
-    getAssignedStories(client),
-    getAssignedJobs(client),
-    getAssignedWorklogs(client),
-  ]);
-  const worklogs = normalizeListPayload(worklogsPayload, "worklogs");
-  const worklogsByDocketId = worklogs.reduce((acc, worklog) => {
-    const docketId = String(worklog.docketId || worklog.workItemId || "");
-    if (!docketId) return acc;
-    if (!acc.has(docketId)) acc.set(docketId, []);
-    acc.get(docketId).push(worklog);
-    return acc;
-  }, new Map());
-  const dockets = [
-    ...normalizeListPayload(epicsPayload, "epics"),
-    ...normalizeListPayload(storiesPayload, "stories"),
-    ...normalizeListPayload(jobsPayload, "jobs"),
-  ].map((docket) => ({
-    ...docket,
-    worklogs: worklogsByDocketId.get(officialId(docket)) || docket.worklogs || [],
-  }));
-  const projectId = String(project?.id || project?.projectId || "");
-  const sprintId = String(sprint?.id || sprint?.sprintId || "");
-
-  const officialData = {
-    projectId,
-    sprintId,
-    employee,
-    project,
-    sprint,
-    downloadedAt: new Date().toISOString(),
-    sprints: sprint ? [sprint] : [],
-    employees: employee ? [employee] : [],
-    dockets,
-    workItems: dockets.map(officialToWorkItem),
-    worklogs,
-  };
-
-  console.info("[EliticalSync] downloadOfficialData() returning legacy official data", {
-    docketCount: dockets.length,
-    worklogCount: worklogs.length,
-  });
-
-  return officialData;
   } catch (error) {
     console.error("[EliticalSync] downloadOfficialData() threw", diagnosticError(error));
     throw error;
@@ -747,19 +678,23 @@ export function calculateSyncState({
 
 export async function uploadPendingChanges({
   pendingChanges = [],
-  client = eliticalApiClient,
+  provider = null,
 } = {}) {
+  const resolvedProvider = await resolveProvider(provider);
   const results = [];
 
   for (const change of pendingChanges) {
     if (change.type === "createWorklog") {
-      results.push(await createWorklog(change.docketId, change.payload, client));
+      results.push(await resolvedProvider.createWorklog({
+        ...(change.payload || {}),
+        docketId: change.docketId,
+      }));
     } else if (change.type === "updateWorklog") {
-      results.push(await updateWorklog(change.worklogId, change.payload, client));
+      throw new Error("Elitical SDK updateWorklog() is not implemented.");
     } else if (change.type === "deleteWorklog") {
-      results.push(await deleteWorklog(change.worklogId, client));
+      throw new Error("Elitical SDK deleteWorklog() is not implemented.");
     } else if (change.type === "updateDocket") {
-      results.push(await updateDocket(change.docketId, change.payload, client));
+      results.push(await resolvedProvider.updateDocket(change.docketId, change.payload));
     }
   }
 
@@ -793,7 +728,6 @@ function normalizeConnectionPayload({
 
 export async function loadConnectionContext({
   session = getStoredSession(),
-  client = eliticalApiClient,
   provider = null,
 } = {}) {
   console.info("[EliticalSync] loadConnectionContext() entered");
@@ -804,7 +738,6 @@ export async function loadConnectionContext({
       hasProvider: Boolean(productionProvider),
     });
 
-  if (productionProvider) {
     const projects = await productionProvider.getProjects();
     console.info("[EliticalSync] loadConnectionContext() provider.getProjects() resolved", {
       count: projects.length,
@@ -836,45 +769,6 @@ export async function loadConnectionContext({
     });
 
     return result;
-  }
-
-  if (
-    !session?.token &&
-    !session?.authorization &&
-    !session?.sJwtToken &&
-    !session?.sessionId
-  ) {
-    const result = {
-      status: CONNECTION_STATES.AUTH_REQUIRED,
-      context: null,
-    };
-
-    console.info("[EliticalSync] loadConnectionContext() returning auth required");
-
-    return result;
-  }
-
-  const [employee, project, sprint] = await Promise.all([
-    getCurrentEmployee(client),
-    getAssignedProject(client),
-    getCurrentSprint(client),
-  ]);
-
-  const result = {
-    status: CONNECTION_STATES.CONNECTED,
-    context: normalizeConnectionPayload({
-      session,
-      employee,
-      project,
-      sprint,
-    }),
-  };
-
-  console.info("[EliticalSync] loadConnectionContext() returning legacy context", {
-    status: result.status,
-  });
-
-  return result;
   } catch (error) {
     console.error("[EliticalSync] loadConnectionContext() threw", diagnosticError(error));
     throw error;
@@ -938,7 +832,6 @@ export function disconnectElitical() {
 }
 
 export function createSyncManager({
-  client = eliticalApiClient,
   provider = null,
 } = {}) {
   const syncManagerInstanceId = nextSyncManagerId++;
@@ -958,20 +851,20 @@ export function createSyncManager({
         syncManagerInstanceId,
       });
 
-      return loadConnectionContext({ ...options, client, provider });
+      return loadConnectionContext({ ...options, provider });
     },
     downloadOfficialData: (options) => {
       console.info("[EliticalSync] SyncManager.downloadOfficialData() called", {
         syncManagerInstanceId,
       });
 
-      return downloadOfficialData({ ...options, client, provider });
+      return downloadOfficialData({ ...options, provider });
     },
     downloadExtensionData,
     connectionFromOfficialData,
     mergeWithGitHub,
     calculateSyncState,
-    uploadPendingChanges: (options) => uploadPendingChanges({ ...options, client }),
+    uploadPendingChanges: (options) => uploadPendingChanges({ ...options, provider }),
   };
 }
 

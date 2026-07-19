@@ -668,6 +668,59 @@ button:disabled {
   opacity: 1;
 }
 
+.jira-node.ghost-reference {
+  opacity: 0.8;
+}
+
+.jira-node.ghost-reference:hover {
+  opacity: 0.86;
+  transform: none;
+}
+
+.node-reference-badge {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 3;
+  border: 1px solid color-mix(in srgb, var(--node-accent) 42%, transparent);
+  border-radius: 999px;
+  padding: 2px 6px;
+  background: rgba(8, 12, 18, 0.88);
+  color: color-mix(in srgb, var(--node-accent) 74%, #ffffff 26%);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+  text-transform: uppercase;
+}
+
+.node-sync-badge {
+  position: absolute;
+  top: 24px;
+  right: 8px;
+  z-index: 3;
+  border: 1px solid rgba(20, 184, 166, 0.34);
+  border-radius: 999px;
+  padding: 2px 6px;
+  background: rgba(7, 18, 24, 0.9);
+  color: #8de8dc;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+  text-transform: uppercase;
+}
+
+.node-sync-badge.sync-sync-failed {
+  border-color: rgba(248, 113, 113, 0.42);
+  color: #fca5a5;
+}
+
+.node-sync-badge.sync-sync-unconfirmed {
+  border-color: rgba(251, 191, 36, 0.42);
+  color: #fcd34d;
+}
+
 .node-context-badge {
   border-color: rgba(148, 163, 184, 0.36);
   color: #aeb9c8;
@@ -1207,6 +1260,17 @@ button:disabled {
 .planning-card small {
   color: var(--text-muted);
   font-size: 11px;
+}
+
+.planning-card-reference,
+.planning-card-reference:disabled {
+  opacity: 0.78;
+  border-style: dashed;
+  cursor: default;
+}
+
+.planning-card-reference strong {
+  color: var(--text-muted);
 }
 
 .planning-worklog {

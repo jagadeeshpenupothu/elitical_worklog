@@ -23,6 +23,8 @@ export interface Worklog {
   min?: number;
   minutes?: number;
   loggedMinutes?: number;
+  timeMinutes?: number;
+  durationMinutes?: number;
   hours?: number;
   loggedHours?: number;
   duration?: number;

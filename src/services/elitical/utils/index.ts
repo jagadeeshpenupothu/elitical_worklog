@@ -1,1 +1,1 @@
-export { unsupportedOperation } from "./unsupportedOperation";
+export { unsupportedOperation } from "./unsupportedOperation.js";

@@ -17,6 +17,12 @@ import {
   getLayoutedElements,
   getNodeSize,
 } from "../utils/dagreLayout";
+import {
+  buildProjectedHierarchy,
+  isReferenceNode,
+  isOrphanSprintScope,
+} from "../utils/hierarchyProjection";
+import { canCreateChildForNode } from "../utils/nodeCapabilities";
 import { ROOT_ID } from "../utils/worklogModel";
 
 const nodeTypes = {
@@ -43,6 +49,8 @@ function normalizeState(value) {
 }
 
 function isCompletedItem(item) {
+  if (item?.isGhost) return false;
+
   return COMPLETED_STATES.has(normalizeState(item?.docketState || item?.status));
 }
 
@@ -375,10 +383,14 @@ function itemForNode(id, node, itemById) {
 }
 
 function visualParentIdForItem(item, includeMainRoot, sprints = []) {
+  if (item.visualParentId) return item.visualParentId;
   if (!includeMainRoot || item.parentId !== ROOT_ID) return item.parentId;
 
   const sprint = sprints.find(
-    (entry) => entry.id !== ROOT_ID && entry.title === item.sprint
+    (entry) =>
+      entry.id !== ROOT_ID &&
+      (entry.id === (item.elitical?.sprintId || item.sprintId) ||
+        entry.title === item.sprint)
   );
 
   return sprint?.id || ROOT_ID;
@@ -407,7 +419,8 @@ function buildLayoutEdges(
   workItems,
   includeRootNode,
   includeMainRoot = false,
-  sprints = []
+  sprints = [],
+  routeRootItemsThroughSprint = includeMainRoot
 ) {
   const visibleIds = new Set(workItems.map((item) => item.id));
   const extraSprintIds = sprints
@@ -420,7 +433,11 @@ function buildLayoutEdges(
         (includeRootNode && item.parentId === ROOT_ID)
     )
     .map((item) => {
-      const source = visualParentIdForItem(item, includeMainRoot, sprints);
+      const source = visualParentIdForItem(
+        item,
+        routeRootItemsThroughSprint,
+        sprints
+      );
 
       return {
         id: `${source}-${item.id}`,
@@ -437,13 +454,20 @@ function buildLayoutEdges(
           target: ROOT_ID,
         },
         ...extraSprintIds.map((id) => ({
-          id: `${MAIN_ROOT_ID}-${id}`,
-          source: MAIN_ROOT_ID,
+          id: `${ROOT_ID}-${id}`,
+          source: ROOT_ID,
           target: id,
         })),
         ...workEdges,
       ]
-    : workEdges;
+    : [
+        ...extraSprintIds.map((id) => ({
+          id: `${ROOT_ID}-${id}`,
+          source: ROOT_ID,
+          target: id,
+        })),
+        ...workEdges,
+      ];
 }
 
 function getNodeCenterX(node) {
@@ -519,7 +543,13 @@ function buildBranchConnectorEdges(
   }, {});
 
   if (includeRootNode && nodeById.has(MAIN_ROOT_ID) && nodeById.has(ROOT_ID)) {
-    childrenByParent[MAIN_ROOT_ID] = [ROOT_ID, ...extraSprintIds];
+    childrenByParent[MAIN_ROOT_ID] = [ROOT_ID];
+  }
+
+  if (includeRootNode && nodeById.has(ROOT_ID) && extraSprintIds.length > 0) {
+    childrenByParent[ROOT_ID] = [
+      ...new Set([...(childrenByParent[ROOT_ID] || []), ...extraSprintIds]),
+    ];
   }
 
   return Array.from(
@@ -721,7 +751,15 @@ function sameNodeData(first, second) {
     a.isDayRoot === b.isDayRoot &&
     a.isProjectNode === b.isProjectNode &&
     a.isSprintNode === b.isSprintNode &&
+    a.isReference === b.isReference &&
+    a.isGhost === b.isGhost &&
+    a.sourceItemId === b.sourceItemId &&
+    a.targetScopeId === b.targetScopeId &&
+    a.targetSprintId === b.targetSprintId &&
     a.allowChildActions === b.allowChildActions &&
+    a.childParentId === b.childParentId &&
+    a.childSprintId === b.childSprintId &&
+    a.childSprint === b.childSprint &&
     a.hiddenCount === b.hiddenCount &&
     a.hiddenRootCount === b.hiddenRootCount &&
     a.expandedSummaryId === b.expandedSummaryId &&
@@ -777,6 +815,16 @@ function isWorkNode(node) {
   return node.type !== "separatorGuide";
 }
 
+function canonicalDocketNodeId(node) {
+  const data = node?.data || {};
+  const type = String(data.type || "").toLowerCase();
+
+  if (!["epic", "story", "task", "job"].includes(type)) return "";
+  if (data.isCompletedSummary) return "";
+
+  return data.sourceItemId || data.sourceDocketId || data.sourceId || data.id || node.id || "";
+}
+
 function mergeBounds(bounds) {
   return bounds.reduce(
     (acc, bound) => ({
@@ -814,7 +862,13 @@ function buildSeparatorGuides(nodes, workItems, rootNodeId, sprints = []) {
   }, {});
 
   if (byId.has(MAIN_ROOT_ID) && byId.has(ROOT_ID)) {
-    childrenByParent[MAIN_ROOT_ID] = [ROOT_ID, ...extraSprintIds];
+    childrenByParent[MAIN_ROOT_ID] = [ROOT_ID];
+  }
+
+  if (byId.has(ROOT_ID) && extraSprintIds.length > 0) {
+    childrenByParent[ROOT_ID] = [
+      ...new Set([...(childrenByParent[ROOT_ID] || []), ...extraSprintIds]),
+    ];
   }
   const subtreeBounds = new Map();
 
@@ -962,8 +1016,9 @@ function toFlowNodes({
     return itemTime > latestTime ? item.updatedAt || item.createdAt : latest;
   }, "");
 
+  const showScopeRoot = viewMode === "day";
   const mainRootNode =
-    (viewMode === "main" || viewMode === "sprint" || viewMode === "day") && !viewRootId
+    showScopeRoot && !viewRootId
       ? [
           {
             id: MAIN_ROOT_ID,
@@ -991,8 +1046,8 @@ function toFlowNodes({
               isRoot: true,
               isVirtual: true,
               isProjectNode: viewMode === "main",
-              isSprintNode: viewMode === "sprint",
-              allowChildActions: !readOnly && viewMode !== "day",
+              isSprintNode: false,
+              allowChildActions: false,
               completedSummaryControls:
                 completedSummaryControls.get(MAIN_ROOT_ID) || [],
               ...actions,
@@ -1026,7 +1081,7 @@ function toFlowNodes({
             selected: selectedId === ROOT_ID,
             isRoot: true,
             isProjectNode: true,
-            allowChildActions: !readOnly,
+            allowChildActions: false,
             completedSummaryControls:
               completedSummaryControls.get(ROOT_ID) || [],
             ...actions,
@@ -1034,42 +1089,49 @@ function toFlowNodes({
         },
       ];
   const extraSprintNodes =
-    (viewMode === "main" || viewMode === "day") && !viewRootId
+    !viewRootId
       ? sprints
           .filter((sprint) => sprint.id !== ROOT_ID)
-          .map((sprint) => ({
-            id: sprint.id,
-            type: "jiraNode",
-            position: existingPositions[sprint.id] || {
-              x: 0,
-              y: 64,
-            },
-            data: {
+          .map((sprint) => {
+            const isOrphanSprint = isOrphanSprintScope(sprint);
+
+            return {
               id: sprint.id,
-              title: sprint.title,
-              type: "story-root",
-              docketState: sprint.docketState || "concept",
-              updatedAt: rootUpdatedAt,
+              type: "jiraNode",
               position: existingPositions[sprint.id] || {
                 x: 0,
                 y: 64,
               },
-              calculatedStoryPoints: 0,
-              calculatedTimeMinutes:
-                storyPointTotals.sprintTimeById?.[sprint.id] ??
-                storyPointTotals.sprintTimeByTitle?.[sprint.title] ??
-                0,
-              selected: selectedId === sprint.id,
-              isRoot: true,
-              isVirtual: true,
-              isSprintNode: true,
-              allowChildActions: !readOnly,
-              childParentId: sprint.id,
-              completedSummaryControls:
-                completedSummaryControls.get(sprint.id) || [],
-              ...actions,
-            },
-          }))
+              data: {
+                id: sprint.id,
+                title: sprint.title,
+                type: "story-root",
+                docketState: sprint.docketState || "concept",
+                updatedAt: rootUpdatedAt,
+                position: existingPositions[sprint.id] || {
+                  x: 0,
+                  y: 64,
+                },
+                calculatedStoryPoints: 0,
+                calculatedTimeMinutes:
+                  storyPointTotals.sprintTimeById?.[sprint.id] ??
+                  storyPointTotals.sprintTimeByTitle?.[sprint.title] ??
+                  0,
+                selected: selectedId === sprint.id,
+                isRoot: true,
+                isVirtual: true,
+                isSprintNode: true,
+                isOrphanSprint,
+                allowChildActions: !readOnly && isOrphanSprint,
+                childParentId: ROOT_ID,
+                childSprintId: "",
+                childSprint: sprint.title,
+                completedSummaryControls:
+                  completedSummaryControls.get(sprint.id) || [],
+                ...actions,
+              },
+            };
+          })
       : [];
 
   const baseNodes = [
@@ -1077,6 +1139,9 @@ function toFlowNodes({
     ...rootNode,
     ...extraSprintNodes,
     ...workItems.map((item) => {
+      const isGhost = isReferenceNode(item);
+      const metricId = item.sourceItemId || item.sourceDocketId || item.id;
+
       return {
         id: item.id,
         type: "jiraNode",
@@ -1084,6 +1149,9 @@ function toFlowNodes({
           x: 0,
           y: 64,
         },
+        draggable: !isGhost,
+        selectable: !isGhost,
+        deletable: !isGhost,
         data: {
           ...item,
           updatedAt: displayDateForItem(item),
@@ -1092,10 +1160,10 @@ function toFlowNodes({
             y: 64,
           },
           selected: selectedId === (item.sourceId || item.id),
-          calculatedStoryPoints: storyPointTotals.byId[item.id],
+          calculatedStoryPoints: storyPointTotals.byId[metricId],
           calculatedTimeMinutes: item.isCompletedSummary
             ? item.hiddenTimeMinutes
-            : storyPointTotals.timeById[item.id],
+            : storyPointTotals.timeById[metricId],
           hiddenCount: item.hiddenCount,
           hiddenRootCount: item.hiddenRootCount,
           hiddenChildIds: item.hiddenChildIds,
@@ -1106,7 +1174,10 @@ function toFlowNodes({
           searchMatch: searchMatchIds.has(item.sourceId || item.id),
           completedSummaryControls:
             completedSummaryControls.get(item.id) || [],
-          allowChildActions: !readOnly,
+          allowChildActions:
+            !readOnly &&
+            item.allowChildActions !== false &&
+            canCreateChildForNode(item),
           ...actions,
         },
       };
@@ -1118,6 +1189,7 @@ function toFlowNodes({
 
 export default function GraphView({
   workItems,
+  allWorkItems = workItems,
   mainTitle,
   rootTitle,
   rootDocketState,
@@ -1142,20 +1214,31 @@ export default function GraphView({
   const [expandedSummaryIds, setExpandedSummaryIds] = useState(
     loadExpandedSummaryIds
   );
-  const showMainRoot =
-    (viewMode === "main" || viewMode === "sprint" || viewMode === "day") &&
-    !viewRootId;
+  const showMainRoot = viewMode === "day" && !viewRootId;
+  const routeRootItemsThroughSprint = !viewRootId && sprints.length > 0;
   const rootNodeId = viewRootId || (showMainRoot ? MAIN_ROOT_ID : ROOT_ID);
   const appliedLayoutKeyRef = useRef("");
   const collapsedGraph = useMemo(
     () =>
       prepareCompletedCollapse({
-        workItems,
+        workItems: buildProjectedHierarchy({
+          items: workItems,
+          allItems: allWorkItems,
+          scopes: sprints,
+          enabled: true,
+        }).items,
         expandedSummaryIds,
         searchQuery,
         storyPointTotals,
       }),
-    [expandedSummaryIds, searchQuery, storyPointTotals, workItems]
+    [
+      allWorkItems,
+      expandedSummaryIds,
+      searchQuery,
+      sprints,
+      storyPointTotals,
+      workItems,
+    ]
   );
   const renderedWorkItems = collapsedGraph.workItems;
   const completedSummaryControls = collapsedGraph.summaryControlsByParent;
@@ -1175,7 +1258,13 @@ export default function GraphView({
         workItems: renderedWorkItems.map((item) => [
           item.id,
           item.parentId,
+          item.visualParentId,
           item.type,
+          item.isReference,
+          item.isGhost,
+          item.sourceItemId,
+          item.targetScopeId,
+          item.targetSprintId,
           item.hiddenCount,
         ]),
       }),
@@ -1359,7 +1448,13 @@ export default function GraphView({
       });
       const layout = getLayoutedElements(
         baseNodes,
-        buildLayoutEdges(renderedWorkItems, !viewRootId, showMainRoot, sprints),
+        buildLayoutEdges(
+          renderedWorkItems,
+          !viewRootId,
+          showMainRoot,
+          sprints,
+          routeRootItemsThroughSprint
+        ),
         rootNodeId
       );
       const nextNodes = withSeparatorGuideNodes(layout.nodes.map((node) => ({
@@ -1384,6 +1479,7 @@ export default function GraphView({
     mainTitle,
     rootTitle,
     rootNodeId,
+    routeRootItemsThroughSprint,
     sprints,
     selectedId,
     setNodes,
@@ -1432,18 +1528,27 @@ export default function GraphView({
   }, [nodes, searchQuery]);
 
   const handleNodeClick = useCallback(
-    (_event, node) => {
-      onSelect(node.data?.sourceId || node.id);
+    (event, node) => {
+      const canonicalId = canonicalDocketNodeId(node);
+
+      if (canonicalId) {
+        event.preventDefault();
+        onOpenDetails(canonicalId);
+        return;
+      }
+
+      onSelect(node.data?.sourceItemId || node.data?.sourceDocketId || node.data?.sourceId || node.id);
     },
-    [onSelect]
+    [onOpenDetails, onSelect]
   );
 
   const handleNodeDoubleClick = useCallback(
     (event, node) => {
       event.preventDefault();
       event.stopPropagation();
-      if (node.data?.isVirtual) return;
-      onOpenDetails(node.data?.sourceId || node.id);
+      const canonicalId = canonicalDocketNodeId(node);
+
+      if (canonicalId) onOpenDetails(canonicalId);
     },
     [onOpenDetails]
   );

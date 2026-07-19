@@ -1,6 +1,7 @@
 export interface Sprint {
   id?: string;
   sprintId?: string;
+  projectId?: string;
   cx?: string;
   name?: string;
   sprintName?: string;

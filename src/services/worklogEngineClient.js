@@ -1,5 +1,4 @@
-const LOCAL_BACKEND_ORIGIN =
-  import.meta.env.VITE_LOCAL_BACKEND_URL || "http://127.0.0.1:3797";
+import { localBackendOrigin } from "./backendOrigin";
 
 async function parseResponse(response) {
   const payload = await response.json().catch(() => ({}));
@@ -11,17 +10,31 @@ async function parseResponse(response) {
   return payload;
 }
 
+async function fetchBackend(url, options) {
+  try {
+    return await fetch(url, options);
+  } catch (error) {
+    throw new Error(
+      `Desktop backend request failed for ${url}: ${error?.message || "Unable to connect."}`
+    );
+  }
+}
+
 function worklogUrl(docketId, suffix = "") {
-  return `${LOCAL_BACKEND_ORIGIN}/api/worklogs/${encodeURIComponent(docketId)}${suffix}`;
+  return `${localBackendOrigin()}/api/worklogs/${encodeURIComponent(docketId)}${suffix}`;
 }
 
 export async function loadJobWorklogState(docketId) {
-  return parseResponse(await fetch(worklogUrl(docketId)));
+  const url = worklogUrl(docketId);
+
+  return parseResponse(await fetchBackend(url));
 }
 
 export async function saveJobWorklogDraft(docketId, draft) {
+  const url = worklogUrl(docketId, "/draft");
+
   return parseResponse(
-    await fetch(worklogUrl(docketId, "/draft"), {
+    await fetchBackend(url, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -32,16 +45,20 @@ export async function saveJobWorklogDraft(docketId, draft) {
 }
 
 export async function clearJobWorklogDraft(docketId) {
+  const url = worklogUrl(docketId, "/draft");
+
   return parseResponse(
-    await fetch(worklogUrl(docketId, "/draft"), {
+    await fetchBackend(url, {
       method: "DELETE",
     })
   );
 }
 
 export async function submitJobWorklog(docketId, payload) {
+  const url = worklogUrl(docketId, "/submit");
+
   return parseResponse(
-    await fetch(worklogUrl(docketId, "/submit"), {
+    await fetchBackend(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

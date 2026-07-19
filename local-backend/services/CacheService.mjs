@@ -57,12 +57,17 @@ function graphHashShape(graph) {
   };
 }
 
-function metadataFor(graph, syncedAt, syncIndex = null) {
+function metadataFor(graph, syncedAt, syncIndex = null, previousMetadata = null) {
   const workItems = graph.appState?.workItems || [];
   const projects = graph.projects || [];
   const stories = graph.stories || [];
   const jobs = graph.jobs || [];
   const tasks = graph.tasks || [];
+  const remoteIndex = syncIndex || (
+    previousMetadata?.dockets && Object.keys(previousMetadata.dockets).length
+      ? previousMetadata
+      : null
+  );
 
   return {
     lastSyncTime: syncedAt || new Date().toISOString(),
@@ -75,14 +80,23 @@ function metadataFor(graph, syncedAt, syncIndex = null) {
     jobCount: jobs.length,
     taskCount: tasks.length,
     hash: hashFor(graphHashShape(graph)),
-    lastSuccessfulSync: syncIndex?.lastSuccessfulSync || syncedAt || new Date().toISOString(),
-    projectId: syncIndex?.projectId || projects[0]?.id || "",
-    dockets: syncIndex?.dockets || {},
+    lastSuccessfulSync:
+      remoteIndex?.lastSuccessfulSync ||
+      previousMetadata?.lastSuccessfulSync ||
+      syncedAt ||
+      new Date().toISOString(),
+    projectId:
+      remoteIndex?.projectId ||
+      previousMetadata?.projectId ||
+      previousMetadata?.eliticalProjectId ||
+      projects[0]?.id ||
+      "",
+    dockets: remoteIndex?.dockets || {},
   };
 }
 
 export class CacheService {
-  constructor({ cacheDir = path.resolve("local-backend/cache") } = {}) {
+  constructor({ cacheDir = process.env.ELITICAL_CACHE_DIR || path.resolve("local-backend/cache") } = {}) {
     this.cacheDir = cacheDir;
     this.graphPath = path.join(cacheDir, "graph.json");
     this.layoutPath = path.join(cacheDir, "layout.json");
@@ -147,7 +161,7 @@ export class CacheService {
 
   async saveGraph(graph, { syncedAt, syncIndex } = {}) {
     const previousMetadata = await this.readMetadata();
-    const metadata = metadataFor(graph, syncedAt, syncIndex);
+    const metadata = metadataFor(graph, syncedAt, syncIndex, previousMetadata);
     const changed = previousMetadata?.hash !== metadata.hash;
 
     await this.writeJsonAtomic(this.graphPath, graph);

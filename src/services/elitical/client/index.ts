@@ -1,9 +1,16 @@
 export {
   EliticalClientError,
   type EliticalClientErrorCode,
-} from "./EliticalClientError";
-export { EliticalClient } from "./EliticalClient";
+} from "./EliticalClientError.js";
+export { EliticalClient } from "./EliticalClient.js";
 export type {
+  AttachmentPayload,
+  CreateDocketPayload,
   CreateWorklogPayload,
+  EliticalDocketType,
+  EliticalEmployee,
+  EliticalLookupValue,
   EliticalClientContract,
-} from "../types";
+  EliticalRequestMethod,
+  UpdateDocketPayload,
+} from "../types/index.js";
