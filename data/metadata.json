@@ -1,5 +1,5 @@
 {
-  "lastSyncTime": "2026-07-18T22:21:42.009Z",
+  "lastSyncTime": "2026-07-19T05:37:52.713Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
@@ -8,8 +8,8 @@
   "storyCount": 319,
   "jobCount": 297,
   "taskCount": 41,
-  "hash": "a5c4f38e9eeed4434908495d60952057f37fd42eb6f94c2f1df6fd32b2331959",
-  "lastSuccessfulSync": "2026-07-18T22:21:42.009Z",
+  "hash": "3afff2bac658589281ceb109a1391e5c9099fa9743952c00b20ad90897295d09",
+  "lastSuccessfulSync": "2026-07-19T05:37:52.713Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
     "b46e5515-cd6b-4725-8e95-ba37f81ccfca": {
@@ -116,9 +116,9 @@
     },
     "b89c7313-a362-419c-9575-37c580be746f": {
       "docketId": "b89c7313-a362-419c-9575-37c580be746f",
-      "modifiedTimestamp": "1784296202000",
+      "modifiedTimestamp": "1784458043000",
       "createdTimestamp": "1784296198000",
-      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"do cross check the teja hospitals cover photo and do telugu text edits\",\"epicId\":\"\",\"id\":\"b89c7313-a362-419c-9575-37c580be746f\",\"num\":\"DES-669\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Telugu text correction\",\"type\":\"JOB\",\"updated\":\"1784296202000\"}"
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"do cross check the teja hospitals cover photo and do telugu text edits\",\"epicId\":\"\",\"id\":\"b89c7313-a362-419c-9575-37c580be746f\",\"num\":\"DES-669\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Telugu Text Correction\",\"type\":\"JOB\",\"updated\":\"1784458043000\"}"
     },
     "c22571da-e0d1-47fa-829b-f066e9f41292": {
       "docketId": "c22571da-e0d1-47fa-829b-f066e9f41292",
@@ -4128,24 +4128,5 @@
       "createdTimestamp": "1724393264000",
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design icons, screens etc..\",\"epicId\":\"\",\"id\":\"d96a6331-6159-4a2f-be8a-2967923b05ca\",\"num\":\"DES-3\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Eagle Eye View UX Works\",\"type\":\"EPIC\",\"updated\":\"1724409509000\"}"
     }
-  },
-  "publishedAt": "2026-07-18T22:21:56.222Z",
-  "publishedCommitSha": "117d38cb52de667548cae4b59f3d89a6621382c3",
-  "publishedFiles": [
-    {
-      "path": "data/graph.json",
-      "sha": "42244f520c32da12c0bfffd6f281065926c4371f",
-      "commitSha": "48e33565d4dba86f99e76b06b553edd31d4774cc"
-    },
-    {
-      "path": "data/worklogs.json",
-      "sha": "27125200df08502591c3cd8418b4c483f8a3d8ab",
-      "commitSha": "c7308be1e54a9f3a71cea4e5afa01b7d9bc7a687"
-    },
-    {
-      "path": "data/metadata.json",
-      "sha": "219ff07f605b5222f75c6b86a87f61480fd004bb",
-      "commitSha": "117d38cb52de667548cae4b59f3d89a6621382c3"
-    }
-  ]
+  }
 }
