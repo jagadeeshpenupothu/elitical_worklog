@@ -1,17 +1,35 @@
 {
-  "lastSyncTime": "2026-07-19T10:45:16.479Z",
+  "lastSyncTime": "2026-07-19T15:04:57.425Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
   "graphVersion": 1,
-  "nodeCount": 686,
-  "storyCount": 319,
-  "jobCount": 297,
+  "nodeCount": 689,
+  "storyCount": 321,
+  "jobCount": 298,
   "taskCount": 41,
-  "hash": "e35a39ce6dab9efdfb7243f10fb5178748df6cc5ff848017d371887208c25db9",
-  "lastSuccessfulSync": "2026-07-19T10:45:16.479Z",
+  "hash": "ff356ac160e23706474474d9e4ab0450af0496cddf2a4221861d49623596110f",
+  "lastSuccessfulSync": "2026-07-19T15:04:57.425Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
+    "86e2cb03-446d-46b6-91af-8ec151c09a2c": {
+      "docketId": "86e2cb03-446d-46b6-91af-8ec151c09a2c",
+      "modifiedTimestamp": "1784486667000",
+      "createdTimestamp": "1784486667000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design, Review and Delivery the 40 copies offVIsitng Cards to sesha sir\",\"epicId\":\"\",\"id\":\"86e2cb03-446d-46b6-91af-8ec151c09a2c\",\"num\":\"DES-689\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Visiting Card Print\",\"type\":\"STORY\",\"updated\":\"1784486667000\"}"
+    },
+    "5d74675f-2b82-4371-8ee7-2ddd5abfd75c": {
+      "docketId": "5d74675f-2b82-4371-8ee7-2ddd5abfd75c",
+      "modifiedTimestamp": "1784485965000",
+      "createdTimestamp": "1784485346000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Convert dark theme images to SVGs submited by s sashnak\",\"epicId\":\"\",\"id\":\"5d74675f-2b82-4371-8ee7-2ddd5abfd75c\",\"num\":\"DES-688\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Dark Theme SVG Generation\",\"type\":\"JOB\",\"updated\":\"1784485965000\"}"
+    },
+    "8081c171-cc5d-4347-8881-d5ceef6d886d": {
+      "docketId": "8081c171-cc5d-4347-8881-d5ceef6d886d",
+      "modifiedTimestamp": "1784485320000",
+      "createdTimestamp": "1784485321000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Make a SVGs fo the error codes provided by sashank\",\"epicId\":\"\",\"id\":\"8081c171-cc5d-4347-8881-d5ceef6d886d\",\"num\":\"DES-687\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"2\",\"title\":\"Error Code SVG Generation\",\"type\":\"STORY\",\"updated\":\"1784485320000\"}"
+    },
     "b46e5515-cd6b-4725-8e95-ba37f81ccfca": {
       "docketId": "b46e5515-cd6b-4725-8e95-ba37f81ccfca",
       "modifiedTimestamp": "1784460864000",
@@ -26,15 +44,15 @@
     },
     "d690001f-6e4b-4936-b6a3-ca0dde6bf596": {
       "docketId": "d690001f-6e4b-4936-b6a3-ca0dde6bf596",
-      "modifiedTimestamp": "1784421891000",
+      "modifiedTimestamp": "1784485974000",
       "createdTimestamp": "1784421891000",
-      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"ENHANCEMENT\",\"descr\":\"Do work with varma sir and by updating the cover design of the teja hospital\",\"epicId\":\"\",\"id\":\"d690001f-6e4b-4936-b6a3-ca0dde6bf596\",\"num\":\"DES-684\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Modification and updated of teja hospital cover\",\"type\":\"JOB\",\"updated\":\"1784421891000\"}"
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"ENHANCEMENT\",\"descr\":\"Do work with varma sir and by updating the cover design of the teja hospital\",\"epicId\":\"\",\"id\":\"d690001f-6e4b-4936-b6a3-ca0dde6bf596\",\"num\":\"DES-684\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Modification and updated of teja hospital cover\",\"type\":\"JOB\",\"updated\":\"1784485974000\"}"
     },
     "2607d25e-e1f4-41d0-a312-f0c89badaaad": {
       "docketId": "2607d25e-e1f4-41d0-a312-f0c89badaaad",
-      "modifiedTimestamp": "1784420914000",
+      "modifiedTimestamp": "1784485973000",
       "createdTimestamp": "1784420541000",
-      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Do correction of Teja Hospitals Cover page Text Corrections in Front side\",\"epicId\":\"\",\"id\":\"2607d25e-e1f4-41d0-a312-f0c89badaaad\",\"num\":\"DES-683\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Telugu Text correction Front Page\",\"type\":\"JOB\",\"updated\":\"1784420914000\"}"
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Do correction of Teja Hospitals Cover page Text Corrections in Front side\",\"epicId\":\"\",\"id\":\"2607d25e-e1f4-41d0-a312-f0c89badaaad\",\"num\":\"DES-683\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Telugu Text correction Front Page\",\"type\":\"JOB\",\"updated\":\"1784485973000\"}"
     },
     "f5491f8d-b676-400f-a1a8-a762c87a0371": {
       "docketId": "f5491f8d-b676-400f-a1a8-a762c87a0371",
@@ -74,9 +92,9 @@
     },
     "5da11a50-5e82-47a9-a5d9-e28eef3cf0a1": {
       "docketId": "5da11a50-5e82-47a9-a5d9-e28eef3cf0a1",
-      "modifiedTimestamp": "1784397043000",
+      "modifiedTimestamp": "1784485979000",
       "createdTimestamp": "1784391790000",
-      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Provide an Assets to sindhu like logo, compost and odomo device images\",\"epicId\":\"\",\"id\":\"5da11a50-5e82-47a9-a5d9-e28eef3cf0a1\",\"num\":\"DES-676\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Ecolly MicorbialX Compost Assets\",\"type\":\"JOB\",\"updated\":\"1784397043000\"}"
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Provide an Assets to sindhu like logo, compost and odomo device images\",\"epicId\":\"\",\"id\":\"5da11a50-5e82-47a9-a5d9-e28eef3cf0a1\",\"num\":\"DES-676\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Ecolly MicorbialX Compost Assets\",\"type\":\"JOB\",\"updated\":\"1784485979000\"}"
     },
     "9bcbc49d-f958-4983-b356-d212a9e65029": {
       "docketId": "9bcbc49d-f958-4983-b356-d212a9e65029",
@@ -110,15 +128,15 @@
     },
     "e66582b2-3fcb-4814-a774-af7eab379cee": {
       "docketId": "e66582b2-3fcb-4814-a774-af7eab379cee",
-      "modifiedTimestamp": "1784308117000",
+      "modifiedTimestamp": "1784482900000",
       "createdTimestamp": "1784302800000",
-      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Review the error code images that generated by sashank\",\"epicId\":\"\",\"id\":\"e66582b2-3fcb-4814-a774-af7eab379cee\",\"num\":\"DES-670\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"2\",\"title\":\"Dark Theme Error Codes Review\",\"type\":\"STORY\",\"updated\":\"1784308117000\"}"
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Review the error code images that generated by sashank\",\"epicId\":\"\",\"id\":\"e66582b2-3fcb-4814-a774-af7eab379cee\",\"num\":\"DES-670\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"2\",\"title\":\"Error Codes images Review\",\"type\":\"STORY\",\"updated\":\"1784482900000\"}"
     },
     "b89c7313-a362-419c-9575-37c580be746f": {
       "docketId": "b89c7313-a362-419c-9575-37c580be746f",
-      "modifiedTimestamp": "1784458043000",
+      "modifiedTimestamp": "1784482171000",
       "createdTimestamp": "1784296198000",
-      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"do cross check the teja hospitals cover photo and do telugu text edits\",\"epicId\":\"\",\"id\":\"b89c7313-a362-419c-9575-37c580be746f\",\"num\":\"DES-669\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Telugu Text Correction\",\"type\":\"JOB\",\"updated\":\"1784458043000\"}"
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Do cross check the teja hospitals cover photo and do telugu text edits\",\"epicId\":\"\",\"id\":\"b89c7313-a362-419c-9575-37c580be746f\",\"num\":\"DES-669\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Telugu Text Correction Back side\",\"type\":\"JOB\",\"updated\":\"1784482171000\"}"
     },
     "c22571da-e0d1-47fa-829b-f066e9f41292": {
       "docketId": "c22571da-e0d1-47fa-829b-f066e9f41292",
@@ -152,9 +170,9 @@
     },
     "42bda7bb-6f1c-4bda-a9c8-91124bc606b5": {
       "docketId": "42bda7bb-6f1c-4bda-a9c8-91124bc606b5",
-      "modifiedTimestamp": "1784083422000",
+      "modifiedTimestamp": "1784485969000",
       "createdTimestamp": "1784083362000",
-      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Design a cover for sayukt hard bound\",\"epicId\":\"\",\"id\":\"42bda7bb-6f1c-4bda-a9c8-91124bc606b5\",\"num\":\"DES-663\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"2\",\"title\":\"Cover Design\",\"type\":\"STORY\",\"updated\":\"1784083422000\"}"
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Design a cover for sayukt hard bound\",\"epicId\":\"\",\"id\":\"42bda7bb-6f1c-4bda-a9c8-91124bc606b5\",\"num\":\"DES-663\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"2\",\"title\":\"SaYukth Hard Bound Cover Design\",\"type\":\"STORY\",\"updated\":\"1784485969000\"}"
     },
     "76db6d9f-2346-4552-9014-2dae669be1e7": {
       "docketId": "76db6d9f-2346-4552-9014-2dae669be1e7",
@@ -4128,24 +4146,5 @@
       "createdTimestamp": "1724393264000",
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design icons, screens etc..\",\"epicId\":\"\",\"id\":\"d96a6331-6159-4a2f-be8a-2967923b05ca\",\"num\":\"DES-3\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Eagle Eye View UX Works\",\"type\":\"EPIC\",\"updated\":\"1724409509000\"}"
     }
-  },
-  "publishedAt": "2026-07-19T10:46:14.655Z",
-  "publishedCommitSha": "dc90f11a486bb3a831589d86d831e93218251594",
-  "publishedFiles": [
-    {
-      "path": "data/graph.json",
-      "sha": "e7d7d7ab6dd6cac77c6ca1f25d224d6e6907ef10",
-      "commitSha": "82c00c15a9ecfaab9412c5a527253a2da99ba2a9"
-    },
-    {
-      "path": "data/worklogs.json",
-      "sha": "5f0ff1f75363f14d51c12fe3ddf17c4fd82ec3d7",
-      "commitSha": "9572a8ad1d2d8043c3a96e7f6c8491cdd51f88aa"
-    },
-    {
-      "path": "data/metadata.json",
-      "sha": "2742fab8ec41f15df5034150b26d5e6cea75f72b",
-      "commitSha": "dc90f11a486bb3a831589d86d831e93218251594"
-    }
-  ]
+  }
 }
