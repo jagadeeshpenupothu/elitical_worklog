@@ -1,5 +1,5 @@
 {
-  "lastSyncTime": "2026-07-19T05:44:42.460Z",
+  "lastSyncTime": "2026-07-19T06:55:28.783Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
@@ -8,15 +8,15 @@
   "storyCount": 319,
   "jobCount": 297,
   "taskCount": 41,
-  "hash": "3afff2bac658589281ceb109a1391e5c9099fa9743952c00b20ad90897295d09",
-  "lastSuccessfulSync": "2026-07-19T05:44:42.460Z",
+  "hash": "e35a39ce6dab9efdfb7243f10fb5178748df6cc5ff848017d371887208c25db9",
+  "lastSuccessfulSync": "2026-07-19T06:55:28.783Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
     "b46e5515-cd6b-4725-8e95-ba37f81ccfca": {
       "docketId": "b46e5515-cd6b-4725-8e95-ba37f81ccfca",
-      "modifiedTimestamp": "1784426857000",
+      "modifiedTimestamp": "1784460864000",
       "createdTimestamp": "1784426857000",
-      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Design a hard bound Design and review with a varma sir\",\"epicId\":\"\",\"id\":\"b46e5515-cd6b-4725-8e95-ba37f81ccfca\",\"num\":\"DES-686\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Design and Review of Sayukth Hard bound\",\"type\":\"JOB\",\"updated\":\"1784426857000\"}"
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Design a hard bound Design and review with a varma sir\",\"epicId\":\"\",\"id\":\"b46e5515-cd6b-4725-8e95-ba37f81ccfca\",\"num\":\"DES-686\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Design and Review of SaYukth Hard Bound\",\"type\":\"JOB\",\"updated\":\"1784460864000\"}"
     },
     "f7625b73-5e1b-44bf-9b42-ad7db0cfd474": {
       "docketId": "f7625b73-5e1b-44bf-9b42-ad7db0cfd474",
@@ -4128,24 +4128,5 @@
       "createdTimestamp": "1724393264000",
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design icons, screens etc..\",\"epicId\":\"\",\"id\":\"d96a6331-6159-4a2f-be8a-2967923b05ca\",\"num\":\"DES-3\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Eagle Eye View UX Works\",\"type\":\"EPIC\",\"updated\":\"1724409509000\"}"
     }
-  },
-  "publishedAt": "2026-07-19T05:44:57.262Z",
-  "publishedCommitSha": "10ed2a40f207aa00369a4fcf4de3d7b053ab2723",
-  "publishedFiles": [
-    {
-      "path": "data/graph.json",
-      "sha": "fdee20bf775542e8eeb5080950242cc1ec26258d",
-      "commitSha": "1c3476c7567d5b1bb2781f899d1cd38735c01218"
-    },
-    {
-      "path": "data/worklogs.json",
-      "sha": "5b8ce68cd9a9e95df53428bcaacc56b9ebe7a07c",
-      "commitSha": "c9cf4e1b40bb2af09918ccd75fd4184ee9a62f1c"
-    },
-    {
-      "path": "data/metadata.json",
-      "sha": "8640fe1e69de868742dcdf262ad5c61f8b74e9b1",
-      "commitSha": "10ed2a40f207aa00369a4fcf4de3d7b053ab2723"
-    }
-  ]
+  }
 }
