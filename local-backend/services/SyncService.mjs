@@ -93,63 +93,98 @@ export class SyncService {
     return provider;
   }
 
-  publishInBackground({ graph, worklogs, metadata }) {
-    if (!this.publishEnabled) return;
+  async publishSnapshot({ graph, worklogs, metadata, message } = {}) {
+    if (!this.publishEnabled) {
+      return {
+        status: "skipped",
+        message: "GitHub publication is disabled.",
+      };
+    }
 
     this.events.cache("github-publish-started", {
       message: "Publishing latest cache to GitHub...",
     });
+    this.events.progress({
+      direction: "inbound",
+      state: "running",
+      phase: "publishing",
+      message: "Publishing synchronized snapshot for Web...",
+    });
 
-    publishCacheFiles({
-      graph,
-      worklogs,
-      metadata,
-      message: `data: publish Elitical cache ${new Date().toISOString()}`,
-    })
-      .then(async (publishResult) => {
-        const publishedMetadata = await this.localData.updateMetadata({
-          publishedAt: publishResult.publishedAt,
-          publishedCommitSha: publishResult.commitSha,
-          publishedFiles: publishResult.files,
-        });
-        const metadataPublish = await publishCacheFiles({
+    try {
+      const publishResult = await publishCacheFiles({
           graph,
           worklogs,
-          metadata: publishedMetadata,
-          message: `data: publish Elitical metadata ${publishResult.publishedAt}`,
-        });
-        const nextMetadata = await this.localData.updateMetadata({
-          publishedAt: metadataPublish.publishedAt,
-          publishedCommitSha: metadataPublish.commitSha || publishResult.commitSha,
-          publishedFiles: metadataPublish.files,
+          metadata,
+          message: message || `data: publish Elitical cache ${new Date().toISOString()}`,
         });
 
-        this.events.cache("github-publish-complete", {
-          message: "Published latest cache to GitHub.",
-          publish: {
-            ...metadataPublish,
-            metadata: nextMetadata,
-          },
-        });
-      })
-      .catch((error) => {
-        const payload = {
-          warning: "GitHub publish failed.",
-          message:
-            error?.message ||
-            "Elitical sync completed, but the latest cache could not be published to GitHub.",
-          status: error?.statusCode || error?.status || 0,
-        };
-
-        console.warn("[local-backend] GitHub cache publish failed", payload);
-        this.events.progress({
-          direction: "inbound",
-          state: "running",
-          phase: "warning",
-          message: payload.message,
-        });
-        this.events.cache("github-publish-failed", payload);
+      this.events.cache("github-publish-complete", {
+        message: "Published latest cache to GitHub.",
+        publish: publishResult,
       });
+      this.events.progress({
+        direction: "inbound",
+        state: "running",
+        phase: "published",
+        message: "Published synchronized snapshot for Web.",
+      });
+
+      return {
+        ...publishResult,
+        status: "published",
+      };
+    } catch (error) {
+      const payload = {
+        status: "publication-failed",
+        warning: "GitHub publish failed.",
+        message:
+          error?.message ||
+          "Elitical sync completed locally, but the latest cache could not be published to GitHub.",
+        statusCode: error?.statusCode || error?.status || 0,
+        snapshotId: metadata?.syncGenerationId || metadata?.snapshotId || "",
+      };
+
+      console.warn("[local-backend] GitHub cache publish failed", payload);
+      this.events.progress({
+        direction: "inbound",
+        state: "running",
+        phase: "publication-failed",
+        message: payload.message,
+      });
+      this.events.cache("github-publish-failed", payload);
+
+      return payload;
+    }
+  }
+
+  async publishLatestLocalSnapshot() {
+    const snapshot = await this.localData.loadFinalizedSnapshot();
+
+    if (!snapshot?.graph || !snapshot?.worklogs || !snapshot?.metadata) {
+      const error = new Error("No finalized local snapshot is available to publish.");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    return this.publishSnapshot({
+      ...snapshot,
+      message: `data: publish latest local Elitical snapshot ${new Date().toISOString()}`,
+    });
+  }
+
+  convergedStatusForPublication(publication) {
+    return publication?.status === "published" || publication?.status === "skipped"
+      ? "synced"
+      : "local-synced-publication-failed";
+  }
+
+  messageForPublication(publication) {
+    if (publication?.status === "skipped") return "Synced from Elitical.";
+
+    return publication?.status === "published"
+      ? "Synced from Elitical and published for Web."
+      : "Local sync complete — Web publication failed.";
   }
 
   async run({ providerId = "elitical" } = {}) {
@@ -205,14 +240,15 @@ export class SyncService {
 
       const worklogUpload = await this.localData.uploadPendingWorklogs();
 
-      this.publishInBackground({
-        graph: result.normalized,
+      const publication = await this.publishSnapshot({
+        graph: cacheWrite.graph,
         worklogs: worklogCacheWrite.payload,
         metadata: cacheWrite.metadata,
       });
 
       const payload = {
-        status: "synced",
+        status: this.convergedStatusForPublication(publication),
+        message: this.messageForPublication(publication),
         normalized: result.normalized,
         counts: result.counts,
         detailRequests: result.detailRequests,
@@ -225,6 +261,11 @@ export class SyncService {
           changed: cacheWrite.changed,
           metadata: cacheWrite.metadata,
         },
+        publication,
+        snapshot: {
+          id: cacheWrite.metadata?.syncGenerationId || cacheWrite.metadata?.snapshotId || "",
+          metadata: cacheWrite.metadata?.snapshot || null,
+        },
         worklogImport: result.worklogImport,
         worklogs: {
           metadata: worklogCacheWrite.metadata,
@@ -235,11 +276,18 @@ export class SyncService {
 
       this.events.progress({
         direction: "inbound",
-        state: "synced",
-        phase: "complete",
-        message: "Synced from Elitical",
+        state: publication?.status === "published" ? "synced" : "failed",
+        phase: publication?.status === "published" ? "complete" : "publication-failed",
+        message: payload.message,
       });
-      this.events.cache(cacheWrite.changed ? "cache-updated" : "cache-unchanged", payload);
+      this.events.cache(
+        publication?.status === "published"
+          ? cacheWrite.changed
+            ? "cache-updated"
+            : "cache-unchanged"
+          : "sync-failed",
+        payload
+      );
 
       return payload;
     } catch (error) {

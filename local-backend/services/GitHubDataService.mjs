@@ -1,5 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import {
+  assertSnapshotBundle,
+  snapshotDescriptorFor,
+  snapshotIdsMatch,
+} from "./SynchronizedSnapshotService.mjs";
+
+let latestPublicationSequence = 0;
 
 function decodeBase64(value) {
   return Buffer.from(String(value || ""), "base64").toString("utf8");
@@ -218,6 +225,12 @@ export async function publishCacheFiles({
   metadata,
   message = "data: publish Elitical cache",
 } = {}) {
+  const bundle = assertSnapshotBundle({ graph, worklogs, metadata });
+  const descriptor = snapshotDescriptorFor(metadata);
+  const sequence = descriptor.syncGenerationSequence || Date.now();
+
+  latestPublicationSequence = Math.max(latestPublicationSequence, sequence);
+
   const env = await githubDataConfig();
 
   if (!env.ok) {
@@ -236,6 +249,13 @@ export async function publishCacheFiles({
   const published = [];
 
   for (const [fileName, payload] of files) {
+    if (sequence < latestPublicationSequence) {
+      const error = new Error("A newer synchronized snapshot is already being published.");
+      error.statusCode = 409;
+      error.snapshotId = descriptor.syncGenerationId;
+      throw error;
+    }
+
     published.push(
       await putJsonFile(config, cacheFilePath(config, fileName), payload, {
         message,
@@ -246,6 +266,9 @@ export async function publishCacheFiles({
   return {
     status: "published",
     publishedAt: new Date().toISOString(),
+    snapshotId: bundle.snapshotId,
+    syncGenerationId: descriptor.syncGenerationId,
+    syncGenerationSequence: sequence,
     commitSha: published[published.length - 1]?.commitSha || "",
     files: published,
   };
@@ -273,6 +296,12 @@ export async function loadPublishedCacheFiles() {
     normalized: graph.payload,
     worklogs: worklogs.payload,
     metadata: metadata.payload,
+    snapshot: {
+      consistent: snapshotIdsMatch(graph.payload, worklogs.payload, metadata.payload),
+      graph: snapshotDescriptorFor(graph.payload),
+      worklogs: snapshotDescriptorFor(worklogs.payload),
+      metadata: snapshotDescriptorFor(metadata.payload),
+    },
     sha: {
       graph: graph.sha,
       worklogs: worklogs.sha,
@@ -324,6 +353,11 @@ export async function loadPublishedGraphFiles() {
     status: "hit",
     normalized: withoutWorklogs(graph.payload),
     metadata: metadata.payload,
+    snapshot: {
+      consistent: snapshotIdsMatch(graph.payload, metadata.payload),
+      graph: snapshotDescriptorFor(graph.payload),
+      metadata: snapshotDescriptorFor(metadata.payload),
+    },
     sha: {
       graph: graph.sha,
       metadata: metadata.sha,
@@ -347,6 +381,9 @@ export async function loadPublishedWorklogsFile() {
   return {
     status: "hit",
     worklogs: worklogs.payload,
+    snapshot: {
+      worklogs: snapshotDescriptorFor(worklogs.payload),
+    },
     sha: {
       worklogs: worklogs.sha,
     },

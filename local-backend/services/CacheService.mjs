@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { getStoragePaths } from "./StoragePathService.mjs";
+import { applySnapshotToMetadata } from "./SynchronizedSnapshotService.mjs";
 
 const CACHE_VERSION = 1;
 const IMPORTER_VERSION = 1;
@@ -70,7 +71,7 @@ function metadataFor(graph, syncedAt, syncIndex = null, previousMetadata = null)
       : null
   );
 
-  return {
+  return applySnapshotToMetadata({
     lastSyncTime: syncedAt || new Date().toISOString(),
     eliticalProjectId: projects[0]?.id || "",
     cacheVersion: CACHE_VERSION,
@@ -93,7 +94,7 @@ function metadataFor(graph, syncedAt, syncIndex = null, previousMetadata = null)
       projects[0]?.id ||
       "",
     dockets: remoteIndex?.dockets || {},
-  };
+  }, graph?.snapshot || {});
 }
 
 export class CacheService {
@@ -171,6 +172,7 @@ export class CacheService {
 
     return {
       metadata,
+      graph,
       changed,
       previousHash: previousMetadata?.hash || "",
     };

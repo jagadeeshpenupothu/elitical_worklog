@@ -32,7 +32,10 @@ includes(files.syncLive, /message: "Fetching Issues Board\.\.\."/m, "inbound pro
 includes(files.client, /path: "\/api\/1\/IssuesBoard"/, "IssuesBoard endpoint remains the source of inbound issue progress");
 includes(files.client, /options\.onProgress\?\.\(\{\s*current: 1,[\s\S]*total: totalPage,[\s\S]*unit: "pages"/, "first IssuesBoard page emits current and total page progress");
 includes(files.client, /options\.onProgress\?\.\(\{\s*current: currentPage,[\s\S]*total: totalPage,[\s\S]*unit: "pages"/, "subsequent IssuesBoard pages emit current and total page progress");
-includes(files.syncService, /state: "synced"[\s\S]*phase: "complete"[\s\S]*message: "Synced from Elitical"/, "inbound completion reports Synced from Elitical after backend save");
+includes(files.syncService, /const publication = await this\.publishSnapshot/, "inbound sync awaits publication before final convergence");
+includes(files.syncService, /phase: "publishing"[\s\S]*message: "Publishing synchronized snapshot for Web\.\.\."/m, "inbound sync reports publishing as a real stage");
+includes(files.syncService, /phase: publication\?\.status === "published" \? "complete" : "publication-failed"/, "inbound completion reflects publication success or failure");
+includes(files.syncService, /Local sync complete — Web publication failed\./, "publication failure has a distinct user-facing message");
 includes(files.app, /<section className="sync-current-activity"/, "popover renders a current activity section");
 includes(files.app, /syncActivityRows\(syncActivity, syncStatusPresentation\)/, "popover updates from shared sync activity and queue presentation state");
 includes(files.app, /<section className="sync-operation-section sync-failed-operations"/, "popover renders actual failed operations separately");

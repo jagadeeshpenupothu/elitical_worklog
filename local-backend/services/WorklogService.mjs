@@ -155,6 +155,11 @@ export class WorklogService {
 
   async saveImportedWorklogs(cache) {
     const payload = {
+      snapshotId: cache?.snapshotId || cache?.snapshot?.snapshotId || "",
+      syncGenerationId: cache?.syncGenerationId || cache?.snapshot?.syncGenerationId || "",
+      syncGenerationSequence: cache?.syncGenerationSequence || cache?.snapshot?.syncGenerationSequence || 0,
+      snapshot: cache?.snapshot || undefined,
+      employee: cache?.employee || cache?.snapshot?.employee || undefined,
       version: cache?.version || 1,
       lastSync: cache?.lastSync || new Date().toISOString(),
       totalWorklogs: Array.isArray(cache?.worklogs)

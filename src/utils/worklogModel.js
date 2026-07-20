@@ -673,6 +673,16 @@ export function normalizeSavedState(input) {
       mainTitle,
       rootDocketState: normalizeDocketState(input?.rootDocketState),
       rootPosition: normalizePosition(input?.rootPosition),
+      metadata:
+        input?.metadata && typeof input.metadata === "object"
+          ? input.metadata
+          : {},
+      employee:
+        input?.employee && typeof input.employee === "object"
+          ? input.employee
+          : input?.metadata?.employee && typeof input.metadata.employee === "object"
+          ? input.metadata.employee
+          : null,
       sprints: normalizeSprints(
         input?.sprints,
         rootTitle,

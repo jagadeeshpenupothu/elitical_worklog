@@ -3013,6 +3013,37 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/publish/latest-snapshot") {
+    try {
+      const publication = await syncService.publishLatestLocalSnapshot();
+      const cache = await localData.loadGraphCache();
+
+      sendJson(res, 200, {
+        status: publication?.status === "published" ? "published" : "publication-failed",
+        message:
+          publication?.status === "published"
+            ? "Published latest local snapshot for Web."
+            : publication?.message || "Latest local snapshot publication failed.",
+        publication,
+        normalized: cache?.normalized || (await cacheService.loadGraph()) || { appState: { workItems: [], sprints: [] } },
+        cache: {
+          changed: false,
+          metadata: cache?.metadata || await cacheService.readMetadata(),
+        },
+        metadata: cache?.metadata || await cacheService.readMetadata(),
+        syncQueue: await syncQueueService.summary(),
+      });
+    } catch (error) {
+      const payload = error.payload || {
+        error: error.message || "Snapshot publication failed.",
+      };
+
+      console.error("[local-backend] /api/publish/latest-snapshot failed", payload);
+      sendJson(res, error.statusCode || 500, payload);
+    }
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/elitical/lookups") {
     try {
       const projectId = url.searchParams.get("projectId") || "";

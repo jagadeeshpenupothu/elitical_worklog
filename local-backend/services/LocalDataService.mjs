@@ -1,3 +1,5 @@
+import { buildFinalizedSnapshot } from "./SynchronizedSnapshotService.mjs";
+
 export class LocalDataService {
   constructor({ cacheService, worklogService, syncQueueService } = {}) {
     this.cacheService = cacheService;
@@ -56,14 +58,39 @@ export class LocalDataService {
     const graphWithPending = this.syncQueueService
       ? await this.syncQueueService.applyPendingGraph(graph)
       : graph;
+    const finalized = buildFinalizedSnapshot({
+      graph: graphWithPending,
+      worklogs,
+      metadata: await this.cacheService.readMetadata(),
+      syncedAt,
+    });
     const [cacheWrite, worklogCacheWrite] = await Promise.all([
-      this.cacheService.saveGraph(graphWithPending, { syncedAt, syncIndex }),
-      this.worklogService.saveImportedWorklogs(worklogs),
+      this.cacheService.saveGraph(finalized.graph, { syncedAt, syncIndex }),
+      this.worklogService.saveImportedWorklogs(finalized.worklogs),
     ]);
 
     return {
       cacheWrite,
       worklogCacheWrite,
+      snapshot: finalized.snapshot,
+      graph: finalized.graph,
+      worklogs: worklogCacheWrite.payload,
+    };
+  }
+
+  async loadFinalizedSnapshot() {
+    const [graph, worklogs, metadata] = await Promise.all([
+      this.cacheService.loadGraph(),
+      this.worklogService.loadImportedWorklogs(),
+      this.cacheService.readMetadata(),
+    ]);
+
+    if (!graph || !metadata) return null;
+
+    return {
+      graph,
+      worklogs,
+      metadata,
     };
   }
 

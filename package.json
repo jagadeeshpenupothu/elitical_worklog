@@ -50,6 +50,7 @@
     "verify:employee-scoped-aggregation": "node scripts/verify-employee-scoped-aggregation.mjs",
     "verify:sync-activity-progress": "node scripts/verify-sync-activity-progress.mjs",
     "verify:storage-architecture": "node scripts/verify-storage-architecture.mjs",
+    "verify:snapshot-convergence": "node scripts/verify-snapshot-convergence-architecture.mjs",
     "verify:dmg-packaging": "node scripts/verify-dmg-packaging.mjs",
     "import:elitical:live": "tsx scripts/import-elitical-live.ts",
     "capture:worklog-api": "node tools/capture-worklog-api.js"

@@ -45,7 +45,7 @@ import {
 } from "./services/localCacheClient";
 import { loadApplicationLogs } from "./services/logsClient";
 import {
-  loadPublishedData,
+  loadPublishedSnapshot,
   loadPublishedWorklogs,
 } from "./services/publishedDataClient";
 import {
@@ -7740,10 +7740,12 @@ function App() {
     async function loadStartupData() {
       try {
         if (isReadOnlyViewer) {
-          const result = await loadPublishedData();
+          const result = await loadPublishedSnapshot();
 
           if (cancelled) return;
 
+          setImportedWorklogs(result.worklogs?.worklogs || []);
+          setPublishedWorklogsLoaded(true);
           applyNormalizedGraphPayload(result, {
             message: "Loaded published data",
             preserveView: false,
@@ -8847,8 +8849,15 @@ function App() {
       const worklogCache = await loadLocalWorklogsCache().catch(() => null);
 
       setImportedWorklogs(worklogCache?.worklogs || []);
+      const publicationFailed =
+        result.status === "local-synced-publication-failed" ||
+        result.publication?.status === "publication-failed";
+      const completionMessage = result.message ||
+        (publicationFailed
+          ? "Local sync complete — Web publication failed."
+          : "Sync Complete");
       const { normalizedSnapshot, syncedAt } = applyNormalizedGraphPayload(result, {
-        message: "Sync Complete",
+        message: completionMessage,
         preserveView: true,
         updateSummary: true,
       });
@@ -8858,10 +8867,13 @@ function App() {
         lastSyncedAt: syncedAt,
       });
       clearRetainedCreationContextState();
-      setLiveSyncState("synced");
-      setLiveSyncProgress("Sync Complete");
+      setLiveSyncState(publicationFailed ? "failed" : "synced");
+      setSyncState(publicationFailed ? "offline" : "synced");
+      setLiveSyncProgress(completionMessage);
       setSyncActivity((current) =>
-        completeSyncActivity("inbound", "Synced from Elitical", current)
+        publicationFailed
+          ? failedSyncActivity("inbound", completionMessage, current)
+          : completeSyncActivity("inbound", completionMessage, current)
       );
     } catch (error) {
       const errorMessage =
