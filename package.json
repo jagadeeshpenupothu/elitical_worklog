@@ -1,7 +1,7 @@
 {
   "name": "jira-flow",
   "private": true,
-  "version": "0.0.3",
+  "version": "0.0.4",
   "type": "module",
   "main": "electron/main.mjs",
   "scripts": {
@@ -10,6 +10,7 @@
     "dev:desktop": "node scripts/dev-desktop.mjs",
     "dev:vite": "vite --host 127.0.0.1 --port 5177 --strictPort",
     "backend:local": "tsx local-backend/server.mjs",
+    "setup:github-publication": "node scripts/setup-github-publication.mjs",
     "build": "vite build",
     "prepare:playwright": "node scripts/prepare-playwright-browsers.mjs",
     "prepare:playwright:arm64": "node scripts/prepare-playwright-browsers.mjs --arch arm64",
@@ -51,6 +52,7 @@
     "verify:sync-activity-progress": "node scripts/verify-sync-activity-progress.mjs",
     "verify:storage-architecture": "node scripts/verify-storage-architecture.mjs",
     "verify:snapshot-convergence": "node scripts/verify-snapshot-convergence-architecture.mjs",
+    "verify:github-publication-config": "node scripts/verify-github-publication-config.mjs",
     "verify:dmg-packaging": "node scripts/verify-dmg-packaging.mjs",
     "import:elitical:live": "tsx scripts/import-elitical-live.ts",
     "capture:worklog-api": "node tools/capture-worklog-api.js"

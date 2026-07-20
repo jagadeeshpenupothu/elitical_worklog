@@ -7,6 +7,7 @@ import { LocalSyncQueueService } from "./services/LocalSyncQueueService.mjs";
 import { initializeStorage } from "./services/StoragePathService.mjs";
 import { SyncService, createEliticalSyncProvider } from "./services/SyncService.mjs";
 import { WorklogService } from "./services/WorklogService.mjs";
+import { githubPublicationStatus } from "./services/GitHubDataService.mjs";
 import { validateDocketOperation } from "../src/utils/docketOperationValidation.js";
 import {
   candidateItemFromIssue,
@@ -3119,6 +3120,14 @@ const server = http.createServer(async (req, res) => {
         payload: error.payload || null,
       });
     }
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/config/github-publication") {
+    sendJson(res, 200, {
+      status: "ok",
+      githubPublication: await githubPublicationStatus(),
+    });
     return;
   }
 

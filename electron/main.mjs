@@ -235,7 +235,8 @@ async function ensureUserDataFiles() {
     cacheDir,
     eliticalDataDir,
     playwrightBrowsersPath,
-    envPath: path.join(storagePaths.root, ".env"),
+    envPath: storagePaths.envPath,
+    githubPublicationEnvPath: storagePaths.githubPublicationEnvPath,
     storageStatePath: storagePaths.storageStatePath,
     storageRoot: storagePaths.root,
   };
@@ -247,6 +248,7 @@ async function startBackend() {
   const {
     cacheDir,
     envPath,
+    githubPublicationEnvPath,
     eliticalDataDir,
     playwrightBrowsersPath,
     storageStatePath,
@@ -271,6 +273,9 @@ async function startBackend() {
       ELITICAL_WORKLOG_DATA_ROOT: storageRoot,
       ELITICAL_CACHE_DIR: cacheDir,
       ELITICAL_ENV_PATH: envPath,
+      GITHUB_PUBLICATION_ENV_PATH: githubPublicationEnvPath,
+      ELITICAL_DESKTOP_PACKAGED: app.isPackaged ? "1" : "0",
+      ELITICAL_ALLOW_DEVELOPMENT_ENV_FALLBACK: app.isPackaged ? "0" : "1",
       ELITICAL_SYNC_DIR: storagePaths.syncDir,
       ELITICAL_RUNTIME_DIR: storagePaths.runtimeDir,
       ELITICAL_LOGS_DIR: storagePaths.logsDir,

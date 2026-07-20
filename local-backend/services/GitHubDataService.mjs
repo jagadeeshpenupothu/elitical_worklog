@@ -1,10 +1,13 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 import {
   assertSnapshotBundle,
   snapshotDescriptorFor,
   snapshotIdsMatch,
 } from "./SynchronizedSnapshotService.mjs";
+import {
+  githubPublicationReadiness,
+  resolveGithubPublicationConfig,
+} from "./GitHubPublicationConfigService.mjs";
 
 let latestPublicationSequence = 0;
 
@@ -20,35 +23,6 @@ function encodeBase64(value) {
   return Buffer.from(value, "utf8").toString("base64");
 }
 
-function loadDotEnv() {
-  if (process.env.GITHUB_TOKEN && process.env.GITHUB_DATA_OWNER) return;
-
-  return fs.readFile(process.env.ELITICAL_ENV_PATH || ".env", "utf8")
-    .then((raw) => {
-      raw.split(/\r?\n/).forEach((line) => {
-        const trimmed = line.trim();
-
-        if (!trimmed || trimmed.startsWith("#")) return;
-
-        const separatorIndex = trimmed.indexOf("=");
-
-        if (separatorIndex <= 0) return;
-
-        const key = trimmed.slice(0, separatorIndex).trim();
-        let value = trimmed.slice(separatorIndex + 1).trim();
-
-        value = value.replace(/^['"]|['"]$/g, "");
-
-        if (key === "GITHUB_DATA_PATH") {
-          value = value.replace(/(ELITICAL_BASE_URL|GITHUB_TOKEN|GITHUB_DATA_OWNER|GITHUB_DATA_REPO|GITHUB_DATA_BRANCH)=.*$/, "");
-        }
-
-        if (!process.env[key]) process.env[key] = value;
-      });
-    })
-    .catch(() => {});
-}
-
 function cleanPath(value = "") {
   return String(value || "")
     .trim()
@@ -56,21 +30,24 @@ function cleanPath(value = "") {
     .replace(/^\/+/, "");
 }
 
-export function githubDataConfigFromEnv() {
-  const basePath = cleanPath(process.env.GITHUB_DATA_PATH || "data/worklog.json");
-  const cacheDir = cleanPath(
-    process.env.GITHUB_CACHE_PATH ||
-      path.posix.dirname(basePath || "data/worklog.json")
-  );
+export function githubDataConfigFromEnv(env = process.env) {
+  const basePath = cleanPath(env.GITHUB_DATA_PATH || "data/worklog.json");
+  const cacheDir = cleanPath(env.GITHUB_CACHE_PATH || path.posix.dirname(basePath || "data/worklog.json"));
   const config = {
-    token: process.env.GITHUB_TOKEN,
-    owner: process.env.GITHUB_DATA_OWNER,
-    repo: process.env.GITHUB_DATA_REPO,
-    branch: process.env.GITHUB_DATA_BRANCH || "main",
+    token: env.GITHUB_TOKEN,
+    owner: env.GITHUB_DATA_OWNER,
+    repo: env.GITHUB_DATA_REPO,
+    branch: env.GITHUB_DATA_BRANCH || "main",
     path: basePath,
     cacheDir,
   };
-  const missing = ["token", "owner", "repo", "branch"].filter((key) => !config[key]);
+  const missing = [
+    ["GITHUB_TOKEN", config.token],
+    ["GITHUB_DATA_OWNER", config.owner],
+    ["GITHUB_DATA_REPO", config.repo],
+  ]
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
 
   return missing.length > 0
     ? { ok: false, missing, config }
@@ -78,8 +55,11 @@ export function githubDataConfigFromEnv() {
 }
 
 export async function githubDataConfig() {
-  await loadDotEnv();
-  return githubDataConfigFromEnv();
+  return resolveGithubPublicationConfig();
+}
+
+export async function githubPublicationStatus() {
+  return githubPublicationReadiness(await githubDataConfig());
 }
 
 export function githubHeaders(token) {

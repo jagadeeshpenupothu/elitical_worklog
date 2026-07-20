@@ -32,6 +32,7 @@ export function getStoragePaths(root = getEliticalWorklogDataRoot()) {
   const authDir = path.join(resolvedRoot, "auth");
   const runtimeDir = path.join(resolvedRoot, "runtime");
   const logsDir = path.join(resolvedRoot, "logs");
+  const configDir = path.join(resolvedRoot, "config");
 
   return {
     root: resolvedRoot,
@@ -41,6 +42,9 @@ export function getStoragePaths(root = getEliticalWorklogDataRoot()) {
     authDir,
     runtimeDir,
     logsDir,
+    configDir,
+    envPath: path.join(resolvedRoot, ".env"),
+    githubPublicationEnvPath: path.join(configDir, "github-publication.env"),
     graphPath: path.join(dataDir, "graph.json"),
     worklogsPath: path.join(dataDir, "worklogs.json"),
     metadataPath: path.join(dataDir, "metadata.json"),
@@ -65,6 +69,7 @@ export function applyStorageEnvironment(paths = getStoragePaths()) {
   process.env.ELITICAL_RUNTIME_DIR = paths.runtimeDir;
   process.env.ELITICAL_LOGS_DIR = paths.logsDir;
   process.env.ELITICAL_STORAGE_STATE_PATH = paths.storageStatePath;
+  process.env.GITHUB_PUBLICATION_ENV_PATH = paths.githubPublicationEnvPath;
   process.env.PLAYWRIGHT_BROWSERS_PATH = paths.playwrightBrowsersPath;
 
   return paths;
@@ -89,6 +94,7 @@ async function ensureDirectories(paths) {
     fs.mkdir(paths.authDir, { recursive: true }),
     fs.mkdir(paths.runtimeDir, { recursive: true }),
     fs.mkdir(paths.logsDir, { recursive: true }),
+    fs.mkdir(paths.configDir, { recursive: true }),
   ]);
 }
 
