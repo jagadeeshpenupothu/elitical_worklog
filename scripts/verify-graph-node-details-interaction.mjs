@@ -14,6 +14,14 @@ const nodeClickBlock = graphSource.slice(
   graphSource.indexOf("const handleNodeClick"),
   graphSource.indexOf("const handlePaneClick")
 );
+const openDetailsBlock = appSource.slice(
+  appSource.indexOf("const openDetailsModal"),
+  appSource.indexOf("const setFocusedView")
+);
+const closeDetailsBlock = appSource.slice(
+  appSource.indexOf("const closeDetailsModal"),
+  appSource.indexOf("const setFocusedView")
+);
 assert.match(nodeClickBlock, /canonicalDocketNodeId\(node\)/);
 assert.match(nodeClickBlock, /onOpenDetails\(canonicalId\)/);
 assert.doesNotMatch(nodeClickBlock, /onSelect\(node\.data\?\.sourceId \|\| node\.id\)/);
@@ -22,6 +30,16 @@ assert.match(appSource, /function resolveCanonicalWorkItem/);
 assert.match(appSource, /item\.sourceItemId, item\.sourceDocketId, item\.sourceId/);
 assert.match(appSource, /\["epic", "story", "job", "task"\]\.includes\(selectedItem\.type\)/);
 assert.doesNotMatch(appSource, /selectedItem\?\.type === "job"[\s\S]{0,80}setModal\(null\)/);
+assert.match(appSource, /const \[propertyPanelItemId, setPropertyPanelItemId\] = useState\(null\)/);
+assert.match(appSource, /const detailsDrawerOpen = modal\?\.kind === "details"/);
+assert.match(appSource, /const selectedEditableItem = propertyPanelItemId && !detailsDrawerOpen/);
+assert.doesNotMatch(appSource, /const selectedEditableItem = selectedId/);
+assert.match(openDetailsBlock, /setPropertyPanelItemId\(null\)/);
+assert.match(openDetailsBlock, /setSelectedId\(canonicalId\)/);
+assert.match(openDetailsBlock, /setModal\(\{\s*kind: "details",\s*id: canonicalId,\s*\}\)/);
+assert.match(closeDetailsBlock, /setPropertyPanelItemId\(null\)/);
+assert.match(closeDetailsBlock, /setModal\(null\)/);
+assert.match(appSource, /onClose=\{closeDetailsModal\}/);
 
 assert.match(nodeSource, /className="add-child-button nodrag nopan"/);
 assert.match(nodeSource, /onPointerDown=\{stopCanvasEvent\}/);

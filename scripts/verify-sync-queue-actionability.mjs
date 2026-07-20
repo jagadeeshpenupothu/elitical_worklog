@@ -39,7 +39,11 @@ assert.match(appSource, /summary\.actionableCount \?\? summary\.pendingCount/);
 assert.match(appSource, /setSyncQueueSummary\(normalizeSyncQueueSummary\(result\.syncQueue\)\)/);
 assert.match(appSource, /if \(!syncQueueSummary\.actionableCount\)/);
 assert.match(appSource, /disabled=\{liveSyncState === "syncing" \|\| !syncQueueSummary\.actionableCount\}/);
-assert.match(appSource, /Sync to Elitical\$\{syncQueueSummary\.actionableCount/);
+assert.match(appSource, /onSyncToElitical=\{handleSyncToElitical\}/);
+assert.match(appSource, /onClick=\{onSyncToElitical\}/);
+assert.match(appSource, /aria-label="Sync to Elitical"/);
+assert.match(appSource, /syncQueueSummary\.actionableCount \? \(/);
+assert.match(appSource, /className="sync-action-count"/);
 
 const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "elitical-queue-actionability-"));
 const queue = new LocalSyncQueueService({ cacheDir: tmpDir });

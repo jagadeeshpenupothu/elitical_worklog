@@ -1,6 +1,16 @@
-import { memo } from "react";
+import { memo, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Handle, Position } from "reactflow";
-import { childCreateTypesForNode } from "../utils/nodeCapabilities";
+import {
+  childActionItemsForNode,
+  childCreateTypesForNode,
+} from "../utils/nodeCapabilities";
+import { formatWorkDuration } from "../utils/durationFormat";
+import {
+  docketStateCssClass,
+  docketStateLabel,
+} from "../utils/docketStates";
+import { docketNumberForItem } from "../utils/docketIdentity";
 
 function stopCanvasEvent(event) {
   event.stopPropagation();
@@ -21,27 +31,6 @@ function storyPointValue(data) {
     : data.calculatedStoryPoints || 0;
 }
 
-function formatTime(minutes) {
-  const safeMinutes = Math.max(0, Math.round(Number(minutes) || 0));
-  const officeDayMinutes = 8 * 60;
-
-  if (safeMinutes <= officeDayMinutes) {
-    return [
-      String(Math.floor(safeMinutes / 60)).padStart(2, "0"),
-      String(safeMinutes % 60).padStart(2, "0"),
-    ].join(":");
-  }
-
-  const days = Math.floor(safeMinutes / officeDayMinutes);
-  const remainder = safeMinutes % officeDayMinutes;
-
-  return [
-    String(days).padStart(2, "0"),
-    String(Math.floor(remainder / 60)).padStart(2, "0"),
-    String(remainder % 60).padStart(2, "0"),
-  ].join(":");
-}
-
 function formatShortDate(value) {
   const date = new Date(value);
 
@@ -55,19 +44,33 @@ function formatShortDate(value) {
   ].join("/");
 }
 
-function formatDocketState(value) {
-  return String(value || "concept")
-    .split("-")
-    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-    .join(" ");
-}
-
 function syncLabel(sync) {
   if (sync?.status === "pending-create") return "Pending Create";
   if (sync?.status === "pending-update") return "Pending Update";
   if (sync?.status === "sync-unconfirmed") return "Sync Unconfirmed";
   if (sync?.status === "sync-failed") return "Sync Failed";
   return "";
+}
+
+function childMenuPosition(anchor, width = 172) {
+  if (!anchor) return { top: 0, left: 0 };
+
+  const gap = 8;
+  const height = 96;
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+  const belowTop = anchor.bottom + gap;
+  const aboveTop = anchor.top - height - gap;
+  const opensAbove = belowTop + height > viewportHeight && aboveTop > gap;
+  const left = Math.min(
+    Math.max(gap, anchor.left + anchor.width / 2 - width / 2),
+    Math.max(gap, viewportWidth - width - gap)
+  );
+
+  return {
+    top: Math.max(gap, opensAbove ? aboveTop : belowTop),
+    left,
+  };
 }
 
 function nodeIcon(data) {
@@ -165,10 +168,53 @@ function JiraNode({ data }) {
    * docket visuals and actions belong here so features stay consistent.
    */
   const availableChildTypes = childCreateTypesForNode(data);
+  const docketNumber = docketNumberForItem(data);
+  const childActionItems = Array.isArray(data.childActionItems) && data.childActionItems.length
+    ? data.childActionItems
+    : childActionItemsForNode(data);
+  const hasChildActionMenu = childActionItems.length > 0;
   const showSp = hasStoryPoints(data);
   const timeValue = data.calculatedTimeMinutes || 0;
   const summaryControls = data.completedSummaryControls || [];
   const isDayRoot = Boolean(data.isDayRoot);
+  const [childMenuOpen, setChildMenuOpen] = useState(false);
+  const [floatingMenuPosition, setFloatingMenuPosition] = useState({ top: 0, left: 0 });
+  const childActionRef = useRef(null);
+  const childMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (!childMenuOpen) return undefined;
+
+    function handlePointerDown(event) {
+      if (childActionRef.current?.contains(event.target)) return;
+      if (childMenuRef.current?.contains(event.target)) return;
+
+      setChildMenuOpen(false);
+    }
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") setChildMenuOpen(false);
+    }
+
+    function handleViewportChange() {
+      const button = childActionRef.current?.querySelector("button");
+
+      if (!button) return;
+      setFloatingMenuPosition(childMenuPosition(button.getBoundingClientRect()));
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("scroll", handleViewportChange, true);
+    window.addEventListener("resize", handleViewportChange);
+
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("scroll", handleViewportChange, true);
+      window.removeEventListener("resize", handleViewportChange);
+    };
+  }, [childMenuOpen]);
 
   function startChild(type, event) {
     stopCanvasEvent(event);
@@ -184,6 +230,31 @@ function JiraNode({ data }) {
     });
   }
 
+  function triggerChildAction(action, event) {
+    stopCanvasEvent(event);
+    setChildMenuOpen(false);
+
+    if (action.kind === "create") {
+      startChild(action.type, event);
+      return;
+    }
+
+    data.onAddExistingChild?.({
+      type: action.type,
+      parentId: data.childParentId || data.sourceItemId || data.sourceDocketId || data.id,
+      sourceItemId: data.sourceItemId || data.sourceDocketId || data.sourceId || data.id,
+      sprintId: data.childSprintId,
+      sprint: data.childSprint,
+      isOrphanSprint: data.isOrphanSprint || data.isOrphanSprintContext,
+    });
+  }
+
+  function toggleChildMenu(event) {
+    stopCanvasEvent(event);
+    setFloatingMenuPosition(childMenuPosition(event.currentTarget.getBoundingClientRect()));
+    setChildMenuOpen((current) => !current);
+  }
+
   function toggleSummary(summaryId, event) {
     stopCanvasEvent(event);
     data.onToggleCompletedSummary?.(summaryId);
@@ -191,9 +262,11 @@ function JiraNode({ data }) {
 
   return (
     <div
-      className={`jira-node ${data.type} docket-${data.docketState || "concept"} ${
+      className={`jira-node ${data.type} docket-${docketStateCssClass(data.docketState)} ${
         data.selected ? "selected" : ""
       } ${data.searchMatch ? "search-match" : ""} ${
+        data.searchActive ? "search-active" : ""
+      } ${
         data.isContextNode || data.isSprintContext ? "sprint-context" : ""
       } ${data.isGhost ? "ghost-reference" : ""} ${isDayRoot ? "day-root" : ""}`}
       title={data.title}
@@ -214,8 +287,16 @@ function JiraNode({ data }) {
           <span className="node-type-icon node-type-icon-spacer" aria-hidden="true" />
         )}
 
-        <div className="node-title">
-          {data.title}
+        <div className="node-title-block">
+          {docketNumber && ["epic", "story", "job", "task"].includes(data.type) && (
+            <div className="node-docket-number">
+              <span>{docketNumber}</span>
+              <span>{docketStateLabel(data.docketState)}</span>
+            </div>
+          )}
+          <div className="node-title">
+            {data.title}
+          </div>
         </div>
 
         <div className="node-meta">
@@ -225,7 +306,7 @@ function JiraNode({ data }) {
                 {data.dayWorklogCount || 0} Worklogs
               </div>
               <div className="node-meta-pill">
-                {formatTime(timeValue)} Logged
+                {formatWorkDuration(timeValue)} Logged
               </div>
             </>
           ) : (
@@ -236,7 +317,7 @@ function JiraNode({ data }) {
                 </div>
               ) : (
                 <div className="node-meta-pill node-state-badge">
-                  {formatDocketState(data.docketState)}
+                  {docketStateLabel(data.docketState)}
                 </div>
               )}
               {showSp && !data.isCompletedSummary && (
@@ -245,7 +326,7 @@ function JiraNode({ data }) {
                 </div>
               )}
               <div className="node-meta-pill">
-                {formatTime(timeValue)}
+                {formatWorkDuration(timeValue)}
               </div>
               <div className="node-meta-pill node-updated">
                 {formatShortDate(data.updatedAt || data.createdAt)}
@@ -299,19 +380,53 @@ function JiraNode({ data }) {
         </div>
       )}
 
-      {availableChildTypes.length > 0 && (
-        <div className="node-child-action">
+      {(hasChildActionMenu || availableChildTypes.length > 0) && (
+        <div className="node-child-action" ref={childActionRef}>
           <button
             type="button"
             className="add-child-button nodrag nopan"
             onPointerDown={stopCanvasEvent}
-            onClick={(event) =>
-              startChild(availableChildTypes[0], event)
-            }
+            onClick={(event) => {
+              stopCanvasEvent(event);
+              if (hasChildActionMenu) {
+                toggleChildMenu(event);
+                return;
+              }
+
+              startChild(availableChildTypes[0], event);
+            }}
             aria-label="Add child"
+            aria-haspopup={hasChildActionMenu ? "menu" : undefined}
+            aria-expanded={hasChildActionMenu ? childMenuOpen : undefined}
           >
             +
           </button>
+          {hasChildActionMenu && childMenuOpen && typeof document !== "undefined"
+            ? createPortal(
+                <div
+                  ref={childMenuRef}
+                  className="node-child-menu floating-node-child-menu nodrag nopan"
+                  style={{
+                    top: `${floatingMenuPosition.top}px`,
+                    left: `${floatingMenuPosition.left}px`,
+                  }}
+                  role="menu"
+                >
+                  {childActionItems.map((action) => (
+                    <button
+                      key={`${action.kind}:${action.type}:${action.label}`}
+                      type="button"
+                      onPointerDown={stopCanvasEvent}
+                      onClick={(event) => triggerChildAction(action, event)}
+                      role="menuitem"
+                    >
+                      {action.label}
+                    </button>
+                  ))}
+                </div>,
+                document.body
+              )
+            : null}
         </div>
       )}
 

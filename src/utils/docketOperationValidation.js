@@ -3,6 +3,10 @@ import {
   isReferenceNode,
 } from "./hierarchyProjection.js";
 import { ROOT_ID } from "./worklogModel.js";
+import {
+  ELITICAL_DOCKET_STATE_REQUIRED_MESSAGE,
+  validateEliticalDescription,
+} from "./eliticalDocketCreate.js";
 
 const DOCKET_TYPES = new Set(["epic", "story", "task", "job"]);
 const CONFIRMED_UPDATE_FIELDS = new Set([
@@ -74,6 +78,22 @@ export function validateDocketOperation({
 
   if (!title) {
     return "Title is required.";
+  }
+
+  if (operation === "create") {
+    const descriptionError = validateEliticalDescription(
+      payload.description ?? payload.descr ?? docket?.description ?? docket?.descr
+    );
+
+    if (descriptionError) return descriptionError;
+
+    const stateId = String(payload.dktStateId ?? payload.stateId ?? docket?.elitical?.stateId ?? docket?.dktStateId ?? "").trim();
+    const stateName = String(payload.dktStateName ?? payload.stateName ?? docket?.dktStateName ?? "").trim();
+    const docketState = String(payload.docketState ?? docket?.docketState ?? "").trim();
+
+    if (!stateId && !stateName && !docketState) {
+      return ELITICAL_DOCKET_STATE_REQUIRED_MESSAGE;
+    }
   }
 
   if (sprintId === ORPHAN_SPRINT_ID) {

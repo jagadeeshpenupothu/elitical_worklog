@@ -1,5 +1,9 @@
 import { loadEnvFile } from "node:process";
 import { importEliticalLiveData } from "./importer/index.js";
+import {
+  docketStateApiName,
+  normalizeDocketState,
+} from "../../utils/docketStates.js";
 
 const TARGET_PROJECT_CODE = "DES";
 const TARGET_PROJECT_NAME = "UX Designer";
@@ -16,19 +20,27 @@ const HIERARCHY_FIELDS = [
 
 type ProgressPhase =
   | "authenticating"
+  | "starting"
   | "loading-project"
   | "loading-sprints"
   | "fetching-issues"
   | "fetching-details"
   | "fetching-worklogs"
   | "normalizing"
-  | "complete";
+  | "saving-cache"
+  | "complete"
+  | "failed"
+  | "warning";
 
 export type EliticalLiveSyncProgress = {
   phase: ProgressPhase;
   message: string;
+  direction?: "inbound" | "outbound" | "local";
+  entityType?: string;
   current?: number;
   total?: number;
+  unit?: string;
+  state?: "idle" | "pending" | "running" | "synced" | "failed" | "local";
 };
 
 function maskSecret(value: string | undefined) {
@@ -235,7 +247,7 @@ function issueFingerprint(docket: Record<string, unknown>) {
     storyId: firstText(docket.storyId),
     parentId: firstText(docket.parentId, docket.parentDocketId),
     stateId: firstText(docket.dktStateId, docket.stateId),
-    stateName: firstText(docket.dktStateName, docket.docketState, docket.status),
+    stateName: docketStateApiName(normalizeDocketState(firstText(docket.dktStateName, docket.docketState, docket.status))),
     priority: firstText(docket.priority),
     category: firstText(docket.category),
     assigneeId: firstText(docket.assigneeId),
@@ -744,7 +756,7 @@ export async function importEliticalLiveToNormalized({
   });
 
   try {
-    progress({ phase: "authenticating", message: "Authenticating..." });
+    progress({ direction: "inbound", state: "running", phase: "authenticating", message: "Authenticating..." });
 
     const authenticationStartedAt = Date.now();
     await authService.initialize();
@@ -759,7 +771,7 @@ export async function importEliticalLiveToNormalized({
     const client = new EliticalClient(authService);
     const provider = new EliticalProvider(client);
 
-    progress({ phase: "loading-project", message: "Loading Project..." });
+    progress({ direction: "inbound", state: "running", phase: "loading-project", message: "Loading Project..." });
 
     const projectsStartedAt = Date.now();
     const projects = await provider.getProjects();
@@ -774,14 +786,31 @@ export async function importEliticalLiveToNormalized({
     }
     timings.projectsMs = elapsedSince(projectsStartedAt);
 
-    progress({ phase: "loading-sprints", message: "Loading Sprint..." });
+    progress({ direction: "inbound", state: "running", phase: "loading-sprints", message: "Loading Sprint..." });
     const sprintsStartedAt = Date.now();
     const sprints = await provider.getSprints(targetProjectId);
     timings.sprintsMs = elapsedSince(sprintsStartedAt);
 
-    progress({ phase: "fetching-issues", message: "Fetching Issues..." });
+    progress({
+      direction: "inbound",
+      state: "running",
+      phase: "fetching-issues",
+      entityType: "issues-board",
+      message: "Fetching Issues Board...",
+    });
     const issuesBoardStartedAt = Date.now();
-    const issues = await provider.getIssues(targetProjectId);
+    const issues = await provider.getIssues(targetProjectId, {
+      onProgress: (pageProgress) =>
+        progress({
+          direction: "inbound",
+          state: "running",
+          phase: "fetching-issues",
+          entityType: "issues-board",
+          unit: "pages",
+          message: "Fetching Issues Board...",
+          ...pageProgress,
+        }),
+    });
     timings.issuesBoardMs = elapsedSince(issuesBoardStartedAt);
 
     const comparisonStartedAt = Date.now();
@@ -884,7 +913,7 @@ export async function importEliticalLiveToNormalized({
     });
     timings.worklogImportMs = elapsedSince(worklogImportStartedAt);
 
-    progress({ phase: "normalizing", message: "Normalizing..." });
+    progress({ direction: "inbound", state: "running", phase: "normalizing", message: "Normalizing..." });
 
     const normalizationStartedAt = Date.now();
     const issuesWithWorklogs = attachWorklogsToIssues(
@@ -968,7 +997,12 @@ export async function importEliticalLiveToNormalized({
     }
     console.log("-------------------------------------");
 
-    progress({ phase: "complete", message: "Sync Complete" });
+    progress({
+      direction: "inbound",
+      state: "running",
+      phase: "normalizing",
+      message: "Preparing imported data...",
+    });
 
     return {
       normalized: output,

@@ -1,30 +1,68 @@
 {
   "name": "jira-flow",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.3",
   "type": "module",
-    "scripts": {
-  "dev": "node scripts/dev.mjs",
-  "dev:netlify": "netlify dev",
-  "dev:desktop": "node scripts/dev-desktop.mjs",
-  "dev:vite": "vite --host 127.0.0.1 --port 5177 --strictPort",
-  "backend:local": "tsx local-backend/server.mjs",
-  "build": "vite build",
-  "lint": "eslint .",
-  "preview": "vite preview",
-  "verify:elitical": "tsx scripts/verify-elitical.ts",
-  "verify:elitical-sync": "tsx scripts/verify-elitical-sync.ts",
-  "verify:elitical-graph": "tsx scripts/verify-elitical-graph-sync.ts",
-  "import:elitical:live": "tsx scripts/import-elitical-live.ts",
-  "capture:worklog-api": "node tools/capture-worklog-api.js"
+  "main": "electron/main.mjs",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:netlify": "netlify dev",
+    "dev:desktop": "node scripts/dev-desktop.mjs",
+    "dev:vite": "vite --host 127.0.0.1 --port 5177 --strictPort",
+    "backend:local": "tsx local-backend/server.mjs",
+    "build": "vite build",
+    "prepare:playwright": "node scripts/prepare-playwright-browsers.mjs",
+    "prepare:playwright:arm64": "node scripts/prepare-playwright-browsers.mjs --arch arm64",
+    "prepare:playwright:x64": "node scripts/prepare-playwright-browsers.mjs --arch x64",
+    "build:desktop": "npm run build:dmg",
+    "build:dmg:current:arm64": "npm run build && npm run prepare:playwright:arm64 && node scripts/build-dmg.mjs --arch arm64",
+    "build:dmg:current:x64": "npm run build && npm run prepare:playwright:x64 && node scripts/build-dmg.mjs --arch x64",
+    "build:dmg:arm64": "npm version patch --no-git-tag-version && npm run build:dmg:current:arm64",
+    "build:dmg:x64": "npm version patch --no-git-tag-version && npm run build:dmg:current:x64",
+    "build:dmg": "npm version patch --no-git-tag-version && npm run build:dmg:current:arm64 && npm run build:dmg:current:x64",
+    "release:dmg": "npm run build:dmg",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "verify:elitical": "tsx scripts/verify-elitical.ts",
+    "verify:elitical-sync": "tsx scripts/verify-elitical-sync.ts",
+    "verify:elitical-graph": "tsx scripts/verify-elitical-graph-sync.ts",
+    "verify:day-view-projection": "node scripts/verify-day-view-projection.mjs",
+    "verify:day-projection-filter-visibility": "node scripts/verify-day-projection-filter-visibility.mjs",
+    "verify:work-duration-format": "node scripts/verify-work-duration-format.mjs",
+    "verify:backlog-graph-view": "node scripts/verify-backlog-graph-view.mjs",
+    "verify:docket-states": "node scripts/verify-docket-state-standardization.mjs",
+    "verify:global-view-header": "node scripts/verify-global-view-header.mjs",
+    "verify:global-header-filter-ux": "node scripts/verify-global-header-filter-ux.mjs",
+    "verify:dropdown-popover-lifecycle": "node scripts/verify-dropdown-popover-lifecycle.mjs",
+    "verify:global-header-context-selectors": "node scripts/verify-global-header-context-selectors.mjs",
+    "verify:global-node-actions": "node scripts/verify-global-node-actions.mjs",
+    "verify:inline-view-search": "node scripts/verify-inline-view-search.mjs",
+    "verify:graph-create-viewport-stability": "node scripts/verify-graph-create-viewport-stability.mjs",
+    "verify:add-existing-modal-ui": "node scripts/verify-add-existing-modal-ui.mjs",
+    "verify:global-overlay-layering": "node scripts/verify-global-overlay-layering.mjs",
+    "verify:docket-id-search-scope": "node scripts/verify-docket-id-search-scope.mjs",
+    "verify:day-timeline-navigation": "node scripts/verify-day-timeline-navigation.mjs",
+    "verify:optional-worklog-create": "node scripts/verify-optional-worklog-create.mjs",
+    "verify:job-create-worklog-sync": "node scripts/verify-job-create-worklog-sync.mjs",
+    "verify:worklog-create-sync-hardening": "node scripts/verify-worklog-create-sync-hardening.mjs",
+    "verify:retained-local-creation-context": "node scripts/verify-retained-local-creation-context.mjs",
+    "verify:aggregation-rollups": "node scripts/verify-aggregation-rollups.mjs",
+    "verify:employee-scoped-aggregation": "node scripts/verify-employee-scoped-aggregation.mjs",
+    "verify:sync-activity-progress": "node scripts/verify-sync-activity-progress.mjs",
+    "verify:storage-architecture": "node scripts/verify-storage-architecture.mjs",
+    "verify:dmg-packaging": "node scripts/verify-dmg-packaging.mjs",
+    "import:elitical:live": "tsx scripts/import-elitical-live.ts",
+    "capture:worklog-api": "node tools/capture-worklog-api.js"
   },
   "dependencies": {
     "chromium-bidi": "^0.5.24",
     "dagre": "^0.8.5",
     "js-yaml": "^4.2.0",
+    "playwright": "^1.61.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "reactflow": "^11.11.4"
+    "reactflow": "^11.11.4",
+    "tsx": "^4.23.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -32,13 +70,53 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "electron": "^43.1.1",
+    "electron-builder": "^26.15.3",
     "eslint": "^10.3.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
-    "playwright": "^1.61.1",
-    "tsx": "^4.23.1",
     "typescript": "^7.0.2",
     "vite": "^8.0.12"
+  },
+  "build": {
+    "appId": "com.elitical.worklog",
+    "productName": "Elitical Worklog",
+    "asar": false,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "local-backend/**",
+      "!local-backend/cache/**",
+      "!node_modules/playwright-core/.local-browsers/**",
+      "!node_modules/playwright/.local-browsers/**",
+      "src/services/elitical/**",
+      "src/services/backendOrigin.js",
+      "src/services/eliticalEditClient.js",
+      "src/services/syncClient.js",
+      "src/services/worklogEngineClient.js",
+      "src/utils/**",
+      "package.json"
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.productivity",
+      "identity": null
+    },
+    "dmg": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    }
   }
 }

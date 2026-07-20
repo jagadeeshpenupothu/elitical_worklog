@@ -1,8 +1,10 @@
 import http from "node:http";
 import { CacheService } from "./services/CacheService.mjs";
+import { LogBufferService } from "./services/LogBufferService.mjs";
 import { LocalDataService } from "./services/LocalDataService.mjs";
 import { LocalEventService } from "./services/LocalEventService.mjs";
 import { LocalSyncQueueService } from "./services/LocalSyncQueueService.mjs";
+import { initializeStorage } from "./services/StoragePathService.mjs";
 import { SyncService, createEliticalSyncProvider } from "./services/SyncService.mjs";
 import { WorklogService } from "./services/WorklogService.mjs";
 import { validateDocketOperation } from "../src/utils/docketOperationValidation.js";
@@ -18,6 +20,16 @@ import {
   worklogMatchesForReconciliation,
   worklogUpdateDatesConfirm,
 } from "../src/services/elitical/worklogReconciliation.js";
+import {
+  docketStateApiId,
+  docketStateApiName,
+  normalizeDocketState,
+} from "../src/utils/docketStates.js";
+import {
+  normalizeEliticalDescription,
+  normalizeEliticalCreateDescriptionFields,
+  validateEliticalDescription,
+} from "../src/utils/eliticalDocketCreate.js";
 
 const DEFAULT_PORT = 3797;
 const PORT = Number(process.env.LOCAL_BACKEND_PORT || DEFAULT_PORT);
@@ -29,10 +41,12 @@ const JSON_HEADERS = {
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
 };
 
+const storageInitialization = await initializeStorage();
 const cacheService = new CacheService();
 const worklogService = new WorklogService();
 const syncQueueService = new LocalSyncQueueService();
 const events = new LocalEventService();
+const logBuffer = new LogBufferService({ limit: 1000 });
 const localData = new LocalDataService({ cacheService, worklogService, syncQueueService });
 const syncService = new SyncService({ localData, events });
 const ROOT_ID = "storyRoot";
@@ -71,6 +85,7 @@ const DOCKET_COLLECTION_BY_TYPE = {
 let sdkProviderPromise = null;
 let sdkProviderLeaseCount = 0;
 
+logBuffer.captureConsole(console);
 syncService.registerProvider(createEliticalSyncProvider());
 
 function logRequest(message) {
@@ -306,6 +321,17 @@ function confirmedUpdatedWorklog(operation, outboundWorklog, updatedWorklog, rem
 }
 
 function normalizeWorklogForInput(input = {}) {
+  if (!input || typeof input !== "object") {
+    return {
+      id: "",
+      docketId: "",
+      comment: "",
+      worklogDate: "",
+      hour: 0,
+      min: 0,
+    };
+  }
+
   const totalMinutes = firstNumber(input.timeMinutes, input.durationMinutes);
   const hour = input.hour !== undefined ? firstNumber(input.hour) : Math.floor(totalMinutes / 60);
   const min = input.min !== undefined ? firstNumber(input.min) : totalMinutes % 60;
@@ -323,12 +349,7 @@ function normalizeWorklogForInput(input = {}) {
 function isMeaningfulWorklogPayload(input = {}) {
   const worklog = normalizeWorklogForInput(input);
 
-  return Boolean(
-    worklog.comment ||
-    worklog.worklogDate ||
-    Number(worklog.hour) > 0 ||
-    Number(worklog.min) > 0
-  );
+  return Number(worklog.hour) > 0 || Number(worklog.min) > 0;
 }
 
 function validateWorklogPayload(input = {}, { docketType = "" } = {}) {
@@ -351,6 +372,170 @@ function itemCollections(graph) {
     key,
     Array.isArray(graph?.[key]) ? graph[key] : [],
   ]);
+}
+
+function allGraphItems(graph) {
+  return itemCollections(graph).flatMap(([, items]) => items);
+}
+
+function findCachedDocket(graph, { remoteId = "", docketNumber = "" } = {}) {
+  const targetRemoteId = firstString(remoteId);
+  const targetNumber = firstString(docketNumber);
+
+  return allGraphItems(graph).find((item) =>
+    (!targetRemoteId || firstString(item.id, item.remoteId, item.sync?.remoteId) === targetRemoteId) &&
+    (!targetNumber || firstString(item.num, item.docketNumber, item.docketNum) === targetNumber)
+  );
+}
+
+function findCachedWorklog(worklogCache = {}, { remoteId = "", docketId = "" } = {}) {
+  const worklogs = Array.isArray(worklogCache.worklogs) ? worklogCache.worklogs : [];
+  const targetRemoteId = firstString(remoteId);
+  const targetDocketId = firstString(docketId);
+
+  return worklogs.find((worklog) =>
+    (!targetRemoteId || firstString(worklog.id, worklog.worklogId, worklog.eliticalId, worklog.raw?.id) === targetRemoteId) &&
+    (!targetDocketId || firstString(worklog.docketId, worklog.raw?.docketId) === targetDocketId)
+  );
+}
+
+function recoveryPreviewPayload({
+  parentOperation,
+  dependentOperation,
+  replacementDocket,
+  replacementWorklog,
+} = {}) {
+  return {
+    parent: {
+      operationId: parentOperation.operationId,
+      localId: parentOperation.localId,
+      status: parentOperation.status,
+      title: firstString(parentOperation.payload?.title),
+      docketType: parentOperation.docketType,
+    },
+    dependent: {
+      operationId: dependentOperation.operationId,
+      localId: dependentOperation.localId,
+      status: dependentOperation.status,
+      docketId: firstString(dependentOperation.docketId, dependentOperation.payload?.docketId),
+      dependsOn: dependentOperation.dependsOn,
+      comment: firstString(dependentOperation.payload?.comment, dependentOperation.payload?.description),
+      worklogDate: firstString(dependentOperation.payload?.worklogDate, dependentOperation.payload?.date),
+      hour: firstNumber(dependentOperation.payload?.hour),
+      min: firstNumber(dependentOperation.payload?.min),
+    },
+    replacementDocket: {
+      id: replacementDocket.id,
+      num: firstString(replacementDocket.num, replacementDocket.docketNumber, replacementDocket.docketNum),
+      title: replacementDocket.title,
+      type: replacementDocket.type,
+    },
+    replacementWorklog: {
+      id: firstString(replacementWorklog.id, replacementWorklog.worklogId, replacementWorklog.eliticalId),
+      docketId: replacementWorklog.docketId,
+      worklogDate: firstString(replacementWorklog.worklogDate, replacementWorklog.date, replacementWorklog.raw?.worklogDate),
+      hour: firstNumber(replacementWorklog.hour, replacementWorklog.raw?.hour),
+      min: firstNumber(replacementWorklog.min, replacementWorklog.raw?.min),
+      durationMinutes: firstNumber(
+        replacementWorklog.durationMinutes,
+        replacementWorklog.timeMinutes,
+        replacementWorklog.raw?.durationMinutes,
+        replacementWorklog.raw?.timeMinutes
+      ),
+      comment: firstString(replacementWorklog.comment, replacementWorklog.description),
+    },
+  };
+}
+
+async function validateDuplicateRecoveryRequest(input = {}) {
+  const parentOperationId = firstString(input.parentOperationId);
+  const dependentOperationId = firstString(input.dependentOperationId);
+  const replacementRemoteDocketId = firstString(input.replacementRemoteDocketId);
+  const replacementDocketNumber = firstString(input.replacementDocketNumber);
+  const replacementRemoteWorklogId = firstString(input.replacementRemoteWorklogId);
+
+  function fail(message, details = {}) {
+    const error = new Error(message);
+    error.statusCode = 400;
+    error.code = "DUPLICATE_RECOVERY_VALIDATION_FAILED";
+    error.details = details;
+    throw error;
+  }
+
+  if (!parentOperationId) fail("parentOperationId is required.");
+  if (!dependentOperationId) fail("dependentOperationId is required.");
+  if (!replacementRemoteDocketId) fail("replacementRemoteDocketId is required.");
+  if (!replacementDocketNumber) fail("replacementDocketNumber is required.");
+  if (!replacementRemoteWorklogId) fail("replacementRemoteWorklogId is required.");
+
+  const [queue, graph, worklogCache] = await Promise.all([
+    syncQueueService.load(),
+    cacheService.loadGraph(),
+    worklogService.loadImportedWorklogs(),
+  ]);
+  const parentOperation = (queue.operations || []).find((operation) => operation.operationId === parentOperationId);
+  const dependentOperation = (queue.operations || []).find((operation) => operation.operationId === dependentOperationId);
+
+  if (!parentOperation) fail("Parent operation was not found.");
+  if (!dependentOperation) fail("Dependent operation was not found.");
+  if (parentOperation.entityType !== "docket" || parentOperation.operation !== "create") {
+    fail("Parent operation must be a Docket create.");
+  }
+  if (parentOperation.status !== "sync-failed") {
+    fail("Parent operation must currently be sync-failed.", {
+      status: parentOperation.status,
+    });
+  }
+  if (dependentOperation.entityType !== "worklog" || dependentOperation.operation !== "create") {
+    fail("Dependent operation must be a Worklog create.");
+  }
+  if (dependentOperation.status !== "dependency-blocked") {
+    fail("Dependent operation must currently be dependency-blocked.", {
+      status: dependentOperation.status,
+    });
+  }
+  if (dependentOperation.dependsOn !== parentOperation.localId) {
+    fail("Dependent operation does not depend on the selected parent operation.");
+  }
+  if (firstString(dependentOperation.docketId, dependentOperation.payload?.docketId) !== parentOperation.localId) {
+    fail("Dependent Worklog does not reference the selected parent Docket.");
+  }
+
+  const replacementDocket = findCachedDocket(graph, {
+    remoteId: replacementRemoteDocketId,
+    docketNumber: replacementDocketNumber,
+  });
+
+  if (!replacementDocket) {
+    fail("Replacement Docket was not found in the local cache.", {
+      replacementRemoteDocketId,
+      replacementDocketNumber,
+    });
+  }
+
+  const replacementWorklog = findCachedWorklog(worklogCache, {
+    remoteId: replacementRemoteWorklogId,
+    docketId: replacementRemoteDocketId,
+  });
+
+  if (!replacementWorklog) {
+    fail("Replacement Worklog was not found in the local cache.", {
+      replacementRemoteWorklogId,
+      replacementRemoteDocketId,
+    });
+  }
+
+  return {
+    parentOperationId,
+    dependentOperationId,
+    replacementRemoteDocketId,
+    replacementDocketNumber,
+    replacementRemoteWorklogId,
+    parentOperation,
+    dependentOperation,
+    replacementDocket,
+    replacementWorklog,
+  };
 }
 
 function isSyntheticMutationId(id) {
@@ -428,7 +613,6 @@ function updateFieldsOnly(updates = {}) {
 
   [
     "dktStateId",
-    "dktStateName",
     "assigneeId",
     "sprintId",
     "sprintName",
@@ -558,6 +742,27 @@ function stateName(graph, stateId, fallback = "") {
   return firstString(state?.name, state?.title, fallback);
 }
 
+function resolveDocketCreateStateFields(payload = {}) {
+  const docketState = normalizeDocketState(
+    firstString(payload.docketState, payload.dktStateName, payload.stateName)
+  );
+  const dktStateId = firstString(payload.dktStateId, payload.stateId, docketStateApiId(docketState));
+  const dktStateName = firstString(payload.dktStateName, payload.stateName, docketStateApiName(docketState));
+
+  return {
+    ...payload,
+    docketState,
+    dktStateId,
+    dktStateName,
+  };
+}
+
+function normalizeDocketCreatePayload(payload = {}) {
+  return resolveDocketCreateStateFields(
+    normalizeEliticalCreateDescriptionFields(payload)
+  );
+}
+
 function parentFor(graph, parentId) {
   return (graph.appState?.workItems || []).find((item) => item?.id === parentId) || null;
 }
@@ -588,16 +793,15 @@ function buildCreatedDocketRecords({ graph, issue, payload }) {
       ? id
       : "";
   const stateId = firstString(issue?.stateId, issue?.dktStateId, payload.dktStateId);
-  const docketState = firstString(
+  const docketState = normalizeDocketState(firstString(
     issue?.docketState,
     issue?.dktState,
+    issue?.dktStateName,
     issue?.status,
     payload.docketState,
     stateName(graph, stateId),
     "concept"
-  )
-    .toLowerCase()
-    .replace(/[_\s]+/g, "-");
+  ));
   const createdAt = firstString(issue?.createdAt, issue?.createdTime, new Date().toISOString());
   const updatedAt = firstString(issue?.updatedAt, issue?.updatedTime, createdAt);
   const title = firstString(issue?.title, issue?.name, issue?.docketTitle, payload.title, id);
@@ -627,7 +831,8 @@ function buildCreatedDocketRecords({ graph, issue, payload }) {
     storyNum: firstString(issue?.storyNum, parent?.type === "story" ? parent.elitical?.num : ""),
     parentId,
     stateId,
-    stateName: stateName(graph, stateId, issue?.stateName),
+    stateName: docketStateApiName(docketState),
+    dktStateName: docketStateApiName(docketState),
     docketState,
     category: firstString(issue?.category, payload.category, "feature"),
     priority: firstString(issue?.priority, payload.priority, "info"),
@@ -739,16 +944,17 @@ async function createLocalDocket(payload) {
     throw error;
   }
 
+  const createPayload = normalizeDocketCreatePayload(payload);
   const localId = syncQueueService.localDocketId();
   const issue = {
-    ...payload,
+    ...createPayload,
     id: localId,
-    type: normalizeEliticalType(payload.type),
+    type: normalizeEliticalType(createPayload.type),
   };
   const validationError = validateDocketOperation({
     operation: "create",
     payload: {
-      ...payload,
+      ...createPayload,
       id: localId,
     },
     workItems: graph.appState.workItems,
@@ -761,10 +967,10 @@ async function createLocalDocket(payload) {
     throw error;
   }
 
-  const requestedWorklog = payload.worklog || null;
+  const requestedWorklog = createPayload.worklog || null;
   const meaningfulWorklog = isMeaningfulWorklogPayload(requestedWorklog);
   const worklogValidationError = meaningfulWorklog
-    ? validateWorklogPayload(requestedWorklog, { docketType: payload.type })
+    ? validateWorklogPayload(requestedWorklog, { docketType: createPayload.type })
     : "";
 
   if (worklogValidationError) {
@@ -777,20 +983,21 @@ async function createLocalDocket(payload) {
     graph,
     issue,
     payload: {
-      ...payload,
+      ...createPayload,
       id: localId,
     },
   });
-  const sync = {
-    status: "pending-create",
-    remoteId: "",
-    localId,
-    pendingChanges: {
-      ...payload,
-      title: records.appItem.title,
-      description: records.appItem.description || "",
-    },
-  };
+	  const sync = {
+	    status: "pending-create",
+	    remoteId: "",
+	    localId,
+	    pendingChanges: {
+	      ...createPayload,
+	      title: records.appItem.title,
+	      description: records.appItem.description || "",
+	      descr: records.appItem.description || "",
+	    },
+	  };
   const appItem = withSyncMetadata(records.appItem, sync);
   const rawRecord = withSyncMetadata(records.rawRecord, sync);
   const localWorklog = meaningfulWorklog
@@ -837,14 +1044,14 @@ async function createLocalDocket(payload) {
     },
   };
 
-  await syncQueueService.enqueueCreate({
-    item: appItem,
-    payload: {
-      ...payload,
-      worklog: undefined,
-      id: localId,
-    },
-  });
+	  await syncQueueService.enqueueCreate({
+	    item: appItem,
+	    payload: {
+	      ...createPayload,
+	      worklog: undefined,
+	      id: localId,
+	    },
+	  });
 
   if (localWorklog) {
     await syncQueueService.enqueueWorklogCreate({
@@ -856,8 +1063,8 @@ async function createLocalDocket(payload) {
   const saved = await saveLocalGraph(nextGraph, { status: "local-created" });
 
   return {
-    status: "local-created",
-    message: `Created ${normalizeDocketType(payload?.type) || "docket"} locally. Sync to Elitical is pending.`,
+	    status: "local-created",
+	    message: `Created ${normalizeDocketType(createPayload?.type) || "docket"} locally. Sync to Elitical is pending.`,
     docket: rawRecord,
     item: appItem,
     normalized: saved.graph,
@@ -906,7 +1113,9 @@ function remoteBaselineForItem(item = {}) {
     title: firstString(baseline.title ?? item.title),
     description: firstString(baseline.description ?? item.description ?? item.descr),
     dktStateId: firstString(baseline.dktStateId ?? baseline.stateId ?? elitical.stateId ?? item.dktStateId),
-    dktStateName: firstString(baseline.dktStateName ?? baseline.docketState ?? item.dktStateName ?? item.docketState),
+    dktStateName: docketStateApiName(
+      normalizeDocketState(baseline.dktStateName ?? baseline.docketState ?? item.dktStateName ?? item.docketState)
+    ),
     assigneeId: firstString(baseline.assigneeId ?? elitical.assigneeId ?? item.assigneeId),
     sprintId: firstString(baseline.sprintId ?? elitical.sprintId ?? item.sprintId),
     sprintName: firstString(baseline.sprintName ?? item.sprintName ?? item.sprint),
@@ -959,6 +1168,14 @@ function supportedChangesAgainstBaseline(changes = {}, baseline = {}) {
       next[field] = firstString(changes[field]);
     }
   });
+
+  if (
+    Object.prototype.hasOwnProperty.call(changes, "dktStateName") &&
+    docketStateApiName(normalizeDocketState(changes.dktStateName)) !==
+      docketStateApiName(normalizeDocketState(baseline.dktStateName))
+  ) {
+    next.dktStateName = docketStateApiName(normalizeDocketState(changes.dktStateName));
+  }
 
   if (Object.prototype.hasOwnProperty.call(changes, "hasNoSprint")) {
     next.hasNoSprint = Boolean(changes.hasNoSprint);
@@ -1455,15 +1672,47 @@ async function reconcileWorklogCreate(provider, operation, remoteDocketId) {
   );
 }
 
+function localDocketRecordForOperation(graph, operation = {}) {
+  const localId = firstString(operation.localId, operation.payload?.id);
+  const remoteId = firstString(operation.remoteId);
+  const matchesId = (item = {}) =>
+    [item.id, item.sourceId, item.sourceItemId, item.sourceDocketId, item.elitical?.remoteId, item.sync?.remoteId]
+      .some((candidate) => {
+        const value = firstString(candidate);
+        return value && (value === localId || value === remoteId);
+      });
+
+  return (
+    (graph.appState?.workItems || []).find(matchesId) ||
+    itemCollections(graph)
+      .flatMap(([, items]) => items)
+      .find(matchesId) ||
+    null
+  );
+}
+
 function payloadForRemoteCreate(graph, operation, localToRemote) {
-  const payload = {
+  const payload = normalizeDocketCreatePayload({
     ...(operation.payload || {}),
-  };
+  });
+  const localRecord = localDocketRecordForOperation(graph, operation);
+  const description = normalizeEliticalDescription(firstString(
+    localRecord?.description,
+    localRecord?.descr,
+    payload.description,
+    payload.descr
+  ));
   const parentId = firstString(payload.parentId);
   const epicId = firstString(payload.epicId);
   const storyId = firstString(payload.storyId);
   const sprintId = firstString(payload.sprintId);
+  const descriptionError = validateEliticalDescription(description);
 
+  if (descriptionError) {
+    throw new Error(descriptionError);
+  }
+  payload.description = description;
+  payload.descr = description;
   if (parentId) payload.parentId = remoteIdForLocalId(graph, localToRemote, parentId) || parentId;
   if (epicId) payload.epicId = remoteIdForLocalId(graph, localToRemote, epicId) || epicId;
   if (storyId) payload.storyId = remoteIdForLocalId(graph, localToRemote, storyId) || storyId;
@@ -1534,8 +1783,10 @@ function syncedRemoteBaseline(record = {}, acceptedChanges = {}) {
         : firstString(record.sync?.remoteBaseline?.dktStateId, record.elitical?.stateId, record.dktStateId),
     dktStateName:
       acceptedChanges.dktStateName !== undefined
-        ? acceptedChanges.dktStateName
-        : firstString(record.sync?.remoteBaseline?.dktStateName, record.docketState, record.dktStateName),
+        ? docketStateApiName(normalizeDocketState(acceptedChanges.dktStateName))
+        : docketStateApiName(
+            normalizeDocketState(record.sync?.remoteBaseline?.dktStateName || record.docketState || record.dktStateName)
+          ),
     assigneeId:
       acceptedChanges.assigneeId !== undefined
         ? acceptedChanges.assigneeId
@@ -1646,7 +1897,9 @@ function acceptedUpdateChanges(operation, updateResult) {
     } else if (field === "dktStateId") {
       changes.dktStateId = firstString(operation.changes?.dktStateId, updateResult?.dktStateId);
       if (operation.changes?.dktStateName !== undefined || updateResult?.dktStateName !== undefined) {
-        changes.dktStateName = firstString(operation.changes?.dktStateName, updateResult?.dktStateName);
+        changes.dktStateName = docketStateApiName(
+          normalizeDocketState(firstString(operation.changes?.dktStateName, updateResult?.dktStateName))
+        );
       }
     } else if (field === "sprintId") {
       changes.sprintId = firstString(operation.changes?.sprintId, updateResult?.sprintId);
@@ -1686,6 +1939,20 @@ async function reconcileCreatedRemoteId(payload, createdDocket, { provider, grap
     reconciliation: reconciliation?.reconciliation || null,
     item: reconciliation?.item || null,
     docket: reconciliation?.docket || null,
+  };
+}
+
+function outboundProgressMeta(operation, index, total) {
+  return {
+    direction: "outbound",
+    state: "running",
+    entityType: operation.entityType || "docket",
+    operationType: operation.operation || "",
+    docketType: operation.docketType || "",
+    current: index + 1,
+    total,
+    unit: "operations",
+    operationId: operation.operationId,
   };
 }
 
@@ -1735,9 +2002,17 @@ async function syncPendingToElitical() {
   try {
     const provider = sdkLease.provider;
 
-    events.progress({ phase: "starting", message: "Syncing pending local changes to Elitical..." });
+    events.progress({
+      direction: "outbound",
+      state: "running",
+      phase: "starting",
+      message: "Syncing pending local changes to Elitical...",
+      current: 0,
+      total: operations.length,
+      unit: "operations",
+    });
 
-    for (const operation of operations) {
+    for (const [operationIndex, operation] of operations.entries()) {
       try {
       if (operation.entityType === "docket" && operation.operation === "create") {
         const remotePayload = payloadForRemoteCreate(graph, operation, localToRemote);
@@ -1755,11 +2030,11 @@ async function syncPendingToElitical() {
         }
 
         events.progress({
+          ...outboundProgressMeta(operation, operationIndex, operations.length),
           phase: createWasAlreadyAccepted ? "reconciliation" : "mutation",
           message: createWasAlreadyAccepted
             ? `Recovering accepted ${operation.docketType} create in Elitical...`
             : `Creating ${operation.docketType} in Elitical...`,
-          operationId: operation.operationId,
         });
 
         let createdDocket = createWasAlreadyAccepted
@@ -1860,9 +2135,9 @@ async function syncPendingToElitical() {
           }
 
           events.progress({
+            ...outboundProgressMeta(operation, operationIndex, operations.length),
             phase: "mutation",
             message: "Updating Worklog in Elitical...",
-            operationId: operation.operationId,
           });
 
           const outboundWorklog = {
@@ -1947,9 +2222,9 @@ async function syncPendingToElitical() {
         }
 
         events.progress({
+          ...outboundProgressMeta(operation, operationIndex, operations.length),
           phase: "mutation",
           message: `Updating ${operation.docketType} in Elitical...`,
-          operationId: operation.operationId,
         });
 
         const remoteChanges = changesForRemoteUpdate(graph, operation, localToRemote);
@@ -2023,11 +2298,11 @@ async function syncPendingToElitical() {
         const createWasAlreadyAccepted = operationClassification.reconciliationActionable;
 
         events.progress({
+          ...outboundProgressMeta(operation, operationIndex, operations.length),
           phase: createWasAlreadyAccepted ? "reconciliation" : "mutation",
           message: createWasAlreadyAccepted
             ? "Recovering accepted Worklog create in Elitical..."
             : "Creating Worklog in Elitical...",
-          operationId: operation.operationId,
         });
 
         let createdWorklog = null;
@@ -2048,9 +2323,9 @@ async function syncPendingToElitical() {
 
         if (!remoteWorklogId && (!createWasAlreadyAccepted || worklogCreateAmbiguousError)) {
           events.progress({
+            ...outboundProgressMeta(operation, operationIndex, operations.length),
             phase: "reconciliation",
             message: "Reconciling accepted Worklog create in Elitical...",
-            operationId: operation.operationId,
           });
           createdWorklog = await reconcileWorklogCreate(provider, operation, remoteDocketId);
           remoteWorklogId = firstString(createdWorklog?.id, createdWorklog?.worklogId);
@@ -2060,11 +2335,12 @@ async function syncPendingToElitical() {
           const error = new Error("Created worklog was accepted but the remote Elitical worklog ID could not be reconciled.");
 
           await syncQueueService.markOperationUnconfirmed(operation.operationId, error);
-          failures.push({
+          blocked.push({
             operationId: operation.operationId,
             localId: operation.localId,
             entityType: "worklog",
             operation: operation.operation,
+            actionability: "reconciliation-actionable",
             message: error.message,
             acceptedMutation: true,
             ambiguousMutation: Boolean(worklogCreateAmbiguousError),
@@ -2113,6 +2389,15 @@ async function syncPendingToElitical() {
     }
 
     const saved = await saveLocalGraph(graph, { status: "queue-processed" });
+    events.progress({
+      direction: "outbound",
+      state: "running",
+      phase: "saving-cache",
+      message: "Saving local cache...",
+      current: operations.length,
+      total: operations.length,
+      unit: "operations",
+    });
     const finalQueue = await syncQueueService.load();
     const normalized = syncQueueService.applyPendingToGraph(saved.graph, finalQueue);
     const queueSummary = await syncQueueService.summary();
@@ -2170,6 +2455,15 @@ async function syncPendingToElitical() {
     };
 
     events.cache(hardFailures.length ? "sync-failed" : "cache-updated", result);
+    events.progress({
+      direction: "outbound",
+      state: hardFailures.length ? "failed" : "synced",
+      phase: hardFailures.length ? "failed" : "complete",
+      message: result.message,
+      current: operations.length,
+      total: operations.length,
+      unit: "operations",
+    });
 
     return result;
   } finally {
@@ -2604,12 +2898,73 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 200, {
       status: "ok",
       service: "elitical-worklog-local-backend",
+      storage: {
+        root: storageInitialization.paths.root,
+        status: storageInitialization.status,
+        rebuildRequired: storageInitialization.rebuildRequired,
+        resetDetected: storageInitialization.resetDetected,
+        migrated: storageInitialization.migrated,
+      },
       syncInProgress: syncStatus.syncInProgress,
       lastProgress: syncStatus.lastProgress,
       providers: syncStatus.providers,
       cacheExists: await localData.exists(),
       syncQueue: await syncQueueService.summary(),
     });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/logs") {
+    sendJson(res, 200, {
+      status: "ok",
+      ...logBuffer.snapshot({
+        sinceId: url.searchParams.get("sinceId") || 0,
+        limit: url.searchParams.get("limit") || 1000,
+      }),
+    });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/local/sync/recovery/resolve-duplicate") {
+    try {
+      const body = await readJsonBody(req);
+      const validation = await validateDuplicateRecoveryRequest(body);
+      const preview = recoveryPreviewPayload(validation);
+
+      if (body.previewOnly) {
+        sendJson(res, 200, {
+          status: "preview",
+          preview,
+          syncQueue: await syncQueueService.summary(),
+        });
+        return;
+      }
+
+      const result = await syncQueueService.resolveDuplicateCreateWithDependent({
+        parentOperationId: validation.parentOperationId,
+        dependentOperationId: validation.dependentOperationId,
+        replacementRemoteDocketId: validation.replacementRemoteDocketId,
+        replacementDocketNumber: validation.replacementDocketNumber,
+        replacementRemoteWorklogId: validation.replacementRemoteWorklogId,
+      });
+      const graph = await cacheService.loadGraph();
+
+      sendJson(res, 200, {
+        status: "superseded",
+        preview,
+        parentOperation: result.parentOperation,
+        dependentOperation: result.dependentOperation,
+        normalized: graph ? syncQueueService.applyPendingToGraph(graph, await syncQueueService.load()) : null,
+        metadata: await cacheService.readMetadata(),
+        syncQueue: result.syncQueue,
+      });
+    } catch (error) {
+      sendJson(res, error.statusCode || 500, {
+        error: error.message || "Unable to resolve duplicate sync operations.",
+        code: error.code || "",
+        details: error.details || null,
+      });
+    }
     return;
   }
 
@@ -2746,9 +3101,40 @@ const server = http.createServer(async (req, res) => {
     const cache = await localData.loadGraphCache();
 
     if (!cache) {
+      if (storageInitialization.resetDetected && !skipBackgroundSync) {
+        try {
+          const rebuilt = await syncService.run({ providerId: "elitical" });
+          sendJson(res, 200, {
+            ...rebuilt,
+            bootstrap: {
+              status: "rebuilt-from-elitical",
+              storageRoot: storageInitialization.paths.root,
+            },
+          });
+        } catch (error) {
+          const payload = error.payload || {
+            error: error.message || "Unable to rebuild local cache.",
+          };
+
+          sendJson(res, error.statusCode || 500, {
+            ...payload,
+            bootstrap: {
+              status: "rebuild-failed",
+              storageRoot: storageInitialization.paths.root,
+            },
+          });
+        }
+        return;
+      }
+
       sendJson(res, 404, {
         error: "No local cache",
         message: "No local cache is available yet.",
+        storage: {
+          root: storageInitialization.paths.root,
+          rebuildRequired: storageInitialization.rebuildRequired,
+          resetDetected: storageInitialization.resetDetected,
+        },
       });
       return;
     }
@@ -2859,7 +3245,10 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, "127.0.0.1", () => {
-  logRequest(`Cache directory: ${process.env.ELITICAL_CACHE_DIR || "local-backend/cache"}`);
+  logRequest(`Storage root: ${storageInitialization.paths.root}`);
+  logRequest(`Cache directory: ${process.env.ELITICAL_CACHE_DIR || storageInitialization.paths.dataDir}`);
+  logRequest(`Sync directory: ${process.env.ELITICAL_SYNC_DIR || storageInitialization.paths.syncDir}`);
+  logRequest(`Auth directory: ${process.env.ELITICAL_DATA_DIR || storageInitialization.paths.authDir}`);
   logRequest(`Environment path: ${process.env.ELITICAL_ENV_PATH || ".env"}`);
   console.log(`Local backend ready: http://127.0.0.1:${PORT}`);
 });

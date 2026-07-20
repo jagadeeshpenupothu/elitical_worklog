@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { getStoragePaths } from "./StoragePathService.mjs";
 
 const CACHE_VERSION = 1;
 const IMPORTER_VERSION = 1;
@@ -96,7 +97,7 @@ function metadataFor(graph, syncedAt, syncIndex = null, previousMetadata = null)
 }
 
 export class CacheService {
-  constructor({ cacheDir = process.env.ELITICAL_CACHE_DIR || path.resolve("local-backend/cache") } = {}) {
+  constructor({ cacheDir = process.env.ELITICAL_CACHE_DIR || getStoragePaths().dataDir } = {}) {
     this.cacheDir = cacheDir;
     this.graphPath = path.join(cacheDir, "graph.json");
     this.layoutPath = path.join(cacheDir, "layout.json");

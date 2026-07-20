@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import GraphView from "./views/GraphView";
 import PlanningView from "./views/PlanningView";
 import {
@@ -29,12 +30,20 @@ import {
   saveWorklogSnapshot,
 } from "./services/worklogApi";
 import { syncLiveEliticalData } from "./services/elitical/syncLiveClient";
-import { syncPendingToElitical } from "./services/syncClient";
+import {
+  subscribeToSyncProgress,
+  syncPendingToElitical,
+} from "./services/syncClient";
+import {
+  previewDuplicateSyncRecovery,
+  resolveDuplicateSyncRecovery,
+} from "./services/syncRecoveryClient";
 import {
   loadLocalGraphCache,
   loadLocalWorklogsCache,
   subscribeToLocalCacheEvents,
 } from "./services/localCacheClient";
+import { loadApplicationLogs } from "./services/logsClient";
 import {
   loadPublishedData,
   loadPublishedWorklogs,
@@ -51,12 +60,74 @@ import {
 } from "./services/eliticalEditClient";
 import {
   ORPHAN_SPRINT_TITLE,
+  ORPHAN_SPRINT_ID,
   isOrphanSprintId,
   isReferenceNode,
   projectionScopeIdForItem,
   scopesWithOrphanSprint,
 } from "./utils/hierarchyProjection";
-import { childCreateTypesForCanonicalType } from "./utils/nodeCapabilities";
+import {
+  addDayProjectionSelection,
+  dateKeyFromValue,
+  dayEpicScopeKey,
+  dayScopeIdForItem,
+  daySelectionForDate,
+  loadDayProjectionState,
+  saveDayProjectionState,
+  sprintContainsDate,
+  sprintScopesForDay,
+  sprintTitleForScope,
+} from "./utils/dayViewProjection";
+import {
+  childActionItemsForNode as capabilityActionItemsForNode,
+  childCreateTypesForCanonicalType,
+} from "./utils/nodeCapabilities";
+import {
+  EMPTY_SEARCH_FILTERS,
+  SEARCH_FILTER_KEYS,
+  SEARCH_FILTER_LABELS,
+  activeSearchFilterCount,
+  applySearchFilters,
+  buildSearchFilterOptions,
+  pruneSearchFilters,
+  searchFilterLabel,
+} from "./utils/globalSearchFilter";
+import { formatWorkDuration } from "./utils/durationFormat";
+import {
+  DOCKET_STATE_OPTIONS,
+  docketStateApiId,
+  docketStateApiName,
+  docketStateLabel,
+  normalizeDocketState,
+} from "./utils/docketStates";
+import {
+  docketNumberForItem,
+  isExactDocketNumberQuery,
+  normalizeDocketNumber,
+} from "./utils/docketIdentity";
+import {
+  normalizeEliticalDescription,
+  validateEliticalDescription,
+} from "./utils/eliticalDocketCreate";
+import {
+  buildSyncStatusPresentation,
+  syncDirectionLabel as syncPresentationDirectionLabel,
+} from "./utils/syncStatusPresentation";
+import {
+  addRetainedCreationContext,
+  clearRetainedCreationContexts,
+  loadRetainedCreationContextState,
+  removeRetainedCreationContexts,
+  retainedNodeIdsForContext,
+  saveRetainedCreationContextState,
+} from "./utils/retainedCreationContext";
+import {
+  BACKLOG_GROUPINGS,
+  DEFAULT_BACKLOG_GROUPING,
+  BACKLOG_ELIGIBLE_STATES,
+  buildBacklogProjection,
+  isBacklogEligible,
+} from "./utils/backlogProjection";
 import "./App.css";
 
 const MAIN_ROOT_ID = "mainRoot";
@@ -72,11 +143,12 @@ const APP_VIEWS = [
   { id: "worklog", label: "Worklog View" },
   { id: "dashboard", label: "Dashboard" },
 ];
-const PLANNING_VIEW_IDS = new Set(["backlog", "worklog"]);
+const PLANNING_VIEW_IDS = new Set(["worklog"]);
 const CONTEXT_VIEW_IDS = new Set(["sprint", "epic", "story", "job", "task", "day"]);
 const WORKLOG_DEPENDENT_VIEW_IDS = new Set(["day", "worklog", "dashboard"]);
 const DOCKET_CONTEXT_TYPES = new Set(["epic", "story", "job", "task"]);
 const BROWSER_REFRESH_STATE_KEY = "elitical-worklog.browser-refresh-state.v1";
+const BACKLOG_GROUPING_STORAGE_KEY = "elitical-worklog.backlog-grouping.v1";
 
 function isBrowserReloadNavigation() {
   if (typeof window === "undefined" || typeof window.performance === "undefined") {
@@ -118,6 +190,71 @@ function saveBrowserRefreshState(state) {
   }
 }
 
+function useDismissableLayer({ open, refs = [], onDismiss }) {
+  useEffect(() => {
+    if (!open) return undefined;
+
+    function isInsideLayer(target, event) {
+      const path =
+        typeof event.composedPath === "function" ? event.composedPath() : [];
+
+      return refs.some((ref) => {
+        const node = ref?.current;
+
+        return Boolean(
+          node &&
+            (node.contains(target) || (path.length > 0 && path.includes(node)))
+        );
+      });
+    }
+
+    function handlePointerDown(event) {
+      if (isInsideLayer(event.target, event)) return;
+
+      onDismiss();
+    }
+
+    function handleKeyDown(event) {
+      if (event.key !== "Escape") return;
+
+      event.preventDefault();
+      onDismiss();
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, refs, onDismiss]);
+}
+
+function readBacklogGroupingPreference() {
+  if (typeof window === "undefined") return DEFAULT_BACKLOG_GROUPING;
+
+  try {
+    const value = window.localStorage.getItem(BACKLOG_GROUPING_STORAGE_KEY);
+
+    return BACKLOG_GROUPINGS.some((grouping) => grouping.id === value)
+      ? value
+      : DEFAULT_BACKLOG_GROUPING;
+  } catch {
+    return DEFAULT_BACKLOG_GROUPING;
+  }
+}
+
+function saveBacklogGroupingPreference(value) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(BACKLOG_GROUPING_STORAGE_KEY, value);
+  } catch {
+    // Preference storage is optional; Backlog still works without it.
+  }
+}
+
 function normalizeSyncQueueSummary(summary = {}) {
   const actionableCount = Number(
     summary.actionableCount ?? summary.pendingCount ?? 0
@@ -143,6 +280,7 @@ function normalizeSyncQueueSummary(summary = {}) {
     ),
     failedCount: Number(summary.failedCount ?? 0),
     blockedCount: Number(summary.blockedCount ?? 0),
+    supersededCount: Number(summary.supersededCount ?? 0),
     operations: Array.isArray(summary.operations) ? summary.operations : [],
   };
 }
@@ -164,6 +302,8 @@ function formatType(type) {
 }
 
 function makeCreateDraft(type, sprint, docketState) {
+  const canonicalState = normalizeDocketState(docketState);
+
   return {
     title: "",
     description: "",
@@ -172,7 +312,9 @@ function makeCreateDraft(type, sprint, docketState) {
     category: "feature",
     priority: "info",
     sprint,
-    docketState,
+    docketState: canonicalState,
+    stateId: docketStateApiId(canonicalState),
+    stateName: docketStateApiName(canonicalState),
     storyPoints: 0,
     time: "00:00",
     type,
@@ -195,7 +337,7 @@ function makeSprintDraft(sprint, rootTitle, rootDocketState) {
     createdAt: sprint?.createdAt ? formatDateTimeLocalInput(sprint.createdAt) : "",
     updatedBy: sprint?.updatedBy || "",
     updatedAt: sprint?.updatedAt ? formatDateTimeLocalInput(sprint.updatedAt) : "",
-    docketState: sprint?.docketState || rootDocketState || "concept",
+    docketState: normalizeDocketState(sprint?.docketState || rootDocketState),
   };
 }
 
@@ -217,9 +359,9 @@ function makeEditDraft(item, fallbackSprint) {
     sprint: item.sprint || fallbackSprint,
     sprintId: persistedSprintId,
     sprintName: item.sprint || fallbackSprint,
-    docketState: item.docketState || "concept",
+    docketState: normalizeDocketState(item.docketState),
     stateId: item.elitical?.stateId || item.dktStateId || "",
-    stateName: item.docketState || item.dktStateName || "concept",
+    stateName: docketStateApiName(item.docketState || item.dktStateName),
     assigneeId: item.elitical?.assigneeId || item.assigneeId || "",
     assigneeName: item.elitical?.assigneeName || item.assignee || "",
     parentId: item.parentId || "",
@@ -313,15 +455,35 @@ function buildLocalStateOptions(item, workItems = []) {
     !item?.elitical?.projectId ||
     !entry?.elitical?.projectId ||
     entry.elitical.projectId === item.elitical.projectId;
+  const discoveredByState = new Map();
+
+  workItems
+    .filter((entry) => sameProject(entry) && entry?.elitical?.stateId)
+    .forEach((entry) => {
+      const canonical = normalizeDocketState(
+        entry.docketState || entry.elitical.stateName || entry.dktStateName
+      );
+
+      if (discoveredByState.has(canonical)) return;
+
+      discoveredByState.set(canonical, {
+        id: entry.elitical.stateId,
+        name: docketStateApiName(canonical),
+        label: docketStateLabel(canonical),
+        canonicalState: canonical,
+      });
+    });
 
   return sortLookupOptions(
     normalizeLookupOptions(
-      workItems
-        .filter((entry) => sameProject(entry) && entry?.elitical?.stateId)
-        .map((entry) => ({
-          id: entry.elitical.stateId,
-          name: entry.docketState || entry.elitical.stateName || entry.dktStateName || entry.elitical.stateId,
-        }))
+      DOCKET_STATE_OPTIONS.map((state) => (
+        discoveredByState.get(state.value) || {
+          id: docketStateApiId(state.value) || state.value,
+          name: state.apiName,
+          label: state.label,
+          canonicalState: state.value,
+        }
+      ))
     )
   );
 }
@@ -380,7 +542,7 @@ function buildLocalEpicOptions(item, workItems = []) {
 function fallbackLookupOptions(values = []) {
   return values.map((value) => ({
     id: value,
-    name: formatLabel(value),
+    name: DOCKET_STATES.includes(value) ? docketStateLabel(value) : formatLabel(value),
   }));
 }
 
@@ -427,9 +589,10 @@ function supportedUpdatePayloadForItem(item, updates = {}, { workItems = [], spr
     String(nextStateId || "").trim() &&
     String(nextStateId || "").trim() !== String(item.elitical?.stateId || item.dktStateId || "").trim()
   ) {
+    const canonicalState = normalizeDocketState(nextStateName, item.docketState);
     sdkUpdates.dktStateId = String(nextStateId || "").trim();
-    sdkUpdates.dktStateName = String(nextStateName || "").trim();
-    sdkUpdates.docketState = String(updates.docketState || nextStateName || "").trim();
+    sdkUpdates.dktStateName = docketStateApiName(canonicalState);
+    sdkUpdates.docketState = canonicalState;
     sdkUpdates.elitical = {
       ...(updates.elitical || item.elitical || {}),
       stateId: sdkUpdates.dktStateId,
@@ -528,12 +691,11 @@ function mergeOption(options, id, name) {
 }
 
 function localDocketStateValue(label, current) {
-  const normalized = String(label || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_\s]+/g, "-");
+  return normalizeDocketState(label, normalizeDocketState(current));
+}
 
-  return DOCKET_STATES.includes(normalized) ? normalized : current || "concept";
+function stateOptionDisplayLabel(options, id, fallback = "") {
+  return docketStateLabel(optionLabel(options, id, fallback));
 }
 
 function createTypesForParent(parentId, workItems) {
@@ -671,7 +833,9 @@ function validateCreatePayload(payload, workItems, sprints) {
   const title = String(payload.title || "").trim();
   const parentId = String(payload.parentId || "").trim();
   const validTypes =
-    payload.isOrphanSprint && parentId === ROOT_ID
+    parentId === ROOT_ID &&
+    (payload.isOrphanSprint ||
+      sprints.some((sprint) => sprint.id === payload.sprintId && sprint.id !== ROOT_ID))
       ? ["epic"]
       : createTypesForParent(parentId, workItems, sprints);
 
@@ -682,6 +846,13 @@ function validateCreatePayload(payload, workItems, sprints) {
     return "Choose a valid parent for this docket type.";
   }
   if (!title) return "Title is required.";
+  {
+    const descriptionError = validateEliticalDescription(
+      payload.description ?? payload.descr
+    );
+
+    if (descriptionError) return descriptionError;
+  }
   if (type !== "epic" && !workItems.some((item) => item.id === parentId)) {
     return "A valid parent is required.";
   }
@@ -782,26 +953,6 @@ function optionalDateInputToIso(value) {
   return dateInputToIso(value, value);
 }
 
-function formatWorkTime(minutes) {
-  const safeMinutes = Math.max(0, Math.round(Number(minutes) || 0));
-  const officeDayMinutes = 8 * 60;
-
-  if (safeMinutes <= officeDayMinutes) {
-    return formatTimeInput(safeMinutes);
-  }
-
-  const days = Math.floor(safeMinutes / officeDayMinutes);
-  const remainder = safeMinutes % officeDayMinutes;
-  const hours = Math.floor(remainder / 60);
-  const remainingMinutes = remainder % 60;
-
-  return [
-    String(days).padStart(2, "0"),
-    String(hours).padStart(2, "0"),
-    String(remainingMinutes).padStart(2, "0"),
-  ].join(":");
-}
-
 function acceptsTime(type) {
   return type === "story" || type === "task" || type === "job";
 }
@@ -823,12 +974,7 @@ function worklogDraftFromFields(draft = {}) {
 function isMeaningfulWorklogDraft(draft = {}) {
   const worklog = worklogDraftFromFields(draft);
 
-  return Boolean(
-    worklog.comment ||
-    worklog.worklogDate ||
-    Number(worklog.hour) > 0 ||
-    Number(worklog.min) > 0
-  );
+  return Number(worklog.hour) > 0 || Number(worklog.min) > 0;
 }
 
 function validateWorklogDraft(draft = {}) {
@@ -877,10 +1023,10 @@ function inheritedSprint(parentId, workItems, rootTitle) {
 }
 
 function inheritedDocketState(parentId, workItems, rootDocketState) {
-  if (parentId === ROOT_ID) return rootDocketState || "concept";
+  if (parentId === ROOT_ID) return normalizeDocketState(rootDocketState);
 
   const parent = workItems.find((item) => item.id === parentId);
-  return parent?.docketState || rootDocketState || "concept";
+  return normalizeDocketState(parent?.docketState || rootDocketState);
 }
 
 function openChildNames(parentId, workItems) {
@@ -888,7 +1034,7 @@ function openChildNames(parentId, workItems) {
     .filter(
       (item) =>
         item.parentId === parentId &&
-        (item.docketState || "concept") !== "artifact"
+        normalizeDocketState(item.docketState) !== "artifact"
     )
     .map((item) => item.title);
 }
@@ -915,7 +1061,7 @@ function normalizeArtifactRollup(items, rootDocketState) {
 
     const item = itemById.get(id);
     const childIds = childIdsByParent.get(id) || [];
-    let nextState = item?.docketState || "concept";
+    let nextState = normalizeDocketState(item?.docketState);
 
     if (childIds.length > 0) {
       const allChildrenArtifact = childIds.every(
@@ -935,7 +1081,7 @@ function normalizeArtifactRollup(items, rootDocketState) {
 
   const nextItems = items.map((item) => {
     const nextState = stateFor(item.id);
-    return item.docketState === nextState
+    return normalizeDocketState(item.docketState) === nextState
       ? item
       : {
           ...item,
@@ -1106,6 +1252,34 @@ function contextOptionMeta(option, viewMode) {
   return [formatType(option.type), option.sprint].filter(Boolean).join(" · ");
 }
 
+function normalizeContextSearch(value) {
+  return String(value || "").toLowerCase().trim();
+}
+
+function contextOptionSearchText(option, viewMode) {
+  return [
+    contextOptionLabel(option, viewMode),
+    contextOptionMeta(option, viewMode),
+    option?.title,
+    option?.name,
+    option?.num,
+    option?.code,
+    option?.id,
+    option?.elitical?.num,
+    option?.elitical?.code,
+    option?.elitical?.remoteId,
+  ]
+    .map(normalizeContextSearch)
+    .filter(Boolean)
+    .join(" ");
+}
+
+function emptyContextOptionsLabel(label, options, query) {
+  if (options.length > 0 && query.trim()) return "No matching results";
+
+  return `No ${label}s available`;
+}
+
 function contextViewLabel(viewMode) {
   if (viewMode === "sprint") return "Sprint";
   if (viewMode === "epic") return "Epic";
@@ -1164,18 +1338,45 @@ function worklogMinutes(entry) {
   return Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes) : 0;
 }
 
-function worklogsForDay(item, selectedDate) {
+function employeeScopeId(scope) {
+  return String(scope?.employeeId || scope?.id || "").trim();
+}
+
+function worklogMatchesEmployeeScope(entry, scope) {
+  const scopeId = employeeScopeId(scope);
+
+  if (!scopeId) return true;
+
+  const entryEmployeeId = String(entry?.employeeId || "").trim();
+
+  return entryEmployeeId ? entryEmployeeId === scopeId : false;
+}
+
+function itemAssigneeId(item = {}) {
+  return String(item.elitical?.assigneeId || item.assigneeId || "").trim();
+}
+
+function itemMatchesEmployeeScope(item, scope) {
+  const scopeId = employeeScopeId(scope);
+
+  if (!scopeId) return true;
+
+  return itemAssigneeId(item) === scopeId;
+}
+
+function worklogsForDay(item, selectedDate, employeeScope = null) {
   if (!selectedDate || !Array.isArray(item?.worklogs)) return [];
 
   return item.worklogs.filter(
     (entry) =>
       isRealImportedWorklog(entry) &&
+      worklogMatchesEmployeeScope(entry, employeeScope) &&
       worklogDateToInput(entry.worklogDate || entry.date) === selectedDate
   );
 }
 
-function aggregateDayWorklogs(item, selectedDate) {
-  const worklogs = worklogsForDay(item, selectedDate);
+function aggregateDayWorklogs(item, selectedDate, employeeScope = null) {
+  const worklogs = worklogsForDay(item, selectedDate, employeeScope);
   const totalMinutes = worklogs.reduce(
     (total, entry) => total + worklogMinutes(entry),
     0
@@ -1254,6 +1455,9 @@ function buildContextGraph({
   sprints = [],
   viewMode,
   selectedId,
+  dayProjectionSelections,
+  retainedCreationContexts,
+  employeeScope = null,
 }) {
   if (!CONTEXT_VIEW_IDS.has(viewMode) || !selectedId) {
     return {
@@ -1268,6 +1472,8 @@ function buildContextGraph({
   const selectedIds = new Set();
   const selectedSprintIds = new Set();
   const dayAggregates = new Map();
+  const dayProjectionContextById = new Map();
+  const dayContextMembershipById = new Map();
   const childrenByParent = workItems.reduce((acc, item) => {
     if (!acc.has(item.parentId)) acc.set(item.parentId, []);
     acc.get(item.parentId).push(item);
@@ -1282,8 +1488,34 @@ function buildContextGraph({
       selectedSprintIds.add(selectedId);
     });
   } else if (viewMode === "day") {
+    const selectedDate = dateKeyFromValue(selectedId);
+    const dateSprints = sprintScopesForDay(sprints, selectedDate);
+    const dateSprintIds = new Set(dateSprints.map((sprint) => sprint.id));
+    const daySelection = daySelectionForDate(dayProjectionSelections, selectedDate);
+    const retainedIds = retainedNodeIdsForContext({
+      state: retainedCreationContexts,
+      viewMode: "day",
+      contextId: selectedDate,
+    });
+
+    dateSprints.forEach((sprint) => selectedSprintIds.add(sprint.id));
+    if (dateSprints.length > 1 && typeof console !== "undefined") {
+      console.warn(
+        "Day View selected date matches multiple Sprint ranges; rendering all matching Sprint scopes.",
+        {
+          selectedDate,
+          sprints: dateSprints.map((sprint) => ({
+            id: sprint.id,
+            title: sprint.title,
+            sprintStartDate: sprint.sprintStartDate,
+            sprintEndDate: sprint.sprintEndDate,
+          })),
+        }
+      );
+    }
+
     workItems.forEach((item) => {
-      const aggregate = aggregateDayWorklogs(item, selectedId);
+      const aggregate = aggregateDayWorklogs(item, selectedId, employeeScope);
 
       if (aggregate.count === 0) return;
 
@@ -1292,6 +1524,65 @@ function buildContextGraph({
 
       const sprintId = displaySprintIdForItem(item);
       if (sprintById.has(sprintId)) selectedSprintIds.add(sprintId);
+    });
+
+    Object.entries(daySelection.epicsBySprint || {}).forEach(([sprintId, ids]) => {
+      if (!dateSprintIds.has(sprintId)) return;
+
+      ids.forEach((id) => {
+        const item = itemById.get(id);
+        if (item?.type !== "epic") return;
+
+        selectedIds.add(item.id);
+        selectedSprintIds.add(sprintId);
+        dayContextMembershipById.set(item.id, {
+          date: selectedDate,
+          source: "projection",
+        });
+        dayProjectionContextById.set(item.id, {
+          sprintId,
+          parentId: item.parentId || ROOT_ID,
+        });
+      });
+    });
+
+    Object.entries(daySelection.storiesByEpicScope || {}).forEach(([scopeKey, ids]) => {
+      const [epicId, sprintId = ""] = scopeKey.split("::");
+
+      if (!dateSprintIds.has(sprintId)) return;
+
+      ids.forEach((id) => {
+        const item = itemById.get(id);
+        if (item?.type !== "story") return;
+        if (item.parentId !== epicId) return;
+
+        selectedIds.add(item.id);
+        selectedSprintIds.add(sprintId);
+        dayContextMembershipById.set(item.id, {
+          date: selectedDate,
+          source: "projection",
+        });
+        dayProjectionContextById.set(item.id, {
+          sprintId,
+          parentId: epicId,
+        });
+      });
+    });
+
+    retainedIds.forEach((id) => {
+      const item = itemById.get(id);
+      if (!item || item.isVirtual || isReferenceNode(item)) return;
+      if (!["epic", "story", "job", "task"].includes(item.type)) return;
+
+      const sprintId = dayScopeIdForItem(item);
+      if (!dateSprintIds.has(sprintId)) return;
+
+      selectedIds.add(item.id);
+      selectedSprintIds.add(sprintId);
+      dayContextMembershipById.set(item.id, {
+        date: selectedDate,
+        source: "retained",
+      });
     });
   } else if (viewMode === "epic") {
     if (itemById.has(selectedId)) {
@@ -1322,6 +1613,14 @@ function buildContextGraph({
     .filter((item) => selectedIds.has(item.id))
     .map((item) => {
       const aggregate = dayAggregates.get(item.id);
+      const dayProjectionContext =
+        viewMode === "day" ? dayProjectionContextById?.get(item.id) : null;
+      const dayContextMembership =
+        viewMode === "day" ? dayContextMembershipById?.get(item.id) : null;
+      const projectedSprintId = dayProjectionContext?.sprintId || "";
+      const projectedSprintTitle = dayProjectionContext
+        ? sprintTitleForScope(projectedSprintId, sprints)
+        : "";
       const dayItem =
         viewMode === "day" && aggregate
           ? {
@@ -1337,25 +1636,60 @@ function buildContextGraph({
               dayWorklogComments: aggregate.comments,
             }
           : item;
+      const contextItem =
+        dayProjectionContext
+          ? {
+              ...dayItem,
+              sprintId: isOrphanSprintId(projectedSprintId) ? "" : projectedSprintId,
+              sprint: projectedSprintTitle || dayItem.sprint || "",
+              targetScopeId: projectedSprintId,
+              targetSprintId: projectedSprintId,
+              visualParentId:
+                (dayProjectionContext.parentId || dayItem.parentId || ROOT_ID) === ROOT_ID
+                  ? projectedSprintId
+                  : dayProjectionContext.parentId,
+              childSprintId: isOrphanSprintId(projectedSprintId)
+                ? ""
+                : projectedSprintId,
+              childSprint: projectedSprintTitle || dayItem.sprint || "",
+              isOrphanSprintContext: isOrphanSprintId(projectedSprintId),
+            }
+          : dayItem;
 
-      return selectedIds.has(dayItem.id)
+      return selectedIds.has(contextItem.id)
         ? {
-            ...dayItem,
+            ...contextItem,
+            dayContextDate: dayContextMembership?.date || contextItem.dayContextDate || "",
+            isDayProjectionSelected:
+              dayContextMembership?.source === "projection" || Boolean(contextItem.isDayProjectionSelected),
+            isRetainedDayContext:
+              dayContextMembership?.source === "retained" || Boolean(contextItem.isRetainedDayContext),
             isContextPrimary: true,
           }
-        : dayItem;
+        : contextItem;
     });
+
+  const selectedSprints = sprints.filter((sprint) => selectedSprintIds.has(sprint.id));
+
+  if (viewMode === "day") {
+    selectedSprintIds.forEach((id) => {
+      if (selectedSprints.some((sprint) => sprint.id === id)) return;
+      if (isOrphanSprintId(id)) {
+        selectedSprints.push(sprintScopesForDay([], "").find((sprint) => sprint.id === id));
+      }
+    });
+  }
 
   return {
     workItems: contextWorkItems,
     rootId: null,
-    sprints: sprints.filter((sprint) => selectedSprintIds.has(sprint.id)),
+    sprints: selectedSprints.filter(Boolean),
   };
 }
 
-function dayViewSummary({ workItems, graphWorkItems, selectedDate, rootTitle }) {
+function dayViewSummary({ workItems, graphWorkItems, graphSprints, selectedDate, rootTitle, employeeScope }) {
   const dayWorklogs = workItems.flatMap((item) =>
-    worklogsForDay(item, selectedDate).map((entry) => ({
+    worklogsForDay(item, selectedDate, employeeScope).map((entry) => ({
       item,
       entry,
     }))
@@ -1378,12 +1712,312 @@ function dayViewSummary({ workItems, graphWorkItems, selectedDate, rootTitle }) 
     worklogs: dayWorklogs.length,
     totalMinutes,
     projects: rootTitle ? 1 : 0,
-    sprints: sprintNames.size,
+    sprints: Math.max(
+      sprintNames.size,
+      (graphSprints || []).filter((sprint) => sprint.id !== ROOT_ID).length
+    ),
     epics: graphByType.epic || 0,
     stories: graphByType.story || 0,
     jobs: graphByType.job || 0,
     tasks: graphByType.task || 0,
     dockets: selectedDocketIds.size,
+  };
+}
+
+function timelineDateOrdinal(value) {
+  const key = dateKeyFromValue(value);
+  const [year, month, day] = key.split("-").map((part) => Number(part));
+
+  if (![year, month, day].every(Number.isFinite)) return null;
+
+  return Date.UTC(year, month - 1, day) / 86400000;
+}
+
+function timelineDateFromOrdinal(ordinal) {
+  return new Date(ordinal * 86400000).toISOString().slice(0, 10);
+}
+
+function timelineDateLabel(dateKey) {
+  const [year, month, day] = String(dateKey || "").split("-");
+
+  return year && month && day ? `${day}/${month}/${year.slice(-2)}` : "--/--/--";
+}
+
+function timelineShortDateLabel(dateKey) {
+  const [, month, day] = String(dateKey || "").split("-");
+
+  return month && day ? `${day}/${month}` : "--/--";
+}
+
+function timelineYearLabel(yearKey) {
+  return String(yearKey || "").slice(0, 4) || "Year";
+}
+
+function timelineDayLabel(dateKey) {
+  const ordinal = timelineDateOrdinal(dateKey);
+
+  if (ordinal === null) return "---";
+
+  return new Intl.DateTimeFormat("en", {
+    weekday: "short",
+    timeZone: "UTC",
+  }).format(new Date(ordinal * 86400000));
+}
+
+function timelineMonthLabel(monthKey) {
+  const [year, month] = String(monthKey || "").split("-").map((part) => Number(part));
+
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return "Unknown";
+
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
+}
+
+function timelineSprintDateLabel(value) {
+  const key = dateKeyFromValue(value);
+  if (!key) return "Open";
+
+  const [year, month, day] = key.split("-");
+  return `${day}/${month}/${year.slice(-2)}`;
+}
+
+function timelineSprintStart(sprint = {}) {
+  return sprint.sprintStartDate || sprint.startDate || sprint.plannedStartDate || "";
+}
+
+function timelineSprintEnd(sprint = {}) {
+  return sprint.sprintEndDate || sprint.endDate || sprint.plannedEndDate || "";
+}
+
+function timelineSprintLabel(sprint) {
+  return sprint?.title || sprint?.name || sprint?.id || ORPHAN_SPRINT_TITLE;
+}
+
+function dateKeyForTimelineWorklog(entry) {
+  return worklogDateToInput(entry?.worklogDate || entry?.date);
+}
+
+function storyOwnerForTimelineItem(item, itemById) {
+  if (!item) return null;
+  if (item.type === "story") return item;
+
+  let parentId = item.parentId;
+  const visited = new Set();
+
+  while (parentId && parentId !== ROOT_ID && !visited.has(parentId)) {
+    visited.add(parentId);
+    const parent = itemById.get(parentId);
+
+    if (!parent) return null;
+    if (parent.type === "story") return parent;
+    parentId = parent.parentId;
+  }
+
+  return null;
+}
+
+function timelineSprintForDate(sprints = [], dateKey) {
+  const realMatches = sprints
+    .filter((sprint) => sprint?.id && sprint.id !== ROOT_ID && !isOrphanSprintId(sprint.id))
+    .filter((sprint) => sprintContainsDate(sprint, dateKey))
+    .sort((first, second) =>
+      [
+        dateKeyFromValue(timelineSprintStart(first)) || "9999-12-31",
+        dateKeyFromValue(timelineSprintEnd(first)) || "9999-12-31",
+        timelineSprintLabel(first),
+      ].join(":").localeCompare(
+        [
+          dateKeyFromValue(timelineSprintStart(second)) || "9999-12-31",
+          dateKeyFromValue(timelineSprintEnd(second)) || "9999-12-31",
+          timelineSprintLabel(second),
+        ].join(":")
+      )
+    );
+
+  if (realMatches.length === 1) return realMatches[0];
+  if (realMatches.length > 1) {
+    return {
+      id: realMatches.map((sprint) => sprint.id).join("|"),
+      title: realMatches.map(timelineSprintLabel).join(" / "),
+      isOverlappingSprintGroup: true,
+      sourceSprints: realMatches,
+    };
+  }
+
+  return {
+    id: ORPHAN_SPRINT_ID,
+    title: ORPHAN_SPRINT_TITLE,
+    isOrphanSprint: true,
+  };
+}
+
+function earliestTimelineDate({ workItems = [], sprints = [], todayKey }) {
+  const candidates = [todayKey];
+
+  sprints.forEach((sprint) => {
+    const start = dateKeyFromValue(timelineSprintStart(sprint));
+    if (start) candidates.push(start);
+  });
+
+  workItems.forEach((item) => {
+    const created = dateKeyFromValue(item.createdAt);
+    if (created) candidates.push(created);
+    const updated = dateKeyFromValue(item.updatedAt);
+    if (updated) candidates.push(updated);
+    (item.worklogs || []).forEach((entry) => {
+      const key = dateKeyForTimelineWorklog(entry);
+      if (key) candidates.push(key);
+    });
+  });
+
+  return candidates
+    .filter(Boolean)
+    .sort((first, second) => timelineDateOrdinal(first) - timelineDateOrdinal(second))[0] || todayKey;
+}
+
+function buildDayTimelineModel({ workItems = [], sprints = [], selectedDate, todayKey, employeeScope = null }) {
+  const itemById = new Map(workItems.map((item) => [item.id, item]));
+  const daily = new Map();
+
+  function ensureDay(dateKey) {
+    if (!daily.has(dateKey)) {
+      daily.set(dateKey, {
+        dateKey,
+        minutes: 0,
+        storyIds: new Set(),
+        storyPoints: 0,
+      });
+    }
+
+    return daily.get(dateKey);
+  }
+
+  workItems.forEach((item) => {
+    (item.worklogs || []).forEach((entry) => {
+      if (!isRealImportedWorklog(entry)) return;
+      if (!worklogMatchesEmployeeScope(entry, employeeScope)) return;
+
+      const dateKey = dateKeyForTimelineWorklog(entry);
+      if (!dateKey) return;
+
+      const day = ensureDay(dateKey);
+      day.minutes += worklogMinutes(entry);
+
+      const story = storyOwnerForTimelineItem(item, itemById);
+      if (story?.id && itemMatchesEmployeeScope(story, employeeScope)) {
+        day.storyIds.add(story.id);
+      }
+    });
+  });
+
+  daily.forEach((day) => {
+    day.storyPoints = Array.from(day.storyIds).reduce(
+      (total, storyId) => total + Number(itemById.get(storyId)?.storyPoints || 0),
+      0
+    );
+  });
+
+  const startKey = earliestTimelineDate({ workItems, sprints, todayKey });
+  const startOrdinal = timelineDateOrdinal(startKey) ?? timelineDateOrdinal(todayKey);
+  const todayOrdinal = timelineDateOrdinal(todayKey);
+  const days = [];
+
+  for (let ordinal = startOrdinal; ordinal <= Math.max(startOrdinal, todayOrdinal); ordinal += 1) {
+    const dateKey = timelineDateFromOrdinal(ordinal);
+    const day = ensureDay(dateKey);
+    const sprint = timelineSprintForDate(sprints, dateKey);
+    const dayOfWeek = new Date(ordinal * 86400000).getUTCDay();
+
+    days.push({
+      ...day,
+      storyIds: Array.from(day.storyIds),
+      sprint,
+      sprintId: sprint.id,
+      sprintTitle: timelineSprintLabel(sprint),
+      isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
+      isToday: dateKey === todayKey,
+      isSelected: dateKey === selectedDate,
+    });
+  }
+
+  const monthsByKey = new Map();
+  const yearsByKey = new Map();
+  const sprintsById = new Map();
+
+  days.forEach((day) => {
+    const monthKey = day.dateKey.slice(0, 7);
+    const yearKey = day.dateKey.slice(0, 4);
+    if (!monthsByKey.has(monthKey)) {
+      monthsByKey.set(monthKey, {
+        key: monthKey,
+        label: timelineMonthLabel(monthKey),
+        startDate: day.dateKey,
+        endDate: day.dateKey,
+        minutes: 0,
+        storyIds: new Set(),
+      });
+    }
+    const month = monthsByKey.get(monthKey);
+    month.endDate = day.dateKey;
+    month.minutes += day.minutes;
+    day.storyIds.forEach((id) => month.storyIds.add(id));
+
+    if (!yearsByKey.has(yearKey)) {
+      yearsByKey.set(yearKey, {
+        key: yearKey,
+        label: timelineYearLabel(yearKey),
+        startDate: day.dateKey,
+        endDate: day.dateKey,
+        minutes: 0,
+        storyIds: new Set(),
+      });
+    }
+    const year = yearsByKey.get(yearKey);
+    year.endDate = day.dateKey;
+    year.minutes += day.minutes;
+    day.storyIds.forEach((id) => year.storyIds.add(id));
+
+    const sprintId = day.sprintId || ORPHAN_SPRINT_ID;
+    if (!sprintsById.has(sprintId)) {
+      sprintsById.set(sprintId, {
+        id: sprintId,
+        title: day.sprintTitle,
+        startDate: day.dateKey,
+        endDate: day.dateKey,
+        minutes: 0,
+        storyIds: new Set(),
+        isOrphanSprint: sprintId === ORPHAN_SPRINT_ID,
+      });
+    }
+    const sprint = sprintsById.get(sprintId);
+    sprint.endDate = day.dateKey;
+    sprint.minutes += day.minutes;
+    day.storyIds.forEach((id) => sprint.storyIds.add(id));
+  });
+
+  function finalizeAggregate(entry) {
+    const storyIds = Array.from(entry.storyIds);
+
+    return {
+      ...entry,
+      storyIds,
+      storyPoints: storyIds.reduce(
+        (total, storyId) => total + Number(itemById.get(storyId)?.storyPoints || 0),
+        0
+      ),
+    };
+  }
+
+  return {
+    days,
+    months: Array.from(monthsByKey.values()).map(finalizeAggregate),
+    years: Array.from(yearsByKey.values()).map(finalizeAggregate),
+    sprints: Array.from(sprintsById.values()).map(finalizeAggregate),
+    todayKey,
+    selectedDate,
   };
 }
 
@@ -1424,7 +2058,7 @@ function formatLabel(value) {
 }
 
 function formatDocketState(state) {
-  return formatLabel(state);
+  return docketStateLabel(state);
 }
 
 function formatTimestamp(value) {
@@ -1439,6 +2073,181 @@ function formatTimestamp(value) {
     hour: "numeric",
     minute: "2-digit",
   }).format(date);
+}
+
+const EMPTY_SYNC_ACTIVITY = {
+  direction: "idle",
+  phase: "idle",
+  state: "idle",
+  message: "Idle",
+  entityType: "",
+  operationType: "",
+  current: null,
+  total: null,
+  unit: "",
+  startedAt: "",
+  updatedAt: "",
+  completedAt: "",
+  error: "",
+  history: [],
+};
+
+function sanitizeSyncActivityText(value, fallback = "") {
+  const text = String(value || fallback || "").trim();
+
+  if (!text) return "";
+  if (/(authorization|cookie|jwt|token|session|password|secret)/i.test(text)) {
+    return "Progress update";
+  }
+
+  return text.length > 140 ? `${text.slice(0, 137)}...` : text;
+}
+
+function numericProgressValue(value) {
+  const number = Number(value);
+
+  return Number.isFinite(number) && number >= 0 ? number : null;
+}
+
+function syncActivityStateFromProgress(progress = {}, fallbackState = "running") {
+  if (progress.state) return progress.state;
+  if (progress.phase === "complete") return "synced";
+  if (progress.phase === "failed") return "failed";
+  if (progress.phase === "warning") return "running";
+
+  return fallbackState;
+}
+
+function normalizeSyncActivityEvent(progress = {}, fallbackDirection = "inbound", previous = EMPTY_SYNC_ACTIVITY) {
+  const now = progress.emittedAt || new Date().toISOString();
+  const state = syncActivityStateFromProgress(progress);
+  const direction = progress.direction || fallbackDirection;
+  const current = numericProgressValue(progress.current);
+  const total = numericProgressValue(progress.total);
+  const historyEntry =
+    previous?.message && previous.message !== "Idle"
+      ? {
+          message: previous.message,
+          phase: previous.phase,
+          direction: previous.direction,
+          updatedAt: previous.updatedAt,
+        }
+      : null;
+  const nextHistory = historyEntry
+    ? [historyEntry, ...(previous.history || [])].slice(0, 5)
+    : previous.history || [];
+
+  return {
+    direction,
+    phase: progress.phase || previous.phase || "running",
+    state,
+    message: sanitizeSyncActivityText(progress.message, previous.message || "Syncing..."),
+    entityType: sanitizeSyncActivityText(progress.entityType || previous.entityType || ""),
+    operationType: sanitizeSyncActivityText(progress.operationType || previous.operationType || ""),
+    current,
+    total,
+    unit: sanitizeSyncActivityText(progress.unit || previous.unit || ""),
+    startedAt: previous.startedAt || now,
+    updatedAt: now,
+    completedAt: state === "synced" || state === "failed" ? now : "",
+    error: state === "failed" ? sanitizeSyncActivityText(progress.error || progress.message || "") : "",
+    history: nextHistory,
+  };
+}
+
+function localSavedSyncActivity(message = "Saved locally", previous = EMPTY_SYNC_ACTIVITY) {
+  const now = new Date().toISOString();
+
+  return {
+    ...EMPTY_SYNC_ACTIVITY,
+    direction: "local",
+    phase: "saved-local",
+    state: "local",
+    message,
+    startedAt: now,
+    updatedAt: now,
+    completedAt: now,
+    history: previous?.message && previous.message !== "Idle"
+      ? [
+          {
+            message: previous.message,
+            phase: previous.phase,
+            direction: previous.direction,
+            updatedAt: previous.updatedAt,
+          },
+          ...(previous.history || []),
+        ].slice(0, 5)
+      : previous.history || [],
+  };
+}
+
+function completeSyncActivity(direction, message, previous = EMPTY_SYNC_ACTIVITY) {
+  return normalizeSyncActivityEvent(
+    {
+      direction,
+      state: "synced",
+      phase: "complete",
+      message,
+      current: previous.current,
+      total: previous.total,
+      unit: previous.unit,
+    },
+    direction,
+    previous
+  );
+}
+
+function failedSyncActivity(direction, message, previous = EMPTY_SYNC_ACTIVITY) {
+  return normalizeSyncActivityEvent(
+    {
+      direction,
+      state: "failed",
+      phase: "failed",
+      message,
+      error: message,
+      current: previous.current,
+      total: previous.total,
+      unit: previous.unit,
+    },
+    direction,
+    previous
+  );
+}
+
+function syncActivityDirectionLabel(direction, presentation = {}) {
+  return presentation.directionLabel || syncPresentationDirectionLabel(direction);
+}
+
+function syncActivityProgressLabel(activity) {
+  if (activity.current !== null && activity.total !== null && activity.total > 0) {
+    const unit = activity.unit ? ` ${activity.unit}` : "";
+
+    return `${activity.current} / ${activity.total}${unit}`;
+  }
+
+  return "Unknown";
+}
+
+function syncActivityRows(activity, presentation = {}) {
+  const rows = [
+    ["State", formatLabel(activity.state)],
+    ["Direction", syncActivityDirectionLabel(activity.direction, presentation)],
+    ["Activity", activity.message || "Idle"],
+  ];
+
+  if (activity.state === "running" && activity.entityType) {
+    rows.push(["Entity", formatLabel(activity.entityType)]);
+  }
+  if (activity.state === "running" && activity.operationType) {
+    rows.push(["Operation", formatLabel(activity.operationType)]);
+  }
+  if (activity.state === "running" || activity.current !== null || activity.total !== null) {
+    rows.push(["Progress", syncActivityProgressLabel(activity)]);
+  }
+  if (activity.error) rows.push(["Error", activity.error]);
+  if (activity.updatedAt) rows.push(["Updated", formatTimestamp(activity.updatedAt)]);
+
+  return rows;
 }
 
 function formatRelativeSync(value) {
@@ -1466,13 +2275,25 @@ function formatDateLabel(value) {
   }).format(date);
 }
 
-function itemMatchesQuery(item, query) {
-  const normalized = query.trim().toLowerCase();
+function normalizeInlineSearch(value) {
+  return String(value || "").toLowerCase().trim();
+}
 
-  if (!normalized) return true;
+function workItemSearchText(item = {}) {
+  const worklogText = Array.isArray(item.worklogs)
+    ? item.worklogs
+        .flatMap((entry) => [
+          entry?.comment,
+          entry?.description,
+          entry?.date,
+          entry?.worklogDate,
+        ])
+        .join(" ")
+    : "";
 
   return [
     item.title,
+    item.name,
     item.description,
     item.type,
     item.category,
@@ -1480,44 +2301,143 @@ function itemMatchesQuery(item, query) {
     item.docketState,
     item.sprint,
     item.id,
-  ].some((value) => String(value || "").toLowerCase().includes(normalized));
+    item.num,
+    item.docketNum,
+    item.docketNumber,
+    item.code,
+    item.elitical?.num,
+    item.elitical?.code,
+    item.elitical?.remoteId,
+    worklogText,
+  ]
+    .map(normalizeInlineSearch)
+    .filter(Boolean)
+    .join(" ");
 }
 
-function sprintMatchesQuery(sprint, query) {
-  const normalized = query.trim().toLowerCase();
+function searchItemForWorkItem(item = {}) {
+  return {
+    id: item.id,
+    focusId: item.sourceItemId || item.sourceDocketId || item.sourceId || item.id,
+    canonicalId: item.sourceItemId || item.sourceDocketId || item.sourceId || item.id,
+    entityType: item.type || "docket",
+    label: item.title || item.id,
+    docketNumber: docketNumberForItem(item),
+    sourceItem: item,
+    searchText: workItemSearchText(item),
+  };
+}
 
-  if (!normalized) return true;
-
+function sprintSearchText(sprint = {}) {
   return [
     sprint.id,
     sprint.title,
-    sprint.docketState,
+    sprint.name,
+    sprint.code,
+    sprint.num,
+    sprint.sprintState,
+    sprint.state,
     "sprint",
-  ].some((value) => String(value || "").toLowerCase().includes(normalized));
+  ]
+    .map(normalizeInlineSearch)
+    .filter(Boolean)
+    .join(" ");
 }
 
-function filterWorkItemsForSearch(items, query) {
-  const normalized = query.trim().toLowerCase();
+function worklogSearchItemsForWorkItems(items = []) {
+  return items.flatMap((item) =>
+    (item.worklogs || []).map((entry, index) => ({
+      id: `worklog:${item.id}:${entry.id || entry.worklogId || entry.date || index}`,
+      focusId: item.id,
+      entityType: "worklog",
+      label: entry.comment || entry.description || `${item.title} Worklog`,
+      searchText: [
+        item.title,
+        item.id,
+        docketNumberForItem(item),
+        entry.comment,
+        entry.description,
+        entry.date,
+        entry.worklogDate,
+        entry.employeeName,
+        "worklog",
+      ]
+        .map(normalizeInlineSearch)
+        .filter(Boolean)
+        .join(" "),
+    }))
+  );
+}
 
-  if (!normalized) return items;
+function searchItemsForCurrentView({
+  viewMode,
+  graphWorkItems = [],
+  graphSprints = [],
+  rootTitle = "",
+  mainTitle = "",
+}) {
+  // Future views must expose only their current rendered/scope dataset here.
+  // Do not fall back to a global workspace search for unknown view modes.
+  if (viewMode === "dashboard") {
+    return [
+      {
+        id: ROOT_ID,
+        focusId: ROOT_ID,
+        entityType: "project",
+        label: rootTitle || mainTitle || "Project",
+        searchText: normalizeInlineSearch(`${rootTitle} ${mainTitle} project dashboard`),
+      },
+      ...graphSprints.map((sprint) => ({
+        id: sprint.id,
+        focusId: sprint.id,
+        entityType: "sprint",
+        label: sprint.title || sprint.id,
+        searchText: sprintSearchText(sprint),
+      })),
+      ...graphWorkItems.map((item) => ({
+        ...searchItemForWorkItem(item),
+      })),
+    ];
+  }
 
-  const itemById = new Map(items.map((item) => [item.id, item]));
-  const visibleIds = new Set();
+  if (viewMode === "worklog") {
+    return [
+      ...graphWorkItems
+        .filter((item) => item.type === "job")
+        .map((item) => searchItemForWorkItem(item)),
+      ...worklogSearchItemsForWorkItems(graphWorkItems),
+    ];
+  }
 
-  items.forEach((item) => {
-    if (!itemMatchesQuery(item, normalized)) return;
+  if (viewMode === "backlog") {
+    return graphWorkItems
+      .filter((item) => item.isBacklogEligible || item.isBacklogDateGroup)
+      .map((item) => searchItemForWorkItem(item));
+  }
 
-    visibleIds.add(item.id);
+  if (
+    viewMode === "main" ||
+    viewMode === "sprint" ||
+    viewMode === "epic" ||
+    viewMode === "story" ||
+    viewMode === "job" ||
+    viewMode === "task" ||
+    viewMode === "day" ||
+    viewMode === "focused"
+  ) {
+    return [
+      ...graphSprints.map((sprint) => ({
+        id: sprint.id,
+        focusId: sprint.id,
+        entityType: "sprint",
+        label: sprint.title || sprint.id,
+        searchText: sprintSearchText(sprint),
+      })),
+      ...graphWorkItems.map((item) => searchItemForWorkItem(item)),
+    ];
+  }
 
-    let parentId = item.parentId;
-
-    while (parentId && parentId !== ROOT_ID) {
-      visibleIds.add(parentId);
-      parentId = itemById.get(parentId)?.parentId;
-    }
-  });
-
-  return items.filter((item) => visibleIds.has(item.id));
+  return [];
 }
 
 function primaryWorklogDate(item) {
@@ -1529,7 +2449,7 @@ function MetadataBadge({ children }) {
   return <span className="metadata-badge">{children || "-"}</span>;
 }
 
-function DashboardView({ workItems, sprints, rootTitle, totals, lastSyncedAt }) {
+function DashboardView({ workItems, sprints, rootTitle, totals, lastSyncedAt, employeeScope = null }) {
   const stories = workItems.filter((item) => item.type === "story");
   const jobs = workItems.filter((item) => item.type === "job");
   const epics = workItems.filter((item) => item.type === "epic");
@@ -1542,6 +2462,7 @@ function DashboardView({ workItems, sprints, rootTitle, totals, lastSyncedAt }) 
       total +
       (item.worklogs || [])
         .filter((entry) => formatDateInput(entry.date) === todayKey)
+        .filter((entry) => worklogMatchesEmployeeScope(entry, employeeScope))
         .reduce((sum, entry) => sum + Number(entry.timeMinutes || 0), 0),
     0
   );
@@ -1551,7 +2472,11 @@ function DashboardView({ workItems, sprints, rootTitle, totals, lastSyncedAt }) 
       (item.worklogs || [])
         .filter((entry) => {
           const date = new Date(entry.date);
-          return !Number.isNaN(date.getTime()) && date >= weekStart;
+          return (
+            !Number.isNaN(date.getTime()) &&
+            date >= weekStart &&
+            worklogMatchesEmployeeScope(entry, employeeScope)
+          );
         })
         .reduce((sum, entry) => sum + Number(entry.timeMinutes || 0), 0),
     0
@@ -1561,12 +2486,12 @@ function DashboardView({ workItems, sprints, rootTitle, totals, lastSyncedAt }) 
     ["Total Epics", epics.length],
     ["Total Stories", stories.length],
     ["Total Jobs", jobs.length],
-    ["Completed Jobs", jobs.filter((item) => item.docketState === "artifact" || item.docketState === "closed").length],
-    ["In Progress Jobs", jobs.filter((item) => item.docketState === "concept" || item.docketState === "design").length],
-    ["Blocked Jobs", jobs.filter((item) => item.docketState === "blocked").length],
+    ["Completed Jobs", jobs.filter((item) => ["artifact", "closed"].includes(normalizeDocketState(item.docketState))).length],
+    ["In Progress Jobs", jobs.filter((item) => ["concept", "design", "in-review"].includes(normalizeDocketState(item.docketState))).length],
+    ["Artifact Jobs", jobs.filter((item) => normalizeDocketState(item.docketState) === "artifact").length],
     ["Story Points", totals.rootTotal],
-    ["Hours Logged Today", formatWorkTime(loggedToday)],
-    ["Hours Logged This Week", formatWorkTime(loggedThisWeek)],
+    ["Hours Logged Today", formatWorkDuration(loggedToday)],
+    ["Hours Logged This Week", formatWorkDuration(loggedThisWeek)],
     ["Last Sync Time", formatRelativeSync(lastSyncedAt)],
   ];
 
@@ -1713,39 +2638,52 @@ function ContextGraphSelector({
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const selectorRef = useRef(null);
+  const inputRef = useRef(null);
+  const triggerRef = useRef(null);
   const selectedOption = options.find((option) => option.id === value);
   const filteredOptions = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
+    const normalized = normalizeContextSearch(query);
 
     if (!normalized) return options;
 
     return options.filter((option) =>
-      [
-        contextOptionLabel(option, viewMode),
-        contextOptionMeta(option, viewMode),
-        option.id,
-      ].some((entry) => String(entry || "").toLowerCase().includes(normalized))
+      contextOptionSearchText(option, viewMode).includes(normalized)
     );
   }, [options, query, viewMode]);
 
   useEffect(() => {
     setActiveIndex(0);
-  }, [query, viewMode]);
+  }, [query, viewMode, options.length]);
 
   useEffect(() => {
     if (!open) return undefined;
 
+    const frame = window.requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    function closeSelector({ focusTrigger = false } = {}) {
+      setOpen(false);
+      setQuery("");
+      setActiveIndex(0);
+      if (focusTrigger) triggerRef.current?.focus();
+    }
+
     function handlePointerDown(event) {
       if (selectorRef.current?.contains(event.target)) return;
 
-      setOpen(false);
-      setQuery("");
+      closeSelector();
     }
 
     function handleKeyDown(event) {
       if (event.key === "Escape") {
-        setOpen(false);
-        setQuery("");
+        closeSelector({ focusTrigger: true });
       }
     }
 
@@ -1758,16 +2696,26 @@ function ContextGraphSelector({
     };
   }, [open]);
 
-  function selectOption(optionId) {
-    onChange(optionId);
+  function openSelector() {
+    setOpen(true);
+  }
+
+  function closeSelector({ focusTrigger = false } = {}) {
     setOpen(false);
     setQuery("");
+    setActiveIndex(0);
+    if (focusTrigger) triggerRef.current?.focus();
+  }
+
+  function selectOption(optionId) {
+    onChange(optionId);
+    closeSelector({ focusTrigger: true });
   }
 
   function handleKeyDown(event) {
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setOpen(true);
+      openSelector();
       setActiveIndex((current) =>
         Math.min(current + 1, Math.max(0, filteredOptions.length - 1))
       );
@@ -1776,7 +2724,7 @@ function ContextGraphSelector({
 
     if (event.key === "ArrowUp") {
       event.preventDefault();
-      setOpen(true);
+      openSelector();
       setActiveIndex((current) => Math.max(0, current - 1));
       return;
     }
@@ -1785,6 +2733,11 @@ function ContextGraphSelector({
       event.preventDefault();
       selectOption(filteredOptions[activeIndex].id);
     }
+
+    if (event.key === "Escape" && open) {
+      event.preventDefault();
+      closeSelector({ focusTrigger: true });
+    }
   }
 
   return (
@@ -1792,29 +2745,47 @@ function ContextGraphSelector({
       <span>{label}</span>
       <div className="context-graph-select">
         <input
+          ref={inputRef}
           type="text"
           value={open ? query : contextOptionLabel(selectedOption, viewMode)}
           placeholder={`Select ${label}`}
-          onFocus={() => setOpen(true)}
+          onClick={openSelector}
+          onFocus={openSelector}
           onKeyDown={handleKeyDown}
           onChange={(event) => {
             setQuery(event.target.value);
-            setOpen(true);
+            openSelector();
           }}
           aria-label={`Select ${label}`}
           aria-expanded={open}
+          aria-controls={`context-options-${viewMode}`}
+          aria-autocomplete="list"
+          role="combobox"
         />
         <button
+          ref={triggerRef}
           type="button"
-          onClick={() => setOpen((current) => !current)}
+          onClick={() => {
+            if (open) {
+              closeSelector();
+            } else {
+              openSelector();
+            }
+          }}
           aria-label={`Toggle ${label} list`}
         >
           v
         </button>
         {open && (
-          <div className="context-graph-menu" role="listbox">
+          <div
+            id={`context-options-${viewMode}`}
+            className="context-graph-menu"
+            role="listbox"
+          >
             {filteredOptions.length === 0 ? (
-              <div className="context-graph-empty">No options</div>
+              <div className="context-graph-empty">
+                {emptyContextOptionsLabel(label, options, query)}
+              </div>
             ) : (
               filteredOptions.map((option, index) => (
                 <button
@@ -1840,12 +2811,12 @@ function ContextGraphSelector({
   );
 }
 
-function DayViewToolbar({ value, onChange, summary }) {
+function DayViewToolbar({ value, onChange, summary, inline = false }) {
   if (!summary) return null;
 
   const rows = [
     ["Worklogs", summary.worklogs],
-    ["Logged", formatWorkTime(summary.totalMinutes)],
+    ["Logged", formatWorkDuration(summary.totalMinutes)],
     ["Projects", summary.projects],
     ["Sprints", summary.sprints],
     ["Epics", summary.epics],
@@ -1865,15 +2836,500 @@ function DayViewToolbar({ value, onChange, summary }) {
           aria-label="Select date"
         />
       </label>
-      <div className="day-view-stats" aria-label="Day View statistics">
-        {rows.map(([label, value]) => (
-          <span key={label}>
-            {label} {value}
-          </span>
-        ))}
+      {!inline && (
+        <div className="day-view-stats" aria-label="Day View statistics">
+          {rows.map(([label, value]) => (
+            <span key={label}>
+              {label} {value}
+            </span>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function dateForTimelineMonth(month, selectedDate) {
+  const selectedKey = dateKeyFromValue(selectedDate);
+  const selectedOrdinal = timelineDateOrdinal(selectedKey);
+  const startOrdinal = timelineDateOrdinal(month?.startDate);
+  const endOrdinal = timelineDateOrdinal(month?.endDate);
+
+  if (
+    selectedOrdinal !== null &&
+    startOrdinal !== null &&
+    endOrdinal !== null &&
+    selectedOrdinal >= startOrdinal &&
+    selectedOrdinal <= endOrdinal
+  ) {
+    return selectedKey;
+  }
+
+  return month?.startDate || selectedKey || formatDateInput(new Date());
+}
+
+function dateForTimelineYear(year, selectedDate) {
+  const selectedKey = dateKeyFromValue(selectedDate);
+  const selectedOrdinal = timelineDateOrdinal(selectedKey);
+  const startOrdinal = timelineDateOrdinal(year?.startDate);
+  const endOrdinal = timelineDateOrdinal(year?.endDate);
+
+  if (
+    selectedOrdinal !== null &&
+    startOrdinal !== null &&
+    endOrdinal !== null &&
+    selectedOrdinal >= startOrdinal &&
+    selectedOrdinal <= endOrdinal
+  ) {
+    return selectedKey;
+  }
+
+  return year?.startDate || selectedKey || formatDateInput(new Date());
+}
+
+function dateForTimelineSprint(sprint, selectedDate, todayKey) {
+  const selectedKey = dateKeyFromValue(selectedDate);
+  const selectedOrdinal = timelineDateOrdinal(selectedKey);
+  const todayOrdinal = timelineDateOrdinal(todayKey);
+  const startOrdinal = timelineDateOrdinal(sprint?.startDate);
+  const endOrdinal = timelineDateOrdinal(sprint?.endDate);
+
+  if (startOrdinal !== null && endOrdinal !== null) {
+    if (todayOrdinal !== null && todayOrdinal >= startOrdinal && todayOrdinal <= endOrdinal) {
+      return todayKey;
+    }
+    if (selectedOrdinal !== null && selectedOrdinal >= startOrdinal && selectedOrdinal <= endOrdinal) {
+      return selectedKey;
+    }
+  }
+
+  return sprint?.startDate || selectedKey || todayKey || formatDateInput(new Date());
+}
+
+function TimelineMetric({ label, value }) {
+  return (
+    <span className="timeline-metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </span>
+  );
+}
+
+function DayTimelineNavigation({ model, selectedDate, todayKey, onSelectDate }) {
+  const [mode, setMode] = useState("days");
+  const [expanded, setExpanded] = useState(false);
+  const [modeMenuOpen, setModeMenuOpen] = useState(false);
+  const modeMenuRef = useRef(null);
+  const scrollerRef = useRef(null);
+  const selectedRef = useRef(null);
+  const todayRef = useRef(null);
+  const didInitialScrollRef = useRef(false);
+
+  useEffect(() => {
+    const target = selectedRef.current || (!didInitialScrollRef.current ? todayRef.current : null);
+
+    if (target) {
+      target.scrollIntoView({
+        block: "nearest",
+        inline: didInitialScrollRef.current ? "nearest" : "end",
+        behavior: didInitialScrollRef.current ? "smooth" : "auto",
+      });
+    } else if (!didInitialScrollRef.current && scrollerRef.current) {
+      scrollerRef.current.scrollLeft = scrollerRef.current.scrollWidth;
+    }
+
+    didInitialScrollRef.current = true;
+  }, [mode, selectedDate]);
+
+  useDismissableLayer({
+    open: modeMenuOpen,
+    refs: [modeMenuRef],
+    onDismiss: () => setModeMenuOpen(false),
+  });
+
+  if (!model) return null;
+
+  const modes = [
+    ["days", "Days"],
+    ["months", "Months"],
+    ["years", "Years"],
+    ["sprints", "Sprints"],
+  ];
+  const dayItems = model.days || [];
+  const monthItems = model.months || [];
+  const yearItems = model.years || [];
+  const sprintItems = model.sprints || [];
+  const selectedModeLabel = modes.find(([id]) => id === mode)?.[1] || "Days";
+  const dayStatusClass = (day) => {
+    if (day.isWeekend) return "status-weekend";
+    if (day.minutes >= 480) return "status-complete";
+    if (day.minutes > 0) return "status-partial";
+
+    return "status-missing";
+  };
+
+  return (
+    <section
+      className={`day-timeline-navigation ${expanded ? "expanded" : "collapsed"}`}
+      aria-label="Day timeline navigation"
+    >
+      <div className="day-timeline-row">
+        <div ref={modeMenuRef} className="timeline-mode-dropdown">
+          <button
+            type="button"
+            className="timeline-mode-trigger"
+            onClick={() => setModeMenuOpen((current) => !current)}
+            onKeyDown={(event) => {
+              if (event.key !== "ArrowDown" && event.key !== "Enter" && event.key !== " ") return;
+
+              event.preventDefault();
+              setModeMenuOpen(true);
+            }}
+            aria-haspopup="listbox"
+            aria-expanded={modeMenuOpen}
+            aria-label="Timeline mode"
+          >
+            <span>{selectedModeLabel}</span>
+            <span aria-hidden="true">v</span>
+          </button>
+          {modeMenuOpen ? (
+            <div className="timeline-mode-menu" role="listbox" aria-label="Timeline modes">
+              {modes.map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={mode === id ? "selected" : ""}
+                  onClick={() => {
+                    setMode(id);
+                    setModeMenuOpen(false);
+                  }}
+                  role="option"
+                  aria-selected={mode === id}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        <div ref={scrollerRef} className="day-timeline-scroller">
+        {mode === "days" &&
+          dayItems.map((day, index) => {
+            const previousDay = dayItems[index - 1];
+            const nextDay = dayItems[index + 1];
+            const startsSprintGroup = !previousDay || previousDay.sprintId !== day.sprintId;
+            const endsSprintGroup = !nextDay || nextDay.sprintId !== day.sprintId;
+            const className = [
+              "day-timeline-cell",
+              "timeline-day-cell",
+              day.isSelected ? "selected" : "",
+              day.isToday ? "today" : "",
+              day.isWeekend ? "weekend" : "",
+              dayStatusClass(day),
+            ]
+              .filter(Boolean)
+              .join(" ");
+
+            return (
+              <button
+                key={day.dateKey}
+                ref={day.isSelected ? selectedRef : day.isToday ? todayRef : null}
+                type="button"
+                className={className}
+                onClick={() => onSelectDate(day.dateKey)}
+                aria-current={day.isSelected ? "date" : undefined}
+              >
+                {expanded ? (
+                  <span className="timeline-sprint-label">
+                    {startsSprintGroup ? day.sprintTitle : "\u00a0"}
+                  </span>
+                ) : null}
+                <span className="timeline-date-row">
+                  <span className="timeline-date">
+                    {expanded ? timelineDateLabel(day.dateKey) : timelineShortDateLabel(day.dateKey)}
+                  </span>
+                  {expanded ? (
+                    <span className="timeline-day">{timelineDayLabel(day.dateKey)}</span>
+                  ) : null}
+                </span>
+                {expanded ? (
+                  <span className="timeline-metric-row">
+                    <TimelineMetric label="Logged" value={formatWorkDuration(day.minutes)} />
+                    <TimelineMetric label="SP" value={day.storyPoints} />
+                  </span>
+                ) : (
+                  <span className="timeline-collapsed-time">
+                    {formatWorkDuration(day.minutes)}
+                  </span>
+                )}
+                {day.isToday ? <span className="timeline-today-label">Today</span> : null}
+              </button>
+            );
+          })}
+
+        {mode === "months" &&
+          monthItems.map((month) => (
+            <button
+              key={month.key}
+              type="button"
+              className="day-timeline-cell timeline-month-cell"
+              onClick={() => onSelectDate(dateForTimelineMonth(month, selectedDate))}
+            >
+              <span className="timeline-sprint-label">
+                {timelineDateLabel(month.startDate)} - {timelineDateLabel(month.endDate)}
+              </span>
+              <span className="timeline-date">{month.label}</span>
+              {expanded ? (
+                <>
+                  <TimelineMetric label="Logged" value={formatWorkDuration(month.minutes)} />
+                  <TimelineMetric label="SP" value={month.storyPoints} />
+                </>
+              ) : null}
+            </button>
+          ))}
+
+        {mode === "years" &&
+          yearItems.map((year) => {
+            const selectedYear = dateKeyFromValue(selectedDate).slice(0, 4);
+
+            return (
+              <button
+                key={year.key}
+                type="button"
+                className={`day-timeline-cell timeline-year-cell ${
+                  year.key === selectedYear ? "selected" : ""
+                }`}
+                onClick={() => onSelectDate(dateForTimelineYear(year, selectedDate))}
+                aria-current={year.key === selectedYear ? "date" : undefined}
+              >
+                <span className="timeline-sprint-label">
+                  {timelineDateLabel(year.startDate)} - {timelineDateLabel(year.endDate)}
+                </span>
+                <span className="timeline-date">{year.label}</span>
+                {expanded ? (
+                  <>
+                    <TimelineMetric label="Logged" value={formatWorkDuration(year.minutes)} />
+                    <TimelineMetric label="SP" value={year.storyPoints} />
+                  </>
+                ) : null}
+              </button>
+            );
+          })}
+
+        {mode === "sprints" &&
+          sprintItems.map((sprint) => (
+            <button
+              key={sprint.id}
+              type="button"
+              className="day-timeline-cell timeline-sprint-cell"
+              onClick={() => onSelectDate(dateForTimelineSprint(sprint, selectedDate, todayKey))}
+            >
+              <span className="timeline-sprint-label">
+                {timelineDateLabel(sprint.startDate)} - {timelineDateLabel(sprint.endDate)}
+              </span>
+              <span className="timeline-date">{sprint.title}</span>
+              {expanded ? (
+                <>
+                  <TimelineMetric label="Logged" value={formatWorkDuration(sprint.minutes)} />
+                  <TimelineMetric label="SP" value={sprint.storyPoints} />
+                </>
+              ) : null}
+            </button>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          className="global-icon-button day-timeline-toggle"
+          onClick={() => setExpanded((current) => !current)}
+          aria-label={expanded ? "Collapse day timeline" : "Expand day timeline"}
+          aria-expanded={expanded}
+          title={expanded ? "Collapse timeline" : "Expand timeline"}
+        >
+          <span aria-hidden="true">{expanded ? "^" : "v"}</span>
+        </button>
       </div>
     </section>
   );
+}
+
+function canonicalAddExistingUpdates({ request, child, sprints }) {
+  if (!request || !child) return null;
+
+  if (request.type === "epic" && request.sprintId) {
+    const sprintName = sprintNameForId(sprints, request.sprintId);
+
+    return {
+      sprintId: request.sprintId,
+      sprintName,
+      sprint: sprintName,
+    };
+  }
+
+  if (request.type === "story" && request.parentId) {
+    return {
+      parentId: request.parentId,
+      epicId: request.parentId,
+      sprintId: request.sprintId || child.elitical?.sprintId || child.sprintId || "",
+      sprintName: request.sprint || sprintNameForId(sprints, request.sprintId),
+      sprint: request.sprint || sprintNameForId(sprints, request.sprintId),
+    };
+  }
+
+  return null;
+}
+
+function AddExistingChildModal({
+  request,
+  selectedDate,
+  workItems,
+  sprints,
+  projectionState,
+  onSelect,
+  onClose,
+}) {
+  const [query, setQuery] = useState("");
+  const modalRef = useRef(null);
+  const isDayMode = request?.mode === "day";
+  const scopeId = request?.isOrphanSprint
+    ? ORPHAN_SPRINT_ID
+    : request?.sprintId || ORPHAN_SPRINT_ID;
+  const scopeTitle = sprintTitleForScope(scopeId, sprints);
+  const daySelection = useMemo(
+    () => daySelectionForDate(projectionState, selectedDate),
+    [projectionState, selectedDate]
+  );
+  const options = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    const alreadySelected = isDayMode
+      ? new Set(
+          request?.type === "story"
+            ? daySelection.storiesByEpicScope[
+                dayEpicScopeKey(request.parentId, scopeId)
+              ] || []
+            : daySelection.epicsBySprint[scopeId] || []
+        )
+      : new Set();
+    const candidates = workItems.filter((item) => {
+      if (item.type !== request?.type) return false;
+      if (alreadySelected.has(item.id)) return false;
+      if (isReferenceNode(item)) return false;
+
+      if (isDayMode) {
+        if (dayScopeIdForItem(item) !== scopeId) return false;
+        if (request.type === "story" && item.parentId !== request.parentId) return false;
+      } else if (request.type === "epic") {
+        if (!request.sprintId || dayScopeIdForItem(item) === request.sprintId) return false;
+      } else if (request.type === "story") {
+        if (!request.parentId || item.parentId === request.parentId) return false;
+      } else {
+        return false;
+      }
+
+      if (!normalizedQuery) return true;
+
+      return [
+        item.title,
+        item.elitical?.num,
+        item.id,
+        item.description,
+      ].some((value) => String(value || "").toLowerCase().includes(normalizedQuery));
+    });
+
+    return candidates.sort((first, second) =>
+      String(first.title || "").localeCompare(String(second.title || ""))
+    );
+  }, [daySelection, isDayMode, query, request, scopeId, workItems]);
+  const title = `Add Existing ${formatType(request?.type || "docket")}`;
+  const parentTitle =
+    request?.type === "story"
+      ? workItems.find((item) => item.id === request.parentId)?.title || "Epic"
+      : scopeTitle;
+
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if (event.key === "Escape") onClose();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  function handleBackdropMouseDown(event) {
+    if (event.target !== event.currentTarget) return;
+    onClose();
+  }
+
+  const modalContent = (
+    <div
+      className="modal-backdrop add-existing-backdrop"
+      onMouseDown={handleBackdropMouseDown}
+    >
+      <section
+        ref={modalRef}
+        className="modal-card day-add-existing-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="add-existing-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="modal-header">
+          <div className="modal-header-main">
+            <span className="modal-kicker">
+              {isDayMode ? `Day View · ${dateKeyFromValue(selectedDate)}` : "Current View"}
+            </span>
+            <h2 id="add-existing-title">{title}</h2>
+            <p>{parentTitle}</p>
+          </div>
+          <div className="modal-header-actions">
+            <button
+              type="button"
+              className="icon-button"
+              onClick={onClose}
+              aria-label="Close"
+            >
+              ×
+            </button>
+          </div>
+        </header>
+        <div className="modal-body add-existing-body">
+          <label className="modal-field wide">
+            <span>Search</span>
+            <input
+              autoFocus
+              className="modal-control"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={`Search ${request?.type || "docket"}s...`}
+            />
+          </label>
+          <div className="day-add-existing-list">
+            {options.length === 0 ? (
+              <div className="context-graph-empty">No matching existing items</div>
+            ) : (
+              options.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onSelect(item.id)}
+                >
+                  <span>{item.title}</span>
+                  <small>
+                    {[item.elitical?.num || item.id, scopeTitle]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </small>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+
+  return createPortal(modalContent, document.body);
 }
 
 function InlineField({
@@ -2098,7 +3554,11 @@ function PropertyPanel({
 
   if (!item) return null;
 
-  const stateOptions = mergeOption(lookups.states, initialDraft.stateId, item.docketState);
+  const stateOptions = mergeOption(
+    lookups.states,
+    initialDraft.stateId,
+    docketStateApiName(item.docketState)
+  );
   const priorityOptions = mergeOption(
     lookups.priorities.length ? lookups.priorities : fallbackLookupOptions(PRIORITIES),
     optionIdForValue(lookups.priorities, initialDraft.priority, initialDraft.priority),
@@ -2179,13 +3639,14 @@ function PropertyPanel({
     }
 
     const localChangedFields = new Set();
+    const nextDocketState = localDocketStateValue(
+      optionLabel(stateOptions, draft.stateId, item.docketState),
+      item.docketState
+    );
     const localUpdates = {
       title,
       description: draft.description.trim(),
-      docketState: localDocketStateValue(
-        optionLabel(stateOptions, draft.stateId, item.docketState),
-        item.docketState
-      ),
+      docketState: nextDocketState,
       priority: priorityValue,
       category: categoryValue,
       assignee: optionLabel(userOptions, draft.assigneeId, item.assignee),
@@ -2202,7 +3663,7 @@ function PropertyPanel({
     const sdkUpdates = supportedUpdatePayloadForItem(item, {
       ...localUpdates,
       dktStateId: draft.stateId,
-      dktStateName: localUpdates.docketState,
+      dktStateName: docketStateApiName(localUpdates.docketState),
       assigneeId: draft.assigneeId,
       sprintId: draft.sprintId,
       sprintName: localUpdates.sprint,
@@ -2302,7 +3763,7 @@ function PropertyPanel({
               value={draft.stateId}
               options={stateOptions.map((option) => option.id)}
               onChange={(value) => updateDraft("stateId", value)}
-              getOptionLabel={(value) => optionLabel(stateOptions, value, formatLabel(value))}
+              getOptionLabel={(value) => stateOptionDisplayLabel(stateOptions, value, formatLabel(value))}
             />
             <CustomSelectField
               label="Priority"
@@ -2678,8 +4139,8 @@ function WorklogPanel({ item, workItems, onClose, readOnly = false }) {
             <WorklogPanelField label="Reviewer" value={item.reviewer || item.reviewerName} />
             <WorklogPanelField label="Created Date" value={formatTimestamp(item.createdAt)} />
             <WorklogPanelField label="Updated Date" value={formatTimestamp(item.updatedAt)} />
-            <WorklogPanelField label="Logged" value={formatWorkTime(loggedMinutes)} />
-            <WorklogPanelField label="Remaining" value={formatWorkTime(remainingMinutes)} />
+            <WorklogPanelField label="Logged" value={formatWorkDuration(loggedMinutes)} />
+            <WorklogPanelField label="Remaining" value={formatWorkDuration(remainingMinutes)} />
           </div>
           <div className="worklog-panel-description">
             <span>Description</span>
@@ -2765,7 +4226,7 @@ function WorklogPanel({ item, workItems, onClose, readOnly = false }) {
         <section className="worklog-panel-section">
           <div className="worklog-panel-section-title">
             <h3>Worklogs ({sortedHistory.length})</h3>
-            <span>Logged {formatWorkTime(totalLoggedMinutes)}</span>
+            <span>Logged {formatWorkDuration(totalLoggedMinutes)}</span>
           </div>
           {sortedHistory.length === 0 ? (
             <p className="worklog-empty">No worklogs yet.</p>
@@ -2775,7 +4236,7 @@ function WorklogPanel({ item, workItems, onClose, readOnly = false }) {
                 <article key={entry.id || `${entry.date}-${entry.description}`} className="worklog-history-entry">
                   <div>
                     <strong>{formatDateLabel(entry.date)}</strong>
-                    <span>{formatWorkTime(entry.durationMinutes)}</span>
+                    <span>{formatWorkDuration(entry.durationMinutes)}</span>
                     <span>{entry.employeeName || "Unknown employee"}</span>
                     {entry.status === "pending" && <em>Pending Upload</em>}
                   </div>
@@ -2865,11 +4326,11 @@ function WorkItemModal({
     ? rootTitle
     : inheritedSprint(sprintParentId, workItems, rootTitle);
   const fallbackDocketState = modal.kind === "create" && modal.docketState
-    ? modal.docketState
+    ? normalizeDocketState(modal.docketState)
     : createSprintParent
-    ? createSprintParent.docketState || rootDocketState || "concept"
+    ? normalizeDocketState(createSprintParent.docketState || rootDocketState)
     : isSprint
-    ? rootDocketState || "concept"
+    ? normalizeDocketState(rootDocketState)
     : isMainRoot
     ? "concept"
     : inheritedDocketState(sprintParentId, workItems, rootDocketState);
@@ -2879,7 +4340,7 @@ function WorkItemModal({
       : isMainRoot
       ? { title: mainTitle || "Genesis" }
       : isRoot
-      ? { title: rootTitle, docketState: rootDocketState || "concept" }
+      ? { title: rootTitle, docketState: normalizeDocketState(rootDocketState) }
       : activeSprint
       ? makeSprintDraft(activeSprint, rootTitle, rootDocketState)
       : activeItem
@@ -2902,19 +4363,23 @@ function WorkItemModal({
   const currentCategory = activeItem?.category || draft?.category || "feature";
   const currentPriority = activeItem?.priority || draft?.priority || "info";
   const currentDocketState = isRoot
-    ? rootDocketState || "concept"
+    ? normalizeDocketState(rootDocketState)
     : activeSprint
-    ? activeSprint.docketState || "concept"
+    ? normalizeDocketState(activeSprint.docketState)
     : isMainRoot
     ? "concept"
-    : activeItem?.docketState || draft?.docketState || "concept";
+    : normalizeDocketState(activeItem?.docketState || draft?.docketState);
   const currentSprint = isSprint || isMainRoot
     ? rootTitle
     : activeItem?.sprint || draft?.sprint || fallbackSprint;
   const modalStateOptions = activeItem ? mergeOption(
     buildLocalStateOptions(activeItem, workItems),
     draft?.stateId || "",
-    draft?.stateName || currentDocketState
+    draft?.stateName || docketStateApiName(currentDocketState)
+  ) : modal.kind === "create" ? mergeOption(
+    buildLocalStateOptions({}, workItems),
+    draft?.stateId || docketStateApiId(currentDocketState),
+    draft?.stateName || docketStateApiName(currentDocketState)
   ) : [];
   const modalAssigneeOptions = activeItem ? mergeOption(
     buildLocalAssigneeOptions(activeItem, workItems),
@@ -3118,10 +4583,10 @@ function WorkItemModal({
 
       const result = isRoot ? onSaveRoot({
         title: draft.title,
-        docketState: draft.docketState,
+        docketState: normalizeDocketState(draft.docketState),
       }) : onSaveSprint(activeSprint.id, {
         title: draft.title,
-        docketState: draft.docketState,
+        docketState: normalizeDocketState(draft.docketState),
         code: draft.code,
         sprintStartDate: draft.sprintStartDate,
         sprintEndDate: draft.sprintEndDate,
@@ -3149,7 +4614,9 @@ function WorkItemModal({
       sprint: draft.sprint.trim() || fallbackSprint,
       sprintId: modal.kind === "create" ? modal.sprintId || "" : draft.sprintId || "",
       isOrphanSprint: modal.kind === "create" ? Boolean(modal.isOrphanSprint) : false,
-      docketState: draft.docketState || "concept",
+      docketState: normalizeDocketState(draft.docketState),
+      stateId: draft.stateId || docketStateApiId(draft.docketState),
+      stateName: docketStateApiName(draft.docketState),
       type: selectedItemType,
       createdAt:
         modal.kind === "create" && selectedItemType === "epic"
@@ -3251,7 +4718,7 @@ function WorkItemModal({
       isMainRoot
         ? { title: mainTitle || "Genesis" }
         : isRoot
-        ? { title: rootTitle, docketState: rootDocketState || "concept" }
+        ? { title: rootTitle, docketState: normalizeDocketState(rootDocketState) }
         : activeSprint
         ? makeSprintDraft(activeSprint, rootTitle, rootDocketState)
         : makeEditDraft(activeItem, fallbackSprint)
@@ -3320,14 +4787,14 @@ function WorkItemModal({
     : isMainRoot
     ? `${sprints.length} Sprint${sprints.length === 1 ? "" : "s"} · ${
         totals.rootTotal
-      } SP · ${formatWorkTime(totals.rootTimeMinutes || 0)}`
+      } SP · ${formatWorkDuration(totals.rootTimeMinutes || 0)}`
     : isSprint
     ? `${formatDocketState(currentDocketState)} · ${
         totals.rootTotal
-      } SP · ${formatWorkTime(totals.rootTimeMinutes || 0)}`
+      } SP · ${formatWorkDuration(totals.rootTimeMinutes || 0)}`
     : `${formatLabel(currentPriority)} · ${formatDocketState(
         currentDocketState
-      )} · ${formatWorkTime(calculatedTime)}`;
+      )} · ${formatWorkDuration(calculatedTime)}`;
   const showFooter = !readOnly && (modal.kind === "create" || modal.kind === "details");
 
   return (
@@ -3387,17 +4854,18 @@ function WorkItemModal({
                 options={modalStateOptions.map((option) => option.id)}
                 onChange={(value) => {
                   const stateName = optionLabel(modalStateOptions, value, currentDocketState);
+                  const docketState = localDocketStateValue(stateName, currentDocketState);
                   updateDraftFields({
                     stateId: value,
-                    stateName,
-                    docketState: localDocketStateValue(stateName, currentDocketState),
+                    stateName: docketStateApiName(docketState),
+                    docketState,
                   });
                 }}
-                getOptionLabel={(value) => optionLabel(modalStateOptions, value, currentDocketState)}
+                getOptionLabel={(value) => stateOptionDisplayLabel(modalStateOptions, value, currentDocketState)}
                 wide
               />
             ) : (
-              <ReadOnlyField label="Docket State" value={currentDocketState} wide />
+              <ReadOnlyField label="Docket State" value={formatDocketState(currentDocketState)} wide />
             )
           )}
 
@@ -3430,7 +4898,7 @@ function WorkItemModal({
                     />
                     <ReadOnlyField
                       label="Calculated Time"
-                      value={formatWorkTime(totals.rootTimeMinutes || 0)}
+                      value={formatWorkDuration(totals.rootTimeMinutes || 0)}
                       badge
                     />
                   </ModalSection>
@@ -3492,7 +4960,7 @@ function WorkItemModal({
                     />
                     <ReadOnlyField
                       label="Calculated Time"
-                      value={formatWorkTime(totals.rootTimeMinutes || 0)}
+                      value={formatWorkDuration(totals.rootTimeMinutes || 0)}
                       badge
                     />
                   </ModalSection>
@@ -3782,9 +5250,9 @@ function WorkItemModal({
                   {isSprint ? (
                     <SelectField
                       label="Docket State"
-                      value={draft.docketState || "concept"}
+                      value={normalizeDocketState(draft.docketState)}
                       options={DOCKET_STATES}
-                      onChange={(value) => updateDraft("docketState", value)}
+                      onChange={(value) => updateDraft("docketState", normalizeDocketState(value))}
                     />
                   ) : (
                     <>
@@ -3809,16 +5277,17 @@ function WorkItemModal({
                           options={modalStateOptions.map((option) => option.id)}
                           onChange={(value) => {
                             const stateName = optionLabel(modalStateOptions, value, currentDocketState);
+                            const docketState = localDocketStateValue(stateName, currentDocketState);
                             updateDraftFields({
                               stateId: value,
-                              stateName,
-                              docketState: localDocketStateValue(stateName, currentDocketState),
+                              stateName: docketStateApiName(docketState),
+                              docketState,
                             });
                           }}
-                          getOptionLabel={(value) => optionLabel(modalStateOptions, value, currentDocketState)}
+                          getOptionLabel={(value) => stateOptionDisplayLabel(modalStateOptions, value, currentDocketState)}
                         />
                       ) : (
-                        <ReadOnlyField label="Docket State" value={currentDocketState} />
+                        <ReadOnlyField label="Docket State" value={formatDocketState(currentDocketState)} />
                       )}
                     </>
                   )}
@@ -3936,7 +5405,7 @@ function WorkItemModal({
                       )}
                       <ReadOnlyField
                         label="Calculated Time"
-                        value={formatWorkTime(calculatedTime)}
+                        value={formatWorkDuration(calculatedTime)}
                         badge
                       />
                     </>
@@ -4007,6 +5476,1429 @@ function WorkItemModal({
   );
 }
 
+function ToolbarIcon({ type }) {
+  if (type === "search") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="11" cy="11" r="7" />
+        <path d="m16.5 16.5 4 4" />
+      </svg>
+    );
+  }
+
+  if (type === "sync-status") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M20 12a8 8 0 0 1-14.2 5" />
+        <path d="M4 12a8 8 0 0 1 14.2-5" />
+        <path d="M5 17H2v3" />
+        <path d="M19 7h3V4" />
+      </svg>
+    );
+  }
+
+  if (type === "sync-failed") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="12" cy="12" r="9" />
+        <path d="m15 9-6 6" />
+        <path d="m9 9 6 6" />
+      </svg>
+    );
+  }
+
+  if (type === "cloud-upload") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M17.5 18.5h.5a4 4 0 0 0 .4-7.98 6.2 6.2 0 0 0-11.9-1.8A4.8 4.8 0 0 0 6 18.5h.5" />
+        <path d="M12 18V10.5" />
+        <path d="M8.8 13.7 12 10.5l3.2 3.2" />
+      </svg>
+    );
+  }
+
+  if (type === "cloud-download") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M17.5 18.5h.5a4 4 0 0 0 .4-7.98 6.2 6.2 0 0 0-11.9-1.8A4.8 4.8 0 0 0 6 18.5h.5" />
+        <path d="M12 10.5V18" />
+        <path d="M8.8 14.8 12 18l3.2-3.2" />
+      </svg>
+    );
+  }
+
+  if (type === "terminal") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="m5 7 5 5-5 5" />
+        <path d="M12 17h7" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M20 21a8 8 0 0 0-16 0" />
+      <path d="M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" />
+    </svg>
+  );
+}
+
+function ViewSelector({
+  currentLabel,
+  viewMode,
+  viewMenuOpen,
+  onToggle,
+  onSelect,
+  onClose,
+}) {
+  const selectorRef = useRef(null);
+
+  useDismissableLayer({
+    open: viewMenuOpen,
+    refs: [selectorRef],
+    onDismiss: onClose,
+  });
+
+  return (
+    <div ref={selectorRef} className="view-selector">
+      <button
+        type="button"
+        className="view-selector-button"
+        onClick={onToggle}
+        aria-expanded={viewMenuOpen}
+        aria-haspopup="listbox"
+      >
+        <span>{currentLabel}</span>
+        <span className="view-selector-caret" aria-hidden="true">
+          v
+        </span>
+      </button>
+      {viewMenuOpen && (
+        <div className="view-selector-menu" role="listbox">
+          {APP_VIEWS.map((view) => (
+            <button
+              key={view.id}
+              type="button"
+              className={viewMode === view.id ? "selected" : ""}
+              onClick={() => {
+                onSelect(view.id);
+                onClose();
+              }}
+              role="option"
+              aria-selected={viewMode === view.id}
+            >
+              {view.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ViewSummaryStats({ items = [] }) {
+  const panelRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const visibleItems = items.filter(
+    (item) => item?.value !== undefined && item?.value !== null && item?.value !== ""
+  );
+  const primaryItems = visibleItems.slice(0, 3);
+  const hasMore = visibleItems.length > primaryItems.length;
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    function handlePointerDown(event) {
+      if (panelRef.current?.contains(event.target)) return;
+
+      setOpen(false);
+    }
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") setOpen(false);
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  if (visibleItems.length === 0) return null;
+
+  return (
+    <div ref={panelRef} className="view-summary-stats" aria-label="View statistics">
+      {primaryItems.map((item) => (
+        <span key={item.label}>
+          {item.label} {item.value}
+        </span>
+      ))}
+      {hasMore ? (
+        <button
+          type="button"
+          className="summary-stats-more"
+          onClick={() => setOpen((current) => !current)}
+          aria-expanded={open}
+          aria-label="Show all view statistics"
+        >
+          More <span aria-hidden="true">v</span>
+        </button>
+      ) : null}
+      {open ? (
+        <div className="summary-stats-popover" aria-label="All view statistics">
+          <dl>
+            {visibleItems.map((item) => (
+              <div key={item.label}>
+                <dt>{item.label}</dt>
+                <dd>{item.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ViewContextArea({ children, stats }) {
+  return (
+    <div className="view-context-area" aria-label="Current view context">
+      {children ? <div className="view-context-controls">{children}</div> : null}
+      <ViewSummaryStats items={stats} />
+    </div>
+  );
+}
+
+function BacklogGroupingSelector({ value, onChange }) {
+  return (
+    <label className="backlog-grouping-selector">
+      <span>Group by</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        aria-label="Backlog grouping"
+      >
+        {BACKLOG_GROUPINGS.map((grouping) => (
+          <option key={grouping.id} value={grouping.id}>
+            {grouping.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function syncStatusIconType(syncState, liveSyncState) {
+  if (liveSyncState === "failed" || syncState === "offline") return "sync-failed";
+
+  return "sync-status";
+}
+
+function SyncOperationList({ operations = [], kind = "failed", onResolveDuplicate }) {
+  return (
+    <ul className="sync-operation-list">
+      {operations.map((operation) => (
+        <li key={operation.operationId || `${operation.title}-${operation.docketId}`}>
+          <strong>{operation.title}</strong>
+          <dl>
+            <div>
+              <dt>Entity</dt>
+              <dd>{operation.entityLabel}</dd>
+            </div>
+            <div>
+              <dt>Operation</dt>
+              <dd>{operation.operationLabel}</dd>
+            </div>
+            <div>
+              <dt>Status</dt>
+              <dd>{operation.statusLabel}</dd>
+            </div>
+            {operation.docketId ? (
+              <div>
+                <dt>Docket ID</dt>
+                <dd>{operation.docketId}</dd>
+              </div>
+            ) : null}
+            {kind === "blocked" && operation.parentTitle ? (
+              <div>
+                <dt>Parent</dt>
+                <dd>{operation.parentTitle}</dd>
+              </div>
+            ) : null}
+            <div>
+              <dt>{kind === "blocked" ? "Reason" : "Error"}</dt>
+              <dd>{kind === "blocked" ? operation.reason : operation.error}</dd>
+            </div>
+          </dl>
+          {operation.duplicateRecovery?.eligible && onResolveDuplicate ? (
+            <button
+              type="button"
+              className="sync-operation-recovery-button"
+              onClick={() => onResolveDuplicate(operation.duplicateRecovery)}
+            >
+              Resolve as Duplicate
+            </button>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function SearchFilterSelect({
+  filterKey,
+  value,
+  options = [],
+  onChange,
+  openKey,
+  onToggle,
+}) {
+  const [query, setQuery] = useState("");
+  const open = openKey === filterKey;
+  const isDateFilter = filterKey === "date";
+  const selectedLabel =
+    isDateFilter && value
+      ? formatDateLabel(value)
+      : options.find((option) => option.value === value)?.label || "Any";
+  const filteredOptions = useMemo(() => {
+    const normalized = normalizeInlineSearch(query);
+
+    if (isDateFilter) return options;
+    if (!normalized) return options;
+
+    return options.filter((option) =>
+      normalizeInlineSearch(`${option.label} ${option.value}`).includes(normalized)
+    );
+  }, [isDateFilter, options, query]);
+
+  useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
+
+  return (
+    <div className="search-filter-select">
+      <button
+        type="button"
+        onClick={() => onToggle(open ? "" : filterKey)}
+        aria-label={`${SEARCH_FILTER_LABELS[filterKey]} filter`}
+        aria-expanded={open}
+      >
+        <span>{selectedLabel}</span>
+        <span aria-hidden="true">v</span>
+      </button>
+      {open && (
+        <div className="search-filter-options">
+          <input
+            type={isDateFilter ? "date" : "search"}
+            value={isDateFilter ? value || "" : query}
+            onChange={(event) => {
+              if (isDateFilter) {
+                onChange(filterKey, event.target.value);
+                onToggle("");
+                return;
+              }
+
+              setQuery(event.target.value);
+            }}
+            placeholder={`Find ${SEARCH_FILTER_LABELS[filterKey].toLowerCase()}`}
+            aria-label={`Search ${SEARCH_FILTER_LABELS[filterKey]} options`}
+            autoFocus
+          />
+          <button
+            type="button"
+            className={!value ? "selected" : ""}
+            onClick={() => {
+              onChange(filterKey, "");
+              onToggle("");
+            }}
+          >
+            Any
+          </button>
+          {filteredOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={option.value === value ? "selected" : ""}
+              onClick={() => {
+                onChange(filterKey, option.value);
+                onToggle("");
+              }}
+            >
+              <span>{isDateFilter ? formatDateLabel(option.value) : option.label}</span>
+              <small>{option.count}</small>
+            </button>
+          ))}
+          {filteredOptions.length === 0 ? (
+            <div className="search-filter-empty">No matching options</div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SearchFilterPopover({
+  filters,
+  inheritedFilters = EMPTY_SEARCH_FILTERS,
+  optionsByKey,
+  availableKeys = SEARCH_FILTER_KEYS,
+  activeFilterCount,
+  onFilterChange,
+  onClearFilters,
+  onClose,
+}) {
+  const panelRef = useRef(null);
+  const [openKey, setOpenKey] = useState("");
+
+  useEffect(() => {
+    function handlePointerDown(event) {
+      if (panelRef.current?.contains(event.target)) return;
+      if (event.target?.closest?.(".inline-search-filter")) return;
+
+      onClose();
+    }
+
+    function handleKeyDown(event) {
+      if (event.key !== "Escape") return;
+
+      event.preventDefault();
+      if (openKey) {
+        setOpenKey("");
+      } else {
+        onClose();
+      }
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose, openKey]);
+
+  return (
+    <div
+      ref={panelRef}
+      className="global-search-filter-popover"
+      aria-label="Search filters"
+    >
+      <div className="search-filter-popover-header">
+        <h2>Filters</h2>
+        <button type="button" onClick={onClose} aria-label="Close filters">
+          x
+        </button>
+      </div>
+      <div className="search-filter-sections">
+        {SEARCH_FILTER_SECTIONS.map((section) => {
+          const keys = section.keys.filter((key) => availableKeys.includes(key));
+
+          if (keys.length === 0) return null;
+
+          return (
+            <section key={section.id} className="search-filter-section">
+              <h3>{section.title}</h3>
+              <div className="search-filter-rows">
+                {keys.map((key) => {
+                  const inheritedValue = inheritedFilters[key] || "";
+
+                  return (
+                    <label
+                      key={key}
+                      className={`search-filter-row ${
+                        inheritedValue ? "locked" : ""
+                      }`}
+                    >
+                      <span>{SEARCH_FILTER_LABELS[key]}</span>
+                      {inheritedValue ? (
+                        <div className="search-filter-locked-value">
+                          <strong>
+                            {filterDisplayLabel(key, inheritedValue, optionsByKey)}
+                          </strong>
+                          <small>View Context / Locked</small>
+                        </div>
+                      ) : (
+                        <SearchFilterSelect
+                          filterKey={key}
+                          value={filters[key] || ""}
+                          options={optionsByKey[key] || []}
+                          onChange={onFilterChange}
+                          openKey={openKey}
+                          onToggle={setOpenKey}
+                        />
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+      <button
+        type="button"
+        className="clear-search-filters"
+        onClick={onClearFilters}
+        disabled={activeFilterCount === 0}
+      >
+        Clear Filters
+      </button>
+    </div>
+  );
+}
+
+function SearchFilterChips({ chips = [], onClearFilter }) {
+  if (!chips.length) return null;
+
+  return (
+    <div className="search-filter-chips" aria-label="Active filters">
+      {chips.map((chip) => (
+        <span
+          key={chip.key}
+          className={`search-filter-chip ${chip.locked ? "locked" : "user"}`}
+        >
+          <span>
+            {chip.label}: {chip.value}
+          </span>
+          {chip.note ? <small>{chip.note}</small> : null}
+          {!chip.locked && chip.filterKey ? (
+            <button
+              type="button"
+              onClick={() => onClearFilter(chip.filterKey)}
+              aria-label={`Clear ${chip.label} filter`}
+            >
+              x
+            </button>
+          ) : null}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function InlineHeaderSearch({
+  open,
+  query,
+  scope,
+  filters,
+  inheritedFilters,
+  filterChips,
+  filterOptionsByKey,
+  availableFilterKeys,
+  activeFilterCount,
+  matchCount,
+  activeIndex,
+  hasSearchableItems,
+  onOpen,
+  onClose,
+  onQueryChange,
+  onScopeChange,
+  onFilterChange,
+  onClearFilters,
+  onNext,
+  onPrevious,
+}) {
+  const controlRef = useRef(null);
+  const inputRef = useRef(null);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const hasMatches = matchCount > 0;
+  const hasActiveFilters = activeFilterCount > 0;
+  const popoverInheritedFilters =
+    scope === "global" ? EMPTY_SEARCH_FILTERS : inheritedFilters;
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const frame = window.requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [open]);
+
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if (event.key !== "Escape") return;
+
+      event.preventDefault();
+      if (filterOpen) {
+        setFilterOpen(false);
+      } else if (query.trim()) {
+        onQueryChange("");
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [filterOpen, onClose, onQueryChange, query]);
+
+  function handleInputKeyDown(event) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (event.shiftKey) {
+        onPrevious();
+      } else {
+        onNext();
+      }
+    }
+  }
+
+  return (
+    <div
+      ref={controlRef}
+      className={`inline-search-control ${open ? "open" : ""}`}
+      aria-label="Search current view"
+    >
+      <div className="inline-search-panel">
+          <div className="inline-search-filter">
+            <button
+              type="button"
+              onClick={() => {
+                onOpen();
+                setFilterOpen((current) => !current);
+              }}
+              aria-label="Filters"
+              aria-expanded={filterOpen}
+              className={hasActiveFilters ? "active" : ""}
+            >
+              <span>Filters</span>
+              {hasActiveFilters ? (
+                <strong>{activeFilterCount}</strong>
+              ) : null}
+              <span aria-hidden="true">v</span>
+            </button>
+          </div>
+          <input
+            ref={inputRef}
+            type="search"
+            value={query}
+            onChange={(event) => {
+              onOpen();
+              onQueryChange(event.target.value);
+            }}
+            onFocus={onOpen}
+            onKeyDown={handleInputKeyDown}
+            placeholder={
+              hasSearchableItems
+                ? scope === "global"
+                  ? "Search all dockets"
+                  : "Search current view"
+                : "No searchable items"
+            }
+            aria-label={scope === "global" ? "Search all dockets" : "Search current view"}
+            title={scope === "global" ? "Search all dockets" : "Search current view"}
+          />
+          <div className="inline-search-scope" aria-label="Search scope">
+            {["view", "global"].map((option) => (
+              <button
+                key={option}
+                type="button"
+                className={scope === option ? "active" : ""}
+                onClick={() => {
+                  onOpen();
+                  onScopeChange(option);
+                }}
+                title={option === "view" ? "Search current view" : "Search all dockets"}
+              >
+                {option === "view" ? "View" : "Global"}
+              </button>
+            ))}
+          </div>
+          {query.trim() ? (
+            <div className="inline-search-results" aria-live="polite">
+              {hasMatches ? `${activeIndex + 1} / ${matchCount}` : "No results"}
+            </div>
+          ) : null}
+          {matchCount > 1 && (
+            <>
+              <button
+                type="button"
+                className="inline-search-nav"
+                onClick={onPrevious}
+                aria-label="Previous search result"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                className="inline-search-nav"
+                onClick={onNext}
+                aria-label="Next search result"
+              >
+                ↓
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            className="inline-search-close"
+            onClick={() => {
+              onQueryChange("");
+              onClose();
+              inputRef.current?.focus();
+            }}
+            aria-label="Clear search"
+            disabled={!query.trim()}
+          >
+            x
+          </button>
+          {filterOpen && (
+            <SearchFilterPopover
+              filters={filters}
+              inheritedFilters={popoverInheritedFilters}
+              optionsByKey={filterOptionsByKey}
+              availableKeys={availableFilterKeys}
+              activeFilterCount={activeFilterCount}
+              onFilterChange={(key, value) => {
+                onFilterChange(key, value);
+                inputRef.current?.focus();
+              }}
+              onClearFilters={onClearFilters}
+              onClose={() => {
+                setFilterOpen(false);
+                inputRef.current?.focus();
+              }}
+            />
+          )}
+      </div>
+      <SearchFilterChips
+        chips={filterChips}
+        onClearFilter={(key) => onFilterChange(key, "")}
+      />
+    </div>
+  );
+}
+
+function GlobalActions({
+  syncState,
+  liveSyncState,
+  syncActivity,
+  syncVisualState,
+  syncStatusPopoverOpen,
+  syncStatusPopoverRef,
+  onToggleSyncStatus,
+  syncStatusSummary,
+  syncStatusRows,
+  syncStatusPresentation,
+  syncQueueSummary,
+  isReadOnlyViewer,
+  onSyncToElitical,
+  onSyncFromElitical,
+  onResolveDuplicate,
+  profileMenuOpen,
+  profileMenuRef,
+  onToggleProfile,
+  onOpenLogs,
+  profileInfo,
+}) {
+  return (
+    <div className="toolbar-actions" aria-label="Global actions">
+      <div className="sync-status-control" ref={syncStatusPopoverRef}>
+        <button
+          type="button"
+          className={`global-icon-button sync-status-button ${syncVisualState || syncState}`}
+          onClick={onToggleSyncStatus}
+          aria-label="Sync status"
+          aria-expanded={syncStatusPopoverOpen}
+          title="Sync status"
+        >
+          {liveSyncState === "syncing" ? (
+            <span className="sync-action-spinner" aria-hidden="true" />
+          ) : (
+            <ToolbarIcon type={syncStatusIconType(syncState, liveSyncState)} />
+          )}
+        </button>
+        {syncStatusPopoverOpen && (
+          <div className="sync-status-popover">
+            <h2>Sync Status</h2>
+            {syncStatusSummary.errorMessage ? (
+              <p className="sync-status-error">{syncStatusSummary.errorMessage}</p>
+            ) : null}
+            <section className="sync-current-activity" aria-label="Current sync activity">
+              <h3>Current Activity</h3>
+              <dl>
+                {syncActivityRows(syncActivity, syncStatusPresentation).map(([label, value]) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd>{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+            {syncStatusPresentation.failedOperations.length ? (
+              <section className="sync-operation-section sync-failed-operations" aria-label="Failed sync operations">
+                <h3>Failed Operations</h3>
+                <SyncOperationList
+                  operations={syncStatusPresentation.failedOperations}
+                  kind="failed"
+                  onResolveDuplicate={onResolveDuplicate}
+                />
+              </section>
+            ) : null}
+            {syncStatusPresentation.blockedOperations.length ? (
+              <section className="sync-operation-section sync-blocked-operations" aria-label="Blocked sync operations">
+                <h3>Blocked Operations</h3>
+                <SyncOperationList
+                  operations={syncStatusPresentation.blockedOperations}
+                  kind="blocked"
+                />
+              </section>
+            ) : null}
+            <dl>
+              {syncStatusRows.map(([label, value]) => (
+                <div key={label}>
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        )}
+      </div>
+      {!isReadOnlyViewer && (
+        <button
+          type="button"
+          className="global-icon-button sync-action-button sync-action-button-upload"
+          onClick={onSyncToElitical}
+          disabled={liveSyncState === "syncing" || !syncQueueSummary.actionableCount}
+          aria-label="Sync to Elitical"
+          aria-busy={liveSyncState === "syncing"}
+          title="Sync to Elitical"
+        >
+          {liveSyncState === "syncing" ? (
+            <span className="sync-action-spinner" aria-hidden="true" />
+          ) : (
+            <ToolbarIcon type="cloud-upload" />
+          )}
+          {syncQueueSummary.actionableCount ? (
+            <span className="sync-action-count">{syncQueueSummary.actionableCount}</span>
+          ) : null}
+        </button>
+      )}
+      {!isReadOnlyViewer && (
+        <button
+          type="button"
+          className="global-icon-button sync-action-button sync-action-button-download"
+          onClick={onSyncFromElitical}
+          disabled={liveSyncState === "syncing"}
+          aria-label="Sync from Elitical"
+          aria-busy={liveSyncState === "syncing"}
+          title="Sync from Elitical"
+        >
+          {liveSyncState === "syncing" ? (
+            <span className="sync-action-spinner" aria-hidden="true" />
+          ) : (
+            <ToolbarIcon type="cloud-download" />
+          )}
+        </button>
+      )}
+      <div className="profile-menu-control" ref={profileMenuRef}>
+        <button
+          type="button"
+          className="global-icon-button profile-menu-button"
+          onClick={onToggleProfile}
+          aria-label="Profile"
+          aria-haspopup="menu"
+          aria-expanded={profileMenuOpen}
+          title="Profile"
+        >
+          <ToolbarIcon type="user" />
+        </button>
+        {profileMenuOpen && (
+          <div className="profile-menu" role="menu">
+            <div className="profile-menu-identity">
+              <strong>{profileInfo.name}</strong>
+              <span>{profileInfo.role}</span>
+            </div>
+            <button
+              type="button"
+              className="profile-menu-item"
+              onClick={onOpenLogs}
+              role="menuitem"
+            >
+              <ToolbarIcon type="terminal" />
+              <span>View Terminal / Logs</span>
+            </button>
+            <div className="profile-menu-version">App Version 0.0.0</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GlobalViewHeader({
+  currentLabel,
+  viewMode,
+  viewMenuOpen,
+  onToggleViewMenu,
+  onCloseViewMenu,
+  onSelectView,
+  context,
+  search,
+  globalActions,
+}) {
+  return (
+    <header className="top-toolbar">
+      <div className="toolbar-left">
+        <ViewSelector
+          currentLabel={currentLabel}
+          viewMode={viewMode}
+          viewMenuOpen={viewMenuOpen}
+          onToggle={onToggleViewMenu}
+          onSelect={onSelectView}
+          onClose={onCloseViewMenu}
+        />
+      </div>
+      <ViewContextArea stats={context.stats}>{context.control}</ViewContextArea>
+      <div className="toolbar-search-area">{search}</div>
+      {globalActions}
+    </header>
+  );
+}
+
+function formatLogTime(value) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "--:--:--";
+
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function LogViewerModal({ open, onClose }) {
+  const [entries, setEntries] = useState([]);
+  const [latestId, setLatestId] = useState(0);
+  const [error, setError] = useState("");
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [hasNewLogs, setHasNewLogs] = useState(false);
+  const logListRef = useRef(null);
+  const latestIdRef = useRef(0);
+  const autoScrollRef = useRef(true);
+
+  const scrollToLatest = useCallback(() => {
+    if (!logListRef.current) return;
+
+    logListRef.current.scrollTop = logListRef.current.scrollHeight;
+    setAutoScroll(true);
+    setHasNewLogs(false);
+  }, []);
+
+  const handleLogScroll = useCallback(() => {
+    const element = logListRef.current;
+
+    if (!element) return;
+
+    const distanceFromBottom =
+      element.scrollHeight - element.scrollTop - element.clientHeight;
+    const nearBottom = distanceFromBottom <= 40;
+
+    setAutoScroll(nearBottom);
+    if (nearBottom) setHasNewLogs(false);
+  }, []);
+
+  useEffect(() => {
+    latestIdRef.current = latestId;
+  }, [latestId]);
+
+  useEffect(() => {
+    autoScrollRef.current = autoScroll;
+  }, [autoScroll]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    setAutoScroll(true);
+    setHasNewLogs(false);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    let cancelled = false;
+
+    async function refresh({ initial = false } = {}) {
+      try {
+        const result = await loadApplicationLogs({
+          sinceId: initial ? 0 : latestIdRef.current,
+          limit: 1000,
+        });
+
+        if (cancelled) return;
+
+        setError("");
+        setLatestId(result.latestId);
+        setEntries((current) => {
+          const merged = initial ? result.entries : [...current, ...result.entries];
+          const seen = new Map();
+
+          merged.forEach((entry) => seen.set(entry.id, entry));
+          return Array.from(seen.values()).sort((a, b) => a.id - b.id).slice(-1000);
+        });
+        if (!autoScrollRef.current && result.entries.length) {
+          setHasNewLogs(true);
+        }
+      } catch (fetchError) {
+        if (!cancelled) {
+          setError(fetchError?.message || "Unable to load application logs.");
+        }
+      }
+    }
+
+    refresh({ initial: true });
+    const timer = window.setInterval(() => refresh(), 2000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, onClose]);
+
+  useEffect(() => {
+    if (!autoScroll || !logListRef.current) return;
+
+    scrollToLatest();
+  }, [autoScroll, entries, scrollToLatest]);
+
+  if (!open) return null;
+
+  return (
+    <div className="logs-modal-overlay" role="presentation" onMouseDown={onClose}>
+      <section
+        className="logs-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="logs-modal-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="logs-modal-header">
+          <div>
+            <span>Terminal</span>
+            <h2 id="logs-modal-title">Application Logs</h2>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close logs">
+            x
+          </button>
+        </header>
+        <div className="logs-modal-tabs" aria-label="Log categories">
+          <span>All</span>
+          <span>Backend</span>
+          <span>Sync</span>
+          <span>Elitical</span>
+          <span>Errors</span>
+        </div>
+        <div className="logs-content">
+          {error ? <p className="logs-error">{error}</p> : null}
+          <div
+            className="logs-list"
+            ref={logListRef}
+            aria-live="polite"
+            onScroll={handleLogScroll}
+          >
+            {entries.length ? (
+              entries.map((entry) => (
+                <div key={entry.id} className={`log-entry log-entry-${String(entry.level || "info").toLowerCase()}`}>
+                  <time>{formatLogTime(entry.timestamp)}</time>
+                  <span className={`log-category log-category-${String(entry.category || "system").toLowerCase()}`}>
+                    {entry.category || "SYSTEM"}
+                  </span>
+                  <p>{entry.message}</p>
+                </div>
+              ))
+            ) : (
+              <div className="logs-empty">No application logs are available yet.</div>
+            )}
+          </div>
+          {hasNewLogs && !autoScroll ? (
+            <button
+              type="button"
+              className="logs-latest-button"
+              onClick={scrollToLatest}
+              aria-label="Jump to latest logs"
+            >
+              New logs down
+            </button>
+          ) : null}
+        </div>
+        <footer className="logs-modal-footer">
+          <label className="logs-autoscroll">
+            <input
+              type="checkbox"
+              checked={autoScroll}
+              onChange={(event) => {
+                setAutoScroll(event.target.checked);
+                if (event.target.checked) setHasNewLogs(false);
+              }}
+            />
+            Follow Logs
+          </label>
+          <div>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                setEntries([]);
+              }}
+            >
+              Clear View
+            </button>
+            <button type="button" className="primary-button" onClick={onClose}>
+              Close
+            </button>
+          </div>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function profileInfoFromState(storyState) {
+  const employee = storyState?.employee || storyState?.metadata?.employee || {};
+  const employees = Array.isArray(storyState?.employees) ? storyState.employees : [];
+  const fallbackEmployee = employees.find((entry) => entry?.name || entry?.employeeName) || {};
+  const name =
+    employee.name ||
+    employee.displayName ||
+    employee.fullName ||
+    employee.employeeName ||
+    fallbackEmployee.name ||
+    fallbackEmployee.employeeName ||
+    "Elitical User";
+  const role =
+    employee.designation ||
+    employee.designationName ||
+    employee.role ||
+    fallbackEmployee.designation ||
+    fallbackEmployee.designationName ||
+    "Workspace Member";
+
+  return { name, role };
+}
+
+function stableEmployeeId(employee = {}) {
+  return String(employee.id || employee.employeeId || employee.userId || "").trim();
+}
+
+function employeeDisplayName(employee = {}) {
+  return String(
+    employee.name ||
+      employee.displayName ||
+      employee.fullName ||
+      employee.employeeName ||
+      employee.assigneeName ||
+      employee.userName ||
+      employee.id ||
+      employee.employeeId ||
+      ""
+  ).trim();
+}
+
+function parseStoredEmployeeId(value) {
+  const raw = String(value || "").trim();
+
+  if (!raw) return "";
+
+  try {
+    return String(JSON.parse(raw) || "").trim();
+  } catch {
+    return raw;
+  }
+}
+
+function currentEmployeeIdFromBrowserStorage() {
+  if (typeof window === "undefined" || !window.localStorage) return "";
+
+  return parseStoredEmployeeId(window.localStorage.getItem("flutter.employeeId"));
+}
+
+function buildEmployeeDirectory({ storyState, workItems = [] }) {
+  const byId = new Map();
+
+  function addEmployee(id, name, extra = {}) {
+    const employeeId = String(id || "").trim();
+
+    if (!employeeId) return;
+
+    const previous = byId.get(employeeId) || {};
+    byId.set(employeeId, {
+      ...previous,
+      ...extra,
+      employeeId,
+      id: employeeId,
+      name: String(name || previous.name || employeeId).trim(),
+    });
+  }
+
+  [
+    storyState?.employee,
+    storyState?.metadata?.employee,
+    ...(Array.isArray(storyState?.employees) ? storyState.employees : []),
+  ].forEach((employee) => {
+    addEmployee(stableEmployeeId(employee), employeeDisplayName(employee), employee);
+  });
+
+  workItems.forEach((item) => {
+    addEmployee(itemAssigneeId(item), item.elitical?.assigneeName || item.assignee);
+    (item.worklogs || []).forEach((entry) => {
+      addEmployee(entry.employeeId, entry.employeeName);
+    });
+  });
+
+  return byId;
+}
+
+function dominantWorklogEmployee(workItems = [], employeeDirectory = new Map()) {
+  const totals = new Map();
+
+  workItems.forEach((item) => {
+    (item.worklogs || []).forEach((entry) => {
+      const id = String(entry.employeeId || "").trim();
+
+      if (!id) return;
+
+      const previous = totals.get(id) || 0;
+      totals.set(id, previous + worklogMinutes(entry));
+    });
+  });
+
+  const [employeeId] =
+    Array.from(totals.entries()).sort((first, second) => second[1] - first[1])[0] || [];
+
+  return employeeId ? employeeDirectory.get(employeeId) || { employeeId, id: employeeId } : null;
+}
+
+function currentEmployeeScopeFromState(storyState, workItems = [], employeeDirectory = new Map()) {
+  const metadataEmployee = storyState?.employee || storyState?.metadata?.employee || {};
+  const metadataEmployeeId = stableEmployeeId(metadataEmployee);
+  const storedEmployeeId = currentEmployeeIdFromBrowserStorage();
+  const employeeId = metadataEmployeeId || storedEmployeeId;
+
+  if (employeeId) {
+    const directoryEmployee = employeeDirectory.get(employeeId) || {};
+
+    return {
+      ...directoryEmployee,
+      employeeId,
+      id: employeeId,
+      name: employeeDisplayName(directoryEmployee) || employeeDisplayName(metadataEmployee) || employeeId,
+      isCurrentUser: true,
+    };
+  }
+
+  const fallback = dominantWorklogEmployee(workItems, employeeDirectory);
+
+  return fallback
+    ? {
+        ...fallback,
+        employeeId: fallback.employeeId || fallback.id,
+        id: fallback.employeeId || fallback.id,
+        name: employeeDisplayName(fallback),
+        isCurrentUser: true,
+        inferredFromLocalWorklogs: true,
+      }
+    : null;
+}
+
+function employeeScopeForId(employeeId, employeeDirectory = new Map(), currentEmployeeScope = null) {
+  const id = String(employeeId || "").trim();
+
+  if (!id) return currentEmployeeScope;
+
+  const employee = employeeDirectory.get(id) || {};
+
+  return {
+    ...employee,
+    employeeId: id,
+    id,
+    name: employeeDisplayName(employee) || id,
+    isCurrentUser: currentEmployeeScope?.employeeId === id,
+  };
+}
+
+function scopedSearchFilterOptions(optionsByKey = {}, employeeDirectory = new Map(), currentEmployeeScope = null) {
+  const next = { ...optionsByKey };
+  const byValue = new Map((next.assignee || []).map((option) => [option.value, option]));
+
+  employeeDirectory.forEach((employee) => {
+    const value = employee.employeeId || employee.id;
+
+    if (!value || byValue.has(value)) return;
+
+    byValue.set(value, {
+      value,
+      label: employeeDisplayName(employee) || value,
+      count: 0,
+    });
+  });
+
+  const currentId = currentEmployeeScope?.employeeId || currentEmployeeScope?.id || "";
+  next.assignee = Array.from(byValue.values())
+    .map((option) =>
+      option.value === currentId
+        ? {
+            ...option,
+            label: `Me - ${option.label}`,
+          }
+        : option
+    )
+    .sort((first, second) => {
+      if (first.value === currentId) return -1;
+      if (second.value === currentId) return 1;
+      return first.label.localeCompare(second.label, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+    });
+
+  return next;
+}
+
+const SEARCH_FILTER_SECTIONS = Object.freeze([
+  { id: "view", title: "View Context", keys: ["date", "sprint", "epic"] },
+  { id: "work", title: "Work Item", keys: ["type", "state", "priority", "category"] },
+  { id: "people", title: "People", keys: ["assignee"] },
+  { id: "metrics", title: "Metrics", keys: ["storyPoints"] },
+]);
+
+const VIEW_HEADER_FILTER_CONFIG = Object.freeze({
+  main: { inheritedKeys: [], contextChip: false },
+  sprint: { inheritedKeys: ["sprint"], contextChip: false },
+  epic: { inheritedKeys: ["epic"], contextChip: false },
+  story: { inheritedKeys: [], contextChip: true },
+  job: { inheritedKeys: [], contextChip: true },
+  task: { inheritedKeys: [], contextChip: true },
+  day: { inheritedKeys: ["date"], contextChip: false },
+  backlog: { inheritedKeys: [], contextChip: false },
+  worklog: { inheritedKeys: [], contextChip: false },
+  dashboard: { inheritedKeys: [], contextChip: false },
+});
+
+function filterDisplayLabel(key, value, optionsByKey = {}) {
+  if (!value) return "Any";
+  if (key === "date") return formatDateLabel(value);
+
+  return searchFilterLabel({ [key]: value }, optionsByKey, key);
+}
+
+function viewHeaderFilterContext({ viewMode, selectedContextOption, selectedDayDate }) {
+  const config = VIEW_HEADER_FILTER_CONFIG[viewMode] || VIEW_HEADER_FILTER_CONFIG.main;
+  const filters = { ...EMPTY_SEARCH_FILTERS };
+  const contextChips = [];
+
+  if (config.inheritedKeys.includes("date") && selectedDayDate) {
+    filters.date = dateKeyFromValue(selectedDayDate);
+  }
+
+  if (config.inheritedKeys.includes("sprint") && selectedContextOption?.id) {
+    filters.sprint = selectedContextOption.id;
+  }
+
+  if (config.inheritedKeys.includes("epic") && selectedContextOption?.id) {
+    filters.epic =
+      selectedContextOption.sourceItemId ||
+      selectedContextOption.sourceDocketId ||
+      selectedContextOption.sourceId ||
+      selectedContextOption.id;
+  }
+
+  if (config.contextChip && selectedContextOption?.id) {
+    contextChips.push({
+      key: `context:${viewMode}`,
+      label: contextViewLabel(viewMode),
+      value: selectedContextOption.title || selectedContextOption.name || selectedContextOption.id,
+      locked: true,
+      note: "View Context",
+    });
+  }
+
+  return { filters, contextChips };
+}
+
+function composeSearchFilters(userFilters = EMPTY_SEARCH_FILTERS, inheritedFilters = EMPTY_SEARCH_FILTERS) {
+  return SEARCH_FILTER_KEYS.reduce((acc, key) => {
+    acc[key] = inheritedFilters[key] || userFilters[key] || "";
+    return acc;
+  }, {});
+}
+
+function filterChipsForHeader({ inheritedFilters, userFilters, contextChips, optionsByKey }) {
+  void inheritedFilters;
+  void contextChips;
+  const chips = [];
+
+  SEARCH_FILTER_KEYS.forEach((key) => {
+    const userValue = userFilters[key];
+
+    if (userValue) {
+      chips.push({
+        key: `user:${key}`,
+        filterKey: key,
+        label: SEARCH_FILTER_LABELS[key],
+        value: filterDisplayLabel(key, userValue, optionsByKey),
+        locked: false,
+      });
+    }
+  });
+
+  return chips;
+}
+
+function availableSearchFilterKeys(optionsByKey = {}, inheritedFilters = EMPTY_SEARCH_FILTERS) {
+  return SEARCH_FILTER_KEYS.filter((key) => {
+    if (inheritedFilters[key]) return true;
+    if (key === "date") return true;
+    return (optionsByKey[key] || []).length > 0;
+  });
+}
+
+function graphContainsCanonicalItem(items = [], canonicalId = "") {
+  if (!canonicalId) return false;
+
+  return items.some(
+    (item) =>
+      (item.sourceItemId || item.sourceDocketId || item.sourceId || item.id) === canonicalId
+  );
+}
+
+function globalSearchViewForItem(item = {}) {
+  return DOCKET_CONTEXT_TYPES.has(item.type) ? item.type : "main";
+}
+
+function updateApplicationOverlayOffset() {
+  if (typeof document === "undefined") return;
+
+  const mainContent = document.querySelector(".app-main-content");
+  const offset = mainContent
+    ? Math.max(0, Math.round(mainContent.getBoundingClientRect().top))
+    : 0;
+
+  document.documentElement.style.setProperty("--app-overlay-top", `${offset}px`);
+}
+
 function App() {
   const isReadOnlyViewer = useMemo(() => isHostedViewerRuntime(), []);
   const isBrowserRefreshStartup = useMemo(
@@ -4018,6 +6910,7 @@ function App() {
   );
   const [storyState, setStoryState] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
+  const [propertyPanelItemId, setPropertyPanelItemId] = useState(null);
   const [modal, setModal] = useState(null);
   const [message, setMessage] = useState(
     "Loading local cache..."
@@ -4025,10 +6918,17 @@ function App() {
   const [layoutNonce, setLayoutNonce] = useState(1);
   const [viewMode, setViewMode] = useState("main");
   const [viewRootId, setViewRootId] = useState(null);
+  const [canvasFullMode, setCanvasFullMode] = useState(false);
   const [contextSelections, setContextSelections] = useState({});
+  const [backlogGrouping, setBacklogGrouping] = useState(readBacklogGroupingPreference);
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchScope, setSearchScope] = useState("view");
+  const [searchFilters, setSearchFilters] = useState(() => ({
+    ...EMPTY_SEARCH_FILTERS,
+  }));
+  const [activeSearchIndex, setActiveSearchIndex] = useState(0);
   const [loadState, setLoadState] = useState(
     "loading-cache"
   );
@@ -4046,6 +6946,7 @@ function App() {
   const [liveSyncState, setLiveSyncState] = useState("idle");
   const [liveSyncProgress, setLiveSyncProgress] = useState("");
   const [liveSyncSummary, setLiveSyncSummary] = useState(null);
+  const [syncActivity, setSyncActivity] = useState(EMPTY_SYNC_ACTIVITY);
   const [syncQueueSummary, setSyncQueueSummary] = useState({
     pendingCount: 0,
     actionableCount: 0,
@@ -4053,11 +6954,26 @@ function App() {
     reconciliationActionableCount: 0,
     unconfirmedCount: 0,
     failedCount: 0,
+    blockedCount: 0,
+    supersededCount: 0,
     operations: [],
   });
   const [importedWorklogs, setImportedWorklogs] = useState([]);
   const [publishedWorklogsLoaded, setPublishedWorklogsLoaded] = useState(false);
   const [syncStatusPopoverOpen, setSyncStatusPopoverOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [logsModalOpen, setLogsModalOpen] = useState(false);
+  const [dayProjectionSelections, setDayProjectionSelections] = useState(() =>
+    typeof window === "undefined"
+      ? loadDayProjectionState(null)
+      : loadDayProjectionState(window.localStorage)
+  );
+  const [retainedCreationContexts, setRetainedCreationContexts] = useState(() =>
+    typeof window === "undefined"
+      ? loadRetainedCreationContextState(null)
+      : loadRetainedCreationContextState(window.localStorage)
+  );
+  const [addExistingChildRequest, setAddExistingChildRequest] = useState(null);
 
   const {
     mainTitle = "Genesis",
@@ -4074,7 +6990,27 @@ function App() {
   const storyStateRef = useRef(storyState);
   const saveRequestIdRef = useRef(0);
   const hasCheckedLegacyRef = useRef(false);
+  const preserveSearchOnNextContextChangeRef = useRef(false);
   const syncStatusPopoverRef = useRef(null);
+  const profileMenuRef = useRef(null);
+  const persistRetainedCreationContexts = useCallback((updater) => {
+    setRetainedCreationContexts((current) => {
+      const next =
+        typeof updater === "function"
+          ? updater(current)
+          : updater;
+
+      saveRetainedCreationContextState(
+        typeof window === "undefined" ? null : window.localStorage,
+        next
+      );
+
+      return next;
+    });
+  }, []);
+  const clearRetainedCreationContextState = useCallback(() => {
+    persistRetainedCreationContexts(clearRetainedCreationContexts());
+  }, [persistRetainedCreationContexts]);
   const currentSnapshot = useMemo(
     () => (storyState ? snapshotFromState(storyState) : null),
     [storyState]
@@ -4091,14 +7027,35 @@ function App() {
     syncState !== "offline" &&
     !saveState.startsWith("saving") &&
     baseSha;
-  const totals = useMemo(
-    () => calculateStoryPoints(workItems),
-    [workItems]
-  );
   const isContextView = CONTEXT_VIEW_IDS.has(viewMode);
   const graphScopeOptions = useMemo(
     () => scopesWithOrphanSprint(sprints, workItems),
     [sprints, workItems]
+  );
+  const employeeDirectory = useMemo(
+    () => buildEmployeeDirectory({ storyState, workItems }),
+    [storyState, workItems]
+  );
+  const currentEmployeeScope = useMemo(
+    () => currentEmployeeScopeFromState(storyState, workItems, employeeDirectory),
+    [employeeDirectory, storyState, workItems]
+  );
+  const selectedEmployeeScope = useMemo(
+    () => employeeScopeForId(searchFilters.assignee, employeeDirectory, currentEmployeeScope),
+    [currentEmployeeScope, employeeDirectory, searchFilters.assignee]
+  );
+  const totals = useMemo(
+    () => calculateStoryPoints(workItems, { sprints: graphScopeOptions, employeeScope: selectedEmployeeScope }),
+    [graphScopeOptions, selectedEmployeeScope, workItems]
+  );
+  const backlogProjection = useMemo(
+    () =>
+      buildBacklogProjection({
+        items: workItems,
+        sprints: graphScopeOptions,
+        grouping: backlogGrouping,
+      }),
+    [backlogGrouping, graphScopeOptions, workItems]
   );
   const contextOptions = useMemo(
     () => contextOptionsForView({ viewMode, sprints: graphScopeOptions, workItems }),
@@ -4125,48 +7082,237 @@ function App() {
             sprints: graphScopeOptions,
             viewMode,
             selectedId: selectedContextOption?.id || "",
+            dayProjectionSelections,
+            retainedCreationContexts,
+            employeeScope: selectedEmployeeScope,
           })
         : {
             workItems,
             rootId: null,
             sprints: [],
           },
-    [graphScopeOptions, isContextView, selectedContextOption, viewMode, workItems]
+    [
+      dayProjectionSelections,
+      retainedCreationContexts,
+      selectedEmployeeScope,
+      graphScopeOptions,
+      isContextView,
+      selectedContextOption,
+      viewMode,
+      workItems,
+    ]
   );
   const visibleWorkItems = useMemo(
     () => descendantsIncluding(contextGraph.workItems, viewRootId),
     [contextGraph.workItems, viewRootId]
   );
-  const searchedWorkItems = useMemo(
-    () => filterWorkItemsForSearch(visibleWorkItems, searchQuery),
-    [searchQuery, visibleWorkItems]
+  const baseGraphWorkItems =
+    viewMode === "backlog" ? backlogProjection.workItems : visibleWorkItems;
+  const baseGraphSprints = useMemo(
+    () =>
+      viewMode === "backlog"
+        ? backlogProjection.sprints
+        : viewMode === "main"
+        ? graphScopeOptions
+        : isContextView
+        ? contextGraph.sprints
+        : [],
+    [backlogProjection.sprints, contextGraph.sprints, graphScopeOptions, isContextView, viewMode]
   );
-  const searchedSprints = useMemo(() => {
-    if (viewMode !== "main" || !searchQuery.trim()) return graphScopeOptions;
+  const baseSearchFilterOptionsByKey = useMemo(
+    () =>
+      buildSearchFilterOptions({
+        items: searchScope === "global" ? workItems : baseGraphWorkItems,
+        sprints: searchScope === "global" ? graphScopeOptions : baseGraphSprints,
+      }),
+    [baseGraphSprints, baseGraphWorkItems, graphScopeOptions, searchScope, workItems]
+  );
+  const searchFilterOptionsByKey = useMemo(
+    () => scopedSearchFilterOptions(baseSearchFilterOptionsByKey, employeeDirectory, currentEmployeeScope),
+    [baseSearchFilterOptionsByKey, currentEmployeeScope, employeeDirectory]
+  );
+  const searchViewContext = useMemo(
+    () =>
+      viewHeaderFilterContext({
+        viewMode,
+        selectedContextOption,
+        selectedDayDate: selectedContextOption?.id || dateKeyFromValue(new Date()),
+      }),
+    [selectedContextOption, viewMode]
+  );
+  const inheritedSearchFilters = searchViewContext.filters;
+  const effectiveSearchFilters = useMemo(
+    () => composeSearchFilters(searchFilters, inheritedSearchFilters),
+    [inheritedSearchFilters, searchFilters]
+  );
+  const availableFilterKeys = useMemo(
+    () => availableSearchFilterKeys(
+      searchFilterOptionsByKey,
+      searchScope === "global" ? EMPTY_SEARCH_FILTERS : inheritedSearchFilters
+    ),
+    [inheritedSearchFilters, searchFilterOptionsByKey, searchScope]
+  );
+  const searchFilterChips = useMemo(
+    () =>
+      filterChipsForHeader({
+        inheritedFilters: searchScope === "global" ? EMPTY_SEARCH_FILTERS : inheritedSearchFilters,
+        userFilters: searchFilters,
+        contextChips: searchScope === "global" ? [] : searchViewContext.contextChips,
+        optionsByKey: searchFilterOptionsByKey,
+      }),
+    [inheritedSearchFilters, searchFilterOptionsByKey, searchFilters, searchScope, searchViewContext.contextChips]
+  );
+  const activeExplicitFilterCount = activeSearchFilterCount(searchFilters);
+  const filteredGraph = useMemo(
+    () =>
+      applySearchFilters({
+        items: baseGraphWorkItems,
+        filters: effectiveSearchFilters,
+      }),
+    [baseGraphWorkItems, effectiveSearchFilters]
+  );
+  const globalFilteredSearch = useMemo(
+    () =>
+      applySearchFilters({
+        items: workItems,
+        filters: searchFilters,
+      }),
+    [searchFilters, workItems]
+  );
+  const graphWorkItems = filteredGraph.visibleItems;
+  const filterMatchedWorkItems = filteredGraph.matchedItems;
+  const graphSprints = useMemo(() => {
+    if (viewMode === "day") return baseGraphSprints;
+    if (!filteredGraph.hasExplicitFilters) return baseGraphSprints;
 
-    return graphScopeOptions.filter((sprint) => sprintMatchesQuery(sprint, searchQuery));
-  }, [graphScopeOptions, searchQuery, viewMode]);
-  const graphWorkItems = searchedWorkItems;
-  const graphSprints =
-    viewMode === "main"
-      ? searchedSprints
-      : isContextView
-      ? contextGraph.sprints
+    const visibleSprintIds = new Set(
+      graphWorkItems.map((item) => displaySprintIdForItem(item)).filter(Boolean)
+    );
+
+    return baseGraphSprints.filter((sprint) => visibleSprintIds.has(sprint.id));
+  }, [
+    baseGraphSprints,
+    filteredGraph.hasExplicitFilters,
+    graphWorkItems,
+    viewMode,
+  ]);
+  const searchItems = useMemo(
+    () =>
+      searchItemsForCurrentView({
+        viewMode,
+        graphWorkItems:
+          searchScope === "global"
+            ? globalFilteredSearch.matchedItems
+            : filterMatchedWorkItems,
+        graphSprints:
+          searchScope === "global"
+            ? graphScopeOptions
+            : activeExplicitFilterCount > 0
+            ? []
+            : viewMode === "dashboard"
+            ? graphScopeOptions
+            : graphSprints,
+        rootTitle,
+        mainTitle,
+      }),
+    [
+      activeExplicitFilterCount,
+      filterMatchedWorkItems,
+      globalFilteredSearch.matchedItems,
+      graphScopeOptions,
+      graphSprints,
+      mainTitle,
+      rootTitle,
+      searchScope,
+      viewMode,
+    ]
+  );
+  const searchMatches = useMemo(() => {
+    const normalizedQuery = normalizeInlineSearch(searchQuery);
+
+    if (!searchOpen || !normalizedQuery) return [];
+
+    const normalizedDocketQuery = normalizeDocketNumber(searchQuery);
+    const exactDocketMatches = isExactDocketNumberQuery(searchQuery)
+      ? searchItems
+          .filter((item) => normalizeDocketNumber(item.docketNumber) === normalizedDocketQuery)
+          .map((item) => ({
+            ...item,
+            exactDocketNumberMatch: true,
+          }))
       : [];
+    const exactIds = new Set(exactDocketMatches.map((item) => item.id));
+    const textMatches = searchItems.filter((item) => {
+      if (exactIds.has(item.id)) return false;
+      return item.searchText.includes(normalizedQuery);
+    });
+
+    return [...exactDocketMatches, ...textMatches];
+  }, [searchItems, searchOpen, searchQuery]);
+  const activeSearchMatch = searchMatches[activeSearchIndex] || null;
+  const searchMatchIds = useMemo(
+    () =>
+      searchQuery.trim()
+        ? new Set(searchMatches.map((item) => item.focusId).filter(Boolean))
+        : new Set(Array.from(filteredGraph.matchedIds)),
+    [filteredGraph.matchedIds, searchMatches, searchQuery]
+  );
+  const activeSearchId = activeSearchMatch?.focusId || "";
+  const activeSearchFocusKey = [
+    searchOpen ? "open" : "closed",
+    searchScope,
+    JSON.stringify(effectiveSearchFilters),
+    searchQuery,
+    activeSearchIndex,
+    activeSearchMatch?.id || "",
+  ].join(":");
+
+  useEffect(() => {
+    if (searchScope !== "global") return;
+    if (!searchOpen || !activeSearchMatch?.exactDocketNumberMatch) return;
+
+    const item = workItems.find((entry) => entry.id === activeSearchMatch.focusId);
+    if (!item) return;
+    if (graphContainsCanonicalItem(graphWorkItems, item.id)) return;
+
+    const nextViewMode = globalSearchViewForItem(item);
+
+    preserveSearchOnNextContextChangeRef.current = true;
+    setViewMode(nextViewMode);
+    setViewRootId(null);
+    setSelectedId(item.id);
+    setContextSelections((current) => ({
+      ...current,
+      [nextViewMode]: item.id,
+    }));
+    setLayoutNonce((value) => value + 1);
+  }, [
+    activeSearchMatch,
+    graphWorkItems,
+    searchOpen,
+    searchScope,
+    workItems,
+  ]);
   const graphMainTitle =
     viewMode === "sprint"
       ? selectedContextOption?.title || "Sprint"
+      : viewMode === "backlog"
+      ? backlogProjection.rootTitle
       : viewMode === "day"
       ? formatDateLabel(selectedContextOption?.id || formatDateInput(new Date()))
       : mainTitle;
+  const todayKey = useMemo(() => dateKeyFromValue(new Date()), []);
+  const selectedDayDate = selectedContextOption?.id || todayKey;
   const graphRootTitle =
-    viewMode === "sprint" || viewMode === "day"
+    viewMode === "backlog"
+      ? backlogProjection.rootTitle
+      : viewMode === "sprint" || viewMode === "day"
       ? rootTitle || mainTitle || "Project"
       : rootTitle;
   const graphRootId = viewRootId || contextGraph.rootId;
   const graphTotals = useMemo(
-    () => calculateStoryPoints(graphWorkItems),
-    [graphWorkItems]
+    () => calculateStoryPoints(graphWorkItems, { sprints: graphSprints, employeeScope: selectedEmployeeScope }),
+    [graphSprints, graphWorkItems, selectedEmployeeScope]
   );
   const daySummary = useMemo(
     () =>
@@ -4174,12 +7320,78 @@ function App() {
         ? dayViewSummary({
             workItems,
             graphWorkItems: contextGraph.workItems,
-            selectedDate: selectedContextOption?.id || formatDateInput(new Date()),
+            graphSprints,
+            selectedDate: selectedDayDate,
             rootTitle,
+            employeeScope: selectedEmployeeScope,
           })
         : null,
-    [contextGraph.workItems, rootTitle, selectedContextOption, viewMode, workItems]
+    [
+      contextGraph.workItems,
+      graphSprints,
+      rootTitle,
+      selectedEmployeeScope,
+      selectedDayDate,
+      viewMode,
+      workItems,
+    ]
   );
+  const dayTimelineModel = useMemo(
+    () =>
+      viewMode === "day"
+        ? buildDayTimelineModel({
+            workItems,
+            sprints: graphScopeOptions,
+            selectedDate: selectedDayDate,
+            todayKey,
+            employeeScope: selectedEmployeeScope,
+          })
+        : null,
+    [graphScopeOptions, selectedDayDate, selectedEmployeeScope, todayKey, viewMode, workItems]
+  );
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return undefined;
+    }
+
+    let animationFrame = 0;
+    const scheduleUpdate = () => {
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(updateApplicationOverlayOffset);
+    };
+
+    const observer =
+      typeof ResizeObserver === "function"
+        ? new ResizeObserver(scheduleUpdate)
+        : null;
+    const observedSelectors = [
+      ".app-container",
+      ".top-toolbar",
+      ".day-timeline-navigation",
+      ".toolbar-secondary-actions",
+      ".app-main-content",
+    ];
+
+    observedSelectors.forEach((selector) => {
+      document.querySelectorAll(selector).forEach((element) => observer?.observe(element));
+    });
+
+    scheduleUpdate();
+    window.addEventListener("resize", scheduleUpdate);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.removeEventListener("resize", scheduleUpdate);
+      observer?.disconnect();
+    };
+  }, [
+    canvasFullMode,
+    dayTimelineModel,
+    dirty,
+    saveState,
+    viewMode,
+    viewRootId,
+  ]);
   const viewRootItem = viewRootId
     ? workItems.find((item) => item.id === viewRootId)
     : null;
@@ -4187,14 +7399,16 @@ function App() {
   const usesPlanningSurface = isPlanningView;
   const isDashboardView = viewMode === "dashboard";
   const showGraphEmptyState =
+    viewMode !== "day" &&
     graphWorkItems.length === 0 &&
     !usesPlanningSurface &&
     !isDashboardView &&
     viewMode !== "main";
-  const selectedEditableItem = selectedId
+  const detailsDrawerOpen = modal?.kind === "details";
+  const selectedEditableItem = propertyPanelItemId && !detailsDrawerOpen
     ? workItems.find(
         (item) =>
-          item.id === selectedId &&
+          item.id === propertyPanelItemId &&
           ["epic", "story", "job", "task"].includes(item.type)
       )
     : null;
@@ -4208,8 +7422,8 @@ function App() {
       ? `${viewRootItem.title} View`
       : "Sprint View";
   const contextItemCount =
-    searchedWorkItems.length +
-    (!isPlanningView && viewMode === "main" ? searchedSprints.length : 0) +
+    graphWorkItems.length +
+    (!isPlanningView && viewMode === "main" ? graphSprints.length : 0) +
     (!isPlanningView && !isDashboardView && viewMode !== "main" ? 1 : 0);
   const contextStoryPoints =
     graphRootId ? graphTotals.byId[graphRootId] || 0 : graphTotals.rootTotal;
@@ -4261,6 +7475,35 @@ function App() {
     workItems,
   ]);
 
+  useEffect(() => {
+    if (preserveSearchOnNextContextChangeRef.current) {
+      preserveSearchOnNextContextChangeRef.current = false;
+      return;
+    }
+
+    setSearchOpen(false);
+    setSearchQuery("");
+    setActiveSearchIndex(0);
+  }, [selectedContextId, viewMode, viewRootId]);
+
+  useEffect(() => {
+    setActiveSearchIndex(0);
+  }, [searchFilters, searchQuery]);
+
+  useEffect(() => {
+    if (activeSearchIndex < searchMatches.length) return;
+
+    setActiveSearchIndex(0);
+  }, [activeSearchIndex, searchMatches.length]);
+
+  useEffect(() => {
+    setSearchFilters((current) => {
+      const next = pruneSearchFilters(current, searchFilterOptionsByKey);
+
+      return JSON.stringify(next) === JSON.stringify(current) ? current : next;
+    });
+  }, [searchFilterOptionsByKey]);
+
   const ensurePublishedWorklogs = useCallback(async () => {
     if (!isReadOnlyViewer || publishedWorklogsLoaded) return;
 
@@ -4295,21 +7538,32 @@ function App() {
     storyStateRef.current = storyState;
   }, [storyState, workItems]);
 
+  useDismissableLayer({
+    open: syncStatusPopoverOpen,
+    refs: [syncStatusPopoverRef],
+    onDismiss: () => setSyncStatusPopoverOpen(false),
+  });
+
   useEffect(() => {
-    if (!syncStatusPopoverOpen) return undefined;
+    if (!profileMenuOpen) return undefined;
 
     const handlePointerDown = (event) => {
-      if (syncStatusPopoverRef.current?.contains(event.target)) return;
+      if (profileMenuRef.current?.contains(event.target)) return;
 
-      setSyncStatusPopoverOpen(false);
+      setProfileMenuOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setProfileMenuOpen(false);
     };
 
     document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
 
     return () => {
       document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [syncStatusPopoverOpen]);
+  }, [profileMenuOpen]);
 
   const checkLegacyState = useCallback((remoteSnapshot) => {
     if (hasCheckedLegacyRef.current) return;
@@ -4554,10 +7808,9 @@ function App() {
           ) {
             setContextSelections(refreshState.contextSelections);
           }
-          setSearchQuery(refreshState.searchQuery || "");
-          setSearchOpen(
-            Boolean(refreshState.searchOpen && refreshState.searchQuery)
-          );
+          setSearchQuery("");
+          setSearchOpen(false);
+          setActiveSearchIndex(0);
         }
       } catch (error) {
         if (cancelled) return;
@@ -4577,6 +7830,28 @@ function App() {
 
     loadStartupData();
 
+    const progressEvents = isReadOnlyViewer
+      ? null
+      : subscribeToSyncProgress((progress) => {
+          if (cancelled) return;
+
+          setSyncActivity((current) =>
+            normalizeSyncActivityEvent(progress, progress?.direction || "inbound", current)
+          );
+          if (progress?.message) setLiveSyncProgress(sanitizeSyncActivityText(progress.message));
+          if (progress?.state === "running") {
+            setLiveSyncState("syncing");
+            setSyncState("syncing");
+          }
+          if (progress?.state === "synced" || progress?.phase === "complete") {
+            setLiveSyncState("synced");
+            setSyncState("synced");
+          }
+          if (progress?.state === "failed" || progress?.phase === "failed") {
+            setLiveSyncState("failed");
+            setSyncState("offline");
+          }
+        });
     const events = isReadOnlyViewer || isBrowserRefreshStartup
       ? null
       : subscribeToLocalCacheEvents({
@@ -4594,6 +7869,7 @@ function App() {
               message: "Updated from Elitical",
               preserveView: true,
             });
+            clearRetainedCreationContextState();
           },
           onFailed(payload) {
             if (cancelled) return;
@@ -4601,6 +7877,9 @@ function App() {
             setSyncState("offline");
             setLiveSyncState("failed");
             setLiveSyncProgress(payload?.message || payload?.error || "Background sync failed.");
+            setSyncActivity((current) =>
+              failedSyncActivity("inbound", payload?.message || payload?.error || "Background sync failed.", current)
+            );
             setMessage(payload?.message || "Background sync failed.");
           },
           onWarning(payload) {
@@ -4616,6 +7895,18 @@ function App() {
             setSyncState("syncing");
             setLiveSyncState("syncing");
             setLiveSyncProgress(nextMessage);
+            setSyncActivity((current) =>
+              normalizeSyncActivityEvent(
+                {
+                  direction: "inbound",
+                  state: "running",
+                  phase: "starting",
+                  message: nextMessage,
+                },
+                "inbound",
+                current
+              )
+            );
             setMessage(nextMessage);
           },
           onSyncFinished(payload) {
@@ -4626,14 +7917,25 @@ function App() {
             setLiveSyncProgress((current) =>
               current === "Sync Complete" ? current : payload?.message || ""
             );
+            setSyncActivity((current) =>
+              current.state === "running"
+                ? completeSyncActivity("inbound", payload?.message || "Synced from Elitical", current)
+                : current
+            );
           },
         });
 
     return () => {
       cancelled = true;
+      progressEvents?.close();
       events?.close();
     };
-  }, [applyNormalizedGraphPayload, isBrowserRefreshStartup, isReadOnlyViewer]);
+  }, [
+    applyNormalizedGraphPayload,
+    clearRetainedCreationContextState,
+    isBrowserRefreshStartup,
+    isReadOnlyViewer,
+  ]);
 
   useEffect(() => {
     const handlePageHide = () => {
@@ -4642,14 +7944,12 @@ function App() {
         contextSelections,
         viewMode,
         viewRootId,
-        searchOpen,
-        searchQuery,
       });
     };
 
     window.addEventListener("pagehide", handlePageHide);
     return () => window.removeEventListener("pagehide", handlePageHide);
-  }, [contextSelections, searchOpen, searchQuery, selectedId, viewMode, viewRootId]);
+  }, [contextSelections, selectedId, viewMode, viewRootId]);
 
   useEffect(() => {
     if (!dirty) return undefined;
@@ -4666,12 +7966,26 @@ function App() {
   useEffect(() => {
     function handleKeyDown(event) {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        const target = event.target;
+        const tagName = String(target?.tagName || "").toLowerCase();
+
+        if (
+          tagName === "input" ||
+          tagName === "textarea" ||
+          tagName === "select" ||
+          target?.isContentEditable
+        ) {
+          return;
+        }
+
         event.preventDefault();
         setSearchOpen(true);
       }
 
       if (event.key === "Escape") {
         setSearchOpen(false);
+        setSearchQuery("");
+        setActiveSearchIndex(0);
       }
     }
 
@@ -4684,6 +7998,7 @@ function App() {
     const selectedId = selectedItem?.id || id;
 
     setSelectedId(selectedId);
+    setPropertyPanelItemId(null);
 
     if (selectedId) {
 
@@ -4765,12 +8080,13 @@ function App() {
       type === "story" && !isOrphanSprintCreate
         ? nativeStorySprintForCreate(parentId, payload.sprintId, currentWorkItems, sprints)
         : null;
+    const normalizedDescription = normalizeEliticalDescription(payload.description);
     const createPayload = {
       ...parentPayloadForCreate(type, parentId, currentWorkItems),
       type,
       title: payload.title,
-      description: payload.description || "",
-      descr: payload.description || "",
+      description: normalizedDescription,
+      descr: normalizedDescription,
       projectId: projectIdForCreate(parentId, currentWorkItems, sprints),
       projectName:
         usesNativeDocketCreatePayload
@@ -4781,7 +8097,9 @@ function App() {
       sprint: isOrphanSprintCreate
         ? ""
         : payload.sprint || nativeStorySprint?.sprintName || sprints.find((sprint) => sprint.id === sprintId)?.title || "",
-      docketState: payload.docketState || "concept",
+      docketState: normalizeDocketState(payload.docketState),
+      dktStateId: payload.stateId || docketStateApiId(payload.docketState),
+      dktStateName: docketStateApiName(payload.docketState),
       category:
         usesNativeDocketCreatePayload
           ? String(payload.category || "ENHANCEMENT").toUpperCase()
@@ -4796,7 +8114,7 @@ function App() {
           : payload.assigneeId,
       storyPoints: type === "story" ? Number(payload.storyPoints || 0) : undefined,
       storyPointEst: type === "story" ? Number(payload.storyPoints || 0) : undefined,
-      hasNoSprint: type === "story" ? isOrphanSprintCreate : undefined,
+      hasNoSprint: usesNativeDocketCreatePayload ? isOrphanSprintCreate : undefined,
       imgAttachmentDtoSet: type === "story" ? [] : undefined,
       videoAttachmentDtoSet: type === "story" ? [] : undefined,
       worklog: acceptsTime(type) && payload.worklog ? payload.worklog : undefined,
@@ -4811,7 +8129,25 @@ function App() {
         message: result.message || `Created ${formatType(type)} locally`,
         preserveView: true,
       });
-      setSelectedId(result.item?.id || result.docket?.id || null);
+      setSyncActivity((current) =>
+        localSavedSyncActivity(result.message || "Saved locally", current)
+      );
+      const createdId = result.item?.id || result.docket?.id || null;
+
+      if (viewMode === "day" && createdId) {
+        persistRetainedCreationContexts((current) =>
+          addRetainedCreationContext({
+            state: current,
+            viewMode: "day",
+            contextId: selectedContextOption?.id || formatDateInput(new Date()),
+            nodeId: createdId,
+            parentId,
+            sprintId: createPayload.sprintId || ORPHAN_SPRINT_ID,
+          })
+        );
+      }
+
+      setSelectedId(createdId);
 
       return {
         ok: true,
@@ -4832,7 +8168,13 @@ function App() {
         error: message,
       };
     }
-  }, [applyNormalizedGraphPayload, sprints]);
+  }, [
+    applyNormalizedGraphPayload,
+    persistRetainedCreationContexts,
+    selectedContextOption,
+    sprints,
+    viewMode,
+  ]);
 
   const handleStartChild = useCallback((type, parentId, options = {}) => {
     const currentWorkItems = workItemsRef.current;
@@ -4871,9 +8213,107 @@ function App() {
     });
   }, [rootDocketState, rootTitle, sprints]);
 
+  const childActionItemsForNode = useCallback((node) => {
+    if (!node) return [];
+
+    return capabilityActionItemsForNode(node).filter(
+      (action) =>
+        viewMode === "day" ||
+        action.kind !== "add-existing" ||
+        !(node.isOrphanSprint || node.isOrphanSprintContext)
+    );
+  }, [viewMode]);
+
+  const handleAddExistingChild = useCallback((request) => {
+    setAddExistingChildRequest({
+      ...request,
+      mode: viewMode === "day" ? "day" : "canonical",
+      selectedDate: selectedContextOption?.id || formatDateInput(new Date()),
+      sprintId: request.isOrphanSprint ? "" : request.sprintId || "",
+      parentId: request.parentId || request.sourceItemId || "",
+    });
+  }, [selectedContextOption, viewMode]);
+
+  const handleSelectExistingChild = useCallback(async (childId) => {
+    if (!addExistingChildRequest) return;
+
+    const selectedDate =
+      addExistingChildRequest.selectedDate ||
+      selectedContextOption?.id ||
+      formatDateInput(new Date());
+    const scopeId = addExistingChildRequest.isOrphanSprint
+      ? ORPHAN_SPRINT_ID
+      : addExistingChildRequest.sprintId || ORPHAN_SPRINT_ID;
+
+    if (addExistingChildRequest.mode === "day") {
+      const next = addDayProjectionSelection({
+        state: dayProjectionSelections,
+        selectedDate,
+        kind: addExistingChildRequest.type,
+        parentId: addExistingChildRequest.parentId,
+        sprintId: scopeId,
+        childId,
+      });
+
+      setDayProjectionSelections(next);
+      saveDayProjectionState(
+        typeof window === "undefined" ? null : window.localStorage,
+        next
+      );
+      setAddExistingChildRequest(null);
+      setSelectedId(childId);
+      setMessage("Added existing item to Day View");
+      setLayoutNonce((value) => value + 1);
+      return;
+    }
+
+    const child = workItemsRef.current.find((item) => item.id === childId);
+    const canonicalDocketId = canonicalDocketIdForUpdate(child);
+    const updates = canonicalAddExistingUpdates({
+      request: addExistingChildRequest,
+      child,
+      sprints,
+    });
+
+    if (!child || !canonicalDocketId || !updates) {
+      setMessage("Add Existing is not supported for this relationship yet.");
+      return;
+    }
+
+    try {
+      setMessage("Adding existing item locally...");
+      const result = await updateEliticalDocket(canonicalDocketId, updates);
+
+      if (result?.normalized?.appState) {
+        applyNormalizedGraphPayload(result, {
+          message: result.message || "Added existing item locally",
+          preserveView: true,
+        });
+      } else {
+        setMessage(result?.message || "Added existing item locally");
+      }
+      setSyncActivity((current) =>
+        localSavedSyncActivity(result?.message || "Saved locally", current)
+      );
+      setAddExistingChildRequest(null);
+      setSelectedId(child.id);
+      setLayoutNonce((value) => value + 1);
+    } catch (error) {
+      setMessage(error.payload?.message || error.payload?.error || error.message || "Unable to add existing item.");
+    }
+  }, [
+    addExistingChildRequest,
+    applyNormalizedGraphPayload,
+    dayProjectionSelections,
+    selectedContextOption,
+    sprints,
+  ]);
+
   const openDetailsModal = useCallback((id) => {
     const selectedItem = resolveCanonicalWorkItem(id, workItemsRef.current);
     const canonicalId = selectedItem?.id || id;
+
+    setPropertyPanelItemId(null);
 
     if (!selectedItem || !["epic", "story", "job", "task"].includes(selectedItem.type)) {
       setSelectedId(canonicalId || null);
@@ -4887,6 +8327,11 @@ function App() {
       id: canonicalId,
     });
     setMessage("");
+  }, []);
+
+  const closeDetailsModal = useCallback(() => {
+    setPropertyPanelItemId(null);
+    setModal(null);
   }, []);
 
   const setFocusedView = useCallback((id) => {
@@ -4936,7 +8381,7 @@ function App() {
       };
     }
 
-    const requestedDocketState = updates.docketState || "concept";
+    const requestedDocketState = normalizeDocketState(updates.docketState);
     const blockedError =
       requestedDocketState === "artifact"
         ? artifactBlockedError(ROOT_ID, workItemsRef.current)
@@ -5018,7 +8463,7 @@ function App() {
           ? {
               ...sprint,
               title: trimmed,
-              docketState: updates.docketState || "concept",
+              docketState: normalizeDocketState(updates.docketState),
               code: updates.code || "",
               sprintStartDate: optionalDateInputToIso(updates.sprintStartDate),
               sprintEndDate: optionalDateInputToIso(updates.sprintEndDate),
@@ -5041,7 +8486,7 @@ function App() {
 
   const saveWorkItem = useCallback((id, updates) => {
     const existingItems = workItemsRef.current;
-    const requestedDocketState = updates.docketState || "concept";
+    const requestedDocketState = normalizeDocketState(updates.docketState);
     const blockedError =
       requestedDocketState === "artifact"
         ? artifactBlockedError(id, existingItems)
@@ -5110,8 +8555,14 @@ function App() {
             message: remoteResult.message || "Saved locally",
             preserveView: true,
           });
+          setSyncActivity((current) =>
+            localSavedSyncActivity(remoteResult.message || "Saved locally", current)
+          );
         } else {
           setMessage(remoteResult?.message || "Saved locally");
+          setSyncActivity((current) =>
+            localSavedSyncActivity(remoteResult?.message || "Saved locally", current)
+          );
         }
       }
 
@@ -5161,8 +8612,14 @@ function App() {
             message: remoteResult.message || "Saved worklog locally",
             preserveView: true,
           });
+          setSyncActivity((current) =>
+            localSavedSyncActivity(remoteResult.message || "Saved worklog locally", current)
+          );
         } else {
           setMessage(remoteResult?.message || "Saved worklog locally");
+          setSyncActivity((current) =>
+            localSavedSyncActivity(remoteResult?.message || "Saved worklog locally", current)
+          );
         }
       }
 
@@ -5259,11 +8716,14 @@ function App() {
     if (result.deletedIds.includes(viewRootId)) {
       setViewRootId(null);
     }
+    persistRetainedCreationContexts((current) =>
+      removeRetainedCreationContexts(current, result.deletedIds)
+    );
     setMessage("Unsaved Changes");
     setLayoutNonce((value) => value + 1);
 
     return result;
-  }, [rootDocketState, viewRootId]);
+  }, [persistRetainedCreationContexts, rootDocketState, viewRootId]);
 
   const handleSaveChanges = useCallback(async () => {
     if (isReadOnlyViewer || !canSave || !currentSnapshot) return;
@@ -5358,6 +8818,18 @@ function App() {
     setSyncStatusPopoverOpen(false);
     setLiveSyncState("syncing");
     setLiveSyncProgress("Authenticating...");
+    setSyncActivity((current) =>
+      normalizeSyncActivityEvent(
+        {
+          direction: "inbound",
+          state: "running",
+          phase: "starting",
+          message: "Syncing from Elitical...",
+        },
+        "inbound",
+        current
+      )
+    );
     setSyncState("syncing");
     setMessage("Syncing from Elitical...");
 
@@ -5365,8 +8837,11 @@ function App() {
       const result = await syncLiveEliticalData({
         onProgress(progress) {
           if (progress?.message) {
-            setLiveSyncProgress(progress.message);
+            setLiveSyncProgress(sanitizeSyncActivityText(progress.message));
           }
+          setSyncActivity((current) =>
+            normalizeSyncActivityEvent(progress, "inbound", current)
+          );
         },
       });
       const worklogCache = await loadLocalWorklogsCache().catch(() => null);
@@ -5382,8 +8857,12 @@ function App() {
         sha: baseSha,
         lastSyncedAt: syncedAt,
       });
+      clearRetainedCreationContextState();
       setLiveSyncState("synced");
       setLiveSyncProgress("Sync Complete");
+      setSyncActivity((current) =>
+        completeSyncActivity("inbound", "Synced from Elitical", current)
+      );
     } catch (error) {
       const errorMessage =
         error.payload?.message ||
@@ -5393,6 +8872,9 @@ function App() {
 
       setLiveSyncState("failed");
       setLiveSyncProgress(errorMessage);
+      setSyncActivity((current) =>
+        failedSyncActivity("inbound", errorMessage, current)
+      );
       setLiveSyncSummary((current) => current
         ? {
             ...current,
@@ -5421,6 +8903,7 @@ function App() {
   }, [
     applyNormalizedGraphPayload,
     baseSha,
+    clearRetainedCreationContextState,
     isReadOnlyViewer,
     liveSyncState,
   ]);
@@ -5436,6 +8919,21 @@ function App() {
     setSyncStatusPopoverOpen(false);
     setLiveSyncState("syncing");
     setLiveSyncProgress("Syncing pending changes to Elitical...");
+    setSyncActivity((current) =>
+      normalizeSyncActivityEvent(
+        {
+          direction: "outbound",
+          state: "running",
+          phase: "starting",
+          message: "Syncing pending changes to Elitical...",
+          current: 0,
+          total: syncQueueSummary.actionableCount,
+          unit: "operations",
+        },
+        "outbound",
+        current
+      )
+    );
     setSyncState("syncing");
     setMessage("Syncing pending changes to Elitical...");
 
@@ -5443,8 +8941,11 @@ function App() {
       const result = await syncPendingToElitical({
         onProgress(progress) {
           if (progress?.message) {
-            setLiveSyncProgress(progress.message);
+            setLiveSyncProgress(sanitizeSyncActivityText(progress.message));
           }
+          setSyncActivity((current) =>
+            normalizeSyncActivityEvent(progress, "outbound", current)
+          );
         },
       });
       const worklogCache = await loadLocalWorklogsCache().catch(() => null);
@@ -5460,8 +8961,16 @@ function App() {
         sha: baseSha,
         lastSyncedAt: syncedAt,
       });
+      if (!result.syncSummary?.failed) {
+        clearRetainedCreationContextState();
+      }
       setLiveSyncState(result.syncSummary?.failed ? "failed" : "synced");
       setLiveSyncProgress(result.message || "Sync to Elitical complete");
+      setSyncActivity((current) =>
+        result.syncSummary?.failed
+          ? failedSyncActivity("outbound", result.message || "Sync to Elitical completed with failures.", current)
+          : completeSyncActivity("outbound", result.message || "Synced to Elitical", current)
+      );
     } catch (error) {
       const errorMessage =
         error.payload?.message ||
@@ -5471,15 +8980,97 @@ function App() {
 
       setLiveSyncState("failed");
       setLiveSyncProgress(errorMessage);
+      setSyncActivity((current) =>
+        failedSyncActivity("outbound", errorMessage, current)
+      );
       setSyncState("offline");
       setMessage(errorMessage);
     }
   }, [
     applyNormalizedGraphPayload,
     baseSha,
+    clearRetainedCreationContextState,
     isReadOnlyViewer,
     liveSyncState,
     syncQueueSummary.actionableCount,
+  ]);
+
+  const handleResolveDuplicateSyncOperation = useCallback(async ({
+    parentOperationId,
+    dependentOperationId,
+  } = {}) => {
+    if (isReadOnlyViewer || liveSyncState === "syncing") return;
+    if (!parentOperationId || !dependentOperationId) {
+      setMessage("Duplicate recovery requires a failed Docket and blocked Worklog.");
+      return;
+    }
+
+    const replacementDocketNumber = window.prompt("Replacement Docket number, for example DES-690:");
+    if (!replacementDocketNumber) return;
+    const replacementRemoteDocketId = window.prompt("Replacement remote Docket UUID:");
+    if (!replacementRemoteDocketId) return;
+    const replacementRemoteWorklogId = window.prompt("Replacement remote Worklog UUID:");
+    if (!replacementRemoteWorklogId) return;
+
+    const request = {
+      parentOperationId,
+      dependentOperationId,
+      replacementDocketNumber: replacementDocketNumber.trim(),
+      replacementRemoteDocketId: replacementRemoteDocketId.trim(),
+      replacementRemoteWorklogId: replacementRemoteWorklogId.trim(),
+    };
+
+    try {
+      const preview = await previewDuplicateSyncRecovery(request);
+      const replacementWorklog = preview.preview?.replacementWorklog || {};
+      const replacementMinutes = Number(replacementWorklog.durationMinutes || 0);
+      const replacementDuration = replacementMinutes
+        ? formatWorkDuration(replacementMinutes)
+        : `${Number(replacementWorklog.hour || 0)}h ${Number(replacementWorklog.min || 0)}m`;
+      const confirmed = window.confirm(
+        [
+          "Resolve as duplicate?",
+          "",
+          `Failed local: ${preview.preview?.parent?.title || parentOperationId}`,
+          `Replacement: ${preview.preview?.replacementDocket?.num || ""} ${preview.preview?.replacementDocket?.title || ""}`.trim(),
+          `Blocked Worklog: ${preview.preview?.dependent?.hour || 0}h ${preview.preview?.dependent?.min || 0}m`,
+          `Existing Worklog: ${replacementDuration}`,
+          "",
+          "This is local-only. It will not POST or update Elitical.",
+        ].join("\n")
+      );
+
+      if (!confirmed) return;
+
+      const result = await resolveDuplicateSyncRecovery(request);
+
+      if (result.normalized?.appState) {
+        applyNormalizedGraphPayload(result, {
+          message: "Duplicate sync operations resolved locally.",
+          preserveView: true,
+        });
+      } else {
+        setSyncQueueSummary(normalizeSyncQueueSummary(result.syncQueue));
+      }
+      setLiveSyncState("synced");
+      setLiveSyncProgress("Duplicate sync operations resolved locally.");
+      setSyncActivity((current) =>
+        localSavedSyncActivity("Duplicate sync operations resolved locally.", current)
+      );
+      setSyncStatusPopoverOpen(false);
+      setMessage("Duplicate sync operations resolved locally.");
+    } catch (error) {
+      const message =
+        error.payload?.error ||
+        error.message ||
+        "Unable to resolve duplicate sync operations.";
+
+      setMessage(message);
+    }
+  }, [
+    applyNormalizedGraphPayload,
+    isReadOnlyViewer,
+    liveSyncState,
   ]);
 
   const handleUseLegacyState = useCallback(() => {
@@ -5501,22 +9092,28 @@ function App() {
     setShowLegacyNotice(false);
   }, []);
 
-  const statusLabel =
-    liveSyncState === "syncing"
-      ? "🔄 Syncing..."
-    : liveSyncState === "failed"
-      ? liveSyncProgress || message || "Elitical sync failed"
-      : saveState === "failed"
-      ? "Save failed"
-      : saveState === "saving"
-      ? "Syncing..."
-      : syncState === "offline"
-      ? "Offline"
-    : syncState === "syncing" || syncState === "loading"
-      ? "Syncing..."
-      : syncQueueSummary.actionableCount
-      ? `Pending Sync (${syncQueueSummary.actionableCount})`
-      : "✓ Synced";
+  const closeInlineSearch = useCallback(() => {
+    setSearchOpen(false);
+    setSearchQuery("");
+    setActiveSearchIndex(0);
+  }, []);
+  const openInlineSearch = useCallback(() => {
+    setSearchOpen(true);
+    setActiveSearchIndex(0);
+  }, []);
+  const goToNextSearchResult = useCallback(() => {
+    setActiveSearchIndex((current) =>
+      searchMatches.length > 0 ? (current + 1) % searchMatches.length : 0
+    );
+  }, [searchMatches.length]);
+  const goToPreviousSearchResult = useCallback(() => {
+    setActiveSearchIndex((current) =>
+      searchMatches.length > 0
+        ? (current - 1 + searchMatches.length) % searchMatches.length
+        : 0
+    );
+  }, [searchMatches.length]);
+
   const syncStatusSummary = liveSyncSummary || {
     status: liveSyncState === "failed" ? "Failed" : "Success",
     counts: {
@@ -5533,12 +9130,21 @@ function App() {
   };
   const syncStatusCounts = syncStatusSummary.counts || {};
   const syncIncremental = syncStatusSummary.incremental || {};
+  const syncStatusPresentation = buildSyncStatusPresentation({
+    activity: syncActivity,
+    queueSummary: syncQueueSummary,
+    summary: syncStatusSummary,
+    liveState: liveSyncState,
+  });
   const syncStatusRows = [
-    ["Status", syncStatusSummary.status || (liveSyncState === "failed" ? "Failed" : "Success")],
+    ["Status", syncStatusPresentation.status],
     ["Actionable Sync Items", syncQueueSummary.actionableCount || 0],
     ["Pending Mutations", syncQueueSummary.mutationActionableCount || 0],
+    ["Reconciliation Actionable", syncQueueSummary.reconciliationActionableCount || 0],
+    ["Blocked", syncQueueSummary.blockedCount || 0],
     ["Unconfirmed Creates", syncQueueSummary.unconfirmedCount || 0],
     ["Sync Failures", syncQueueSummary.failedCount || 0],
+    ["Superseded", syncQueueSummary.supersededCount || 0],
     ["Last Synced", syncStatusSummary.syncedAt ? formatTimestamp(syncStatusSummary.syncedAt) : "-"],
     ["Duration", syncStatusSummary.durationMs ? `${Math.round(syncStatusSummary.durationMs / 1000)} sec` : "-"],
     ["Projects", syncStatusCounts.projects ?? "-"],
@@ -5552,6 +9158,190 @@ function App() {
     ["Modified", syncIncremental.modifiedDockets ?? "-"],
     ["Unchanged", syncIncremental.unchangedDockets ?? "-"],
   ];
+  const syncVisualState =
+    syncActivity.state === "running" || liveSyncState === "syncing"
+      ? "syncing"
+      : syncStatusPresentation.hasFailures ||
+        syncActivity.state === "failed" ||
+        liveSyncState === "failed" ||
+        syncState === "offline"
+      ? "failed"
+      : syncQueueSummary.actionableCount > 0
+      ? "pending"
+      : syncState;
+  const profileInfo = profileInfoFromState(storyState);
+  const selectedViewLabel =
+    currentAppView?.label ||
+    (viewRootItem ? `${viewRootItem.title} View` : "Tree View");
+  const typeCounts = graphWorkItems.reduce((acc, item) => {
+    acc[item.type] = (acc[item.type] || 0) + 1;
+    return acc;
+  }, {});
+  const treeStats = [
+    { label: "Items", value: contextItemCount },
+    { label: "SP", value: contextStoryPoints },
+    { label: "Logged", value: formatWorkDuration(contextTimeMinutes) },
+    { label: "Projects", value: projectStats.projects },
+    { label: "Sprints", value: projectStats.sprints },
+    { label: "Dockets", value: projectStats.dockets },
+    { label: "Epics", value: projectStats.epics },
+    { label: "Stories", value: projectStats.stories },
+    { label: "Jobs", value: projectStats.jobs },
+    { label: "Tasks", value: projectStats.tasks },
+  ];
+  const contextStats = [
+    { label: "Items", value: contextItemCount },
+    { label: "SP", value: contextStoryPoints },
+    { label: "Logged", value: formatWorkDuration(contextTimeMinutes) },
+    { label: "Epics", value: typeCounts.epic || 0 },
+    { label: "Stories", value: typeCounts.story || 0 },
+    { label: "Jobs", value: typeCounts.job || 0 },
+    { label: "Tasks", value: typeCounts.task || 0 },
+  ];
+  const dayStats = daySummary
+    ? [
+        { label: "Worklogs", value: daySummary.worklogs },
+        { label: "Logged", value: formatWorkDuration(daySummary.totalMinutes) },
+        { label: "Projects", value: daySummary.projects },
+        { label: "Sprints", value: daySummary.sprints },
+        { label: "Epics", value: daySummary.epics },
+        { label: "Stories", value: daySummary.stories },
+        { label: "Jobs", value: daySummary.jobs },
+        { label: "Tasks", value: daySummary.tasks },
+      ]
+    : [];
+  const dashboardStats = [
+    { label: "Projects", value: projectStats.projects },
+    { label: "Sprints", value: projectStats.sprints },
+    { label: "Dockets", value: projectStats.dockets },
+    { label: "SP", value: totals.rootTotal },
+    { label: "Logged", value: formatWorkDuration(totals.rootTimeMinutes || 0) },
+  ];
+  const contextSelectorControl = isContextView && viewMode !== "day"
+    ? (
+        <ContextGraphSelector
+          label={contextViewLabel(viewMode)}
+          options={contextOptions}
+          value={selectedContextOption?.id || ""}
+          onChange={selectContextViewOption}
+          viewMode={viewMode}
+          inline
+        />
+      )
+    : null;
+  const backlogGroupingControl = viewMode === "backlog"
+    ? (
+        <BacklogGroupingSelector
+          value={backlogGrouping}
+          onChange={(value) => {
+            setBacklogGrouping(value);
+            saveBacklogGroupingPreference(value);
+            setViewRootId(null);
+            setSelectedId(null);
+            setLayoutNonce((current) => current + 1);
+          }}
+        />
+      )
+    : null;
+  const headerContextByView = {
+    main: { stats: treeStats },
+    sprint: { control: contextSelectorControl, stats: contextStats },
+    epic: { control: contextSelectorControl, stats: contextStats },
+    story: { control: contextSelectorControl, stats: contextStats },
+    job: { control: contextSelectorControl, stats: contextStats },
+    task: { control: contextSelectorControl, stats: contextStats },
+    day: {
+      control: (
+        <DayViewToolbar
+          value={selectedDayDate}
+          onChange={selectContextViewOption}
+          summary={daySummary}
+          inline
+        />
+      ),
+      stats: dayStats,
+    },
+    backlog: { control: backlogGroupingControl, stats: contextStats },
+    worklog: {
+      stats: [
+        { label: "Worklogs", value: importedWorklogs.length },
+        {
+          label: "Logged",
+          value: formatWorkDuration(
+            importedWorklogs.reduce((total, entry) => total + worklogMinutes(entry), 0)
+          ),
+        },
+      ],
+    },
+    dashboard: { stats: dashboardStats },
+  };
+  const headerContext = headerContextByView[viewMode] || { stats: [] };
+  const handleSearchFilterChange = (key, value) => {
+    setSearchFilters((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  };
+  const clearExplicitSearchFilters = () => {
+    setSearchFilters({ ...EMPTY_SEARCH_FILTERS });
+  };
+  const globalSearch = (
+    <InlineHeaderSearch
+      open={searchOpen}
+      query={searchQuery}
+      scope={searchScope}
+      filters={searchFilters}
+      inheritedFilters={inheritedSearchFilters}
+      filterChips={searchFilterChips}
+      filterOptionsByKey={searchFilterOptionsByKey}
+      availableFilterKeys={availableFilterKeys}
+      activeFilterCount={activeExplicitFilterCount}
+      matchCount={searchMatches.length}
+      activeIndex={activeSearchIndex}
+      hasSearchableItems={searchItems.length > 0}
+      onOpen={openInlineSearch}
+      onClose={closeInlineSearch}
+      onQueryChange={setSearchQuery}
+      onScopeChange={(scope) => {
+        setSearchScope(scope);
+        setActiveSearchIndex(0);
+      }}
+      onFilterChange={handleSearchFilterChange}
+      onClearFilters={clearExplicitSearchFilters}
+      onNext={goToNextSearchResult}
+      onPrevious={goToPreviousSearchResult}
+    />
+  );
+  const globalActions = (
+    <GlobalActions
+      syncState={syncState}
+      liveSyncState={liveSyncState}
+      syncActivity={syncActivity}
+      syncVisualState={syncVisualState}
+      syncStatusPopoverOpen={syncStatusPopoverOpen}
+      syncStatusPopoverRef={syncStatusPopoverRef}
+      onToggleSyncStatus={() => {
+        setViewMenuOpen(false);
+        setSyncStatusPopoverOpen((open) => !open);
+      }}
+      syncStatusSummary={syncStatusSummary}
+      syncStatusRows={syncStatusRows}
+      syncStatusPresentation={syncStatusPresentation}
+      syncQueueSummary={syncQueueSummary}
+      isReadOnlyViewer={isReadOnlyViewer}
+      onSyncToElitical={handleSyncToElitical}
+      onSyncFromElitical={handleSyncFromElitical}
+      onResolveDuplicate={handleResolveDuplicateSyncOperation}
+      profileMenuOpen={profileMenuOpen}
+      profileMenuRef={profileMenuRef}
+      onToggleProfile={() => setProfileMenuOpen((open) => !open)}
+      onOpenLogs={() => {
+        setProfileMenuOpen(false);
+        setLogsModalOpen(true);
+      }}
+      profileInfo={profileInfo}
+    />
+  );
 
   if (loadState === "loading-cache") {
     return (
@@ -5633,136 +9423,36 @@ function App() {
   }
 
   return (
-    <div className="app-container">
-      <header className="top-toolbar">
-        <div className="toolbar-left">
-          <div className="app-logo" aria-label="Jira Flow">
-            JF
-          </div>
-          <div className="view-selector">
-            <button
-              type="button"
-              className="view-selector-button"
-              onClick={() => setViewMenuOpen((open) => !open)}
-              aria-expanded={viewMenuOpen}
-              aria-haspopup="listbox"
-            >
-              <span>
-                {currentAppView?.label ||
-                  (viewRootItem ? `${viewRootItem.title} View` : "Tree View")}
-              </span>
-              <span className="view-selector-caret" aria-hidden="true">
-                v
-              </span>
-            </button>
-            {viewMenuOpen && (
-              <div className="view-selector-menu" role="listbox">
-                {APP_VIEWS.map((view) => (
-                  <button
-                    key={view.id}
-                    type="button"
-                    className={viewMode === view.id ? "selected" : ""}
-                    onClick={() => showAppView(view.id)}
-                    role="option"
-                    aria-selected={viewMode === view.id}
-                  >
-                    {view.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+    <div className={`app-container ${canvasFullMode ? "canvas-full-mode" : ""}`}>
+      {!canvasFullMode ? (
+        <GlobalViewHeader
+          currentLabel={selectedViewLabel}
+          viewMode={viewMode}
+          viewMenuOpen={viewMenuOpen}
+          onToggleViewMenu={() => {
+            setSyncStatusPopoverOpen(false);
+            setViewMenuOpen((open) => !open);
+          }}
+          onCloseViewMenu={() => setViewMenuOpen(false)}
+          onSelectView={showAppView}
+          context={headerContext}
+          search={globalSearch}
+          globalActions={globalActions}
+        />
+      ) : null}
 
-        <div className="toolbar-context" aria-label="Current view summary">
-          <div className="toolbar-context-row primary">
-            <strong>{contextTitle}</strong>
-            {viewMode !== "day" && (
-              <>
-                <span>{contextItemCount} Items</span>
-                <span>{contextStoryPoints} SP</span>
-                <span>{formatWorkTime(contextTimeMinutes)} Logged</span>
-              </>
-            )}
-            <span>Last synced {formatRelativeSync(lastSyncedAt)}</span>
-          </div>
-          {viewMode !== "day" && (
-            <div className="toolbar-context-row secondary">
-              <span>Projects: {projectStats.projects}</span>
-              <span>Sprints: {projectStats.sprints}</span>
-              <span>Dockets: {projectStats.dockets}</span>
-              <span>Epics: {projectStats.epics}</span>
-              <span>Stories: {projectStats.stories}</span>
-              <span>Jobs: {projectStats.jobs}</span>
-              <span>Tasks: {projectStats.tasks}</span>
-            </div>
-          )}
-        </div>
+      {!canvasFullMode && viewMode === "day" && dayTimelineModel ? (
+        <DayTimelineNavigation
+          model={dayTimelineModel}
+          selectedDate={selectedDayDate}
+          todayKey={todayKey}
+          onSelectDate={selectContextViewOption}
+        />
+      ) : null}
 
-        <div className="toolbar-actions">
-          <button
-            type="button"
-            className="search-trigger"
-            onClick={() => setSearchOpen(true)}
-          >
-            Search
-            <span>Ctrl K</span>
-          </button>
-          <div className="sync-status-control" ref={syncStatusPopoverRef}>
-            <span className={`sync-status ${syncState}`}>
-              {statusLabel}
-            </span>
-            <button
-              type="button"
-              className="sync-status-icon"
-              onClick={() => setSyncStatusPopoverOpen((open) => !open)}
-              aria-label="Sync status"
-              aria-expanded={syncStatusPopoverOpen}
-            >
-              i
-            </button>
-            {syncStatusPopoverOpen && (
-              <div className="sync-status-popover">
-                <h2>Last Sync</h2>
-                {syncStatusSummary.errorMessage ? (
-                  <p className="sync-status-error">{syncStatusSummary.errorMessage}</p>
-                ) : null}
-                <dl>
-                  {syncStatusRows.map(([label, value]) => (
-                    <div key={label}>
-                      <dt>{label}</dt>
-                      <dd>{value}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </div>
-            )}
-          </div>
-
-          {!isReadOnlyViewer && (
-            <button
-              type="button"
-              className="primary-button"
-              onClick={handleSyncToElitical}
-              disabled={liveSyncState === "syncing" || !syncQueueSummary.actionableCount}
-            >
-              {liveSyncState === "syncing"
-                ? "Syncing..."
-                : `Sync to Elitical${syncQueueSummary.actionableCount ? ` (${syncQueueSummary.actionableCount})` : ""}`}
-            </button>
-          )}
-
-          {!isReadOnlyViewer && (
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={handleSyncFromElitical}
-              disabled={liveSyncState === "syncing"}
-            >
-              {liveSyncState === "syncing" ? "Syncing..." : "Sync from Elitical"}
-            </button>
-          )}
-
+      {!canvasFullMode &&
+      ((!isReadOnlyViewer && dirty) || (!isReadOnlyViewer && saveState === "conflict") || viewRootId) ? (
+        <div className="toolbar-secondary-actions">
           {!isReadOnlyViewer && dirty && (
             <>
               <button
@@ -5794,108 +9484,85 @@ function App() {
             </button>
           )}
         </div>
-      </header>
-
-      {showLegacyNotice && (
-        <div className="legacy-notice">
-          <span>Local worklog data was found.</span>
-          <button type="button" onClick={handleIgnoreLegacyState}>
-            Ignore
-          </button>
-          <button type="button" onClick={handleUseLegacyState}>
-            Replace Working Copy with Local Data
-          </button>
-        </div>
-      )}
-
-      {searchOpen && (
-        <div className="search-overlay" onMouseDown={() => setSearchOpen(false)}>
-          <section
-            className="search-panel"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <label>
-              <span>Search workspace</span>
-              <input
-                autoFocus
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search epics, stories, tasks, jobs, sprints..."
-              />
-            </label>
-            <div className="search-results">
-              <span>{searchedWorkItems.length} work items</span>
-              {viewMode === "main" && <span>{searchedSprints.length} sprints</span>}
-            </div>
-          </section>
-        </div>
-      )}
-
-      {viewMode === "day" && !usesPlanningSurface && !isDashboardView ? (
-        <DayViewToolbar
-          value={selectedContextOption?.id || formatDateInput(new Date())}
-          onChange={selectContextViewOption}
-          summary={daySummary}
-        />
-      ) : isContextView && !usesPlanningSurface && !isDashboardView ? (
-        <ContextGraphSelector
-          label={contextViewLabel(viewMode)}
-          options={contextOptions}
-          value={selectedContextOption?.id || ""}
-          onChange={selectContextViewOption}
-          viewMode={viewMode}
-        />
       ) : null}
 
-      {showGraphEmptyState && (
-        <div className="empty-canvas-state">
-          <h2>{viewMode === "day" ? "No work logged" : "No work assigned"}</h2>
-          <p>
-            {viewMode === "day"
-              ? "No imported worklogs match this date."
-              : `No imported work items match this ${contextViewLabel(viewMode).toLowerCase()} view.`}
-          </p>
-        </div>
-      )}
+      <main className="app-main-content">
+        {showLegacyNotice && (
+          <div className="legacy-notice">
+            <span>Local worklog data was found.</span>
+            <button type="button" onClick={handleIgnoreLegacyState}>
+              Ignore
+            </button>
+            <button type="button" onClick={handleUseLegacyState}>
+              Replace Working Copy with Local Data
+            </button>
+          </div>
+        )}
 
-      {usesPlanningSurface ? (
-        <PlanningView
-          viewMode={viewMode}
-          workItems={searchedWorkItems}
-          allWorkItems={workItems}
-          sprints={searchedSprints}
-          onOpenDetails={openDetailsModal}
-        />
-      ) : isDashboardView ? (
-        <DashboardView
-          workItems={workItems}
-          sprints={sprints}
-          rootTitle={rootTitle}
-          totals={totals}
-          lastSyncedAt={lastSyncedAt}
-        />
-      ) : showGraphEmptyState ? null : (
-        <GraphView
-          workItems={graphWorkItems}
-          allWorkItems={workItems}
-          mainTitle={graphMainTitle}
-          rootTitle={graphRootTitle}
-          rootDocketState={rootDocketState}
-          sprints={graphSprints}
-          storyPointTotals={graphTotals}
-          viewRootId={graphRootId}
-          viewMode={viewMode}
-          selectedId={selectedId}
-          daySummary={daySummary}
-          onSelect={handleSelectNode}
-          onOpenDetails={openDetailsModal}
-          onStartChild={handleStartChild}
-          onStartSprint={handleStartSprint}
-          layoutNonce={layoutNonce}
-          searchQuery={searchQuery}
-          readOnly={isReadOnlyViewer}
-        />
-      )}
+        {showGraphEmptyState && (
+          <div className="empty-canvas-state">
+            <h2>{viewMode === "day" ? "No work logged" : "No work assigned"}</h2>
+            <p>
+              {viewMode === "day"
+                ? "No imported worklogs match this date."
+                : `No imported work items match this ${contextViewLabel(viewMode).toLowerCase()} view.`}
+            </p>
+          </div>
+        )}
+
+        {usesPlanningSurface ? (
+          <PlanningView
+            viewMode={viewMode}
+            workItems={graphWorkItems}
+            allWorkItems={workItems}
+            sprints={graphSprints}
+            onOpenDetails={openDetailsModal}
+            searchMatchIds={searchMatchIds}
+            activeSearchId={activeSearchId}
+            employeeScope={selectedEmployeeScope}
+          />
+        ) : isDashboardView ? (
+          <DashboardView
+            workItems={workItems}
+            sprints={sprints}
+            rootTitle={rootTitle}
+            totals={totals}
+            lastSyncedAt={lastSyncedAt}
+            employeeScope={selectedEmployeeScope}
+          />
+        ) : showGraphEmptyState ? null : (
+          <GraphView
+            workItems={graphWorkItems}
+            allWorkItems={workItems}
+            mainTitle={graphMainTitle}
+            rootTitle={graphRootTitle}
+            rootDocketState={rootDocketState}
+            sprints={graphSprints}
+            storyPointTotals={graphTotals}
+            viewRootId={graphRootId}
+            viewMode={viewMode}
+            selectedId={selectedId}
+            daySummary={daySummary}
+            onSelect={handleSelectNode}
+            onOpenDetails={openDetailsModal}
+            onStartChild={handleStartChild}
+            onStartSprint={handleStartSprint}
+            onAddExistingChild={handleAddExistingChild}
+            childActionItemsForNode={childActionItemsForNode}
+            layoutNonce={layoutNonce}
+            searchMatchIds={searchMatchIds}
+            activeSearchId={activeSearchId}
+            activeSearchNodeId={activeSearchMatch?.id || ""}
+            activeSearchFocusKey={activeSearchFocusKey}
+            projectHierarchy={viewMode !== "backlog"}
+            canvasFullMode={canvasFullMode}
+            onCanvasFullModeChange={setCanvasFullMode}
+            readOnly={isReadOnlyViewer}
+          />
+        )}
+      </main>
+
+      <LogViewerModal open={logsModalOpen} onClose={() => setLogsModalOpen(false)} />
 
       {modal && (
         <WorkItemModal
@@ -5906,7 +9573,7 @@ function App() {
           sprints={sprints}
           workItems={workItems}
           totals={totals}
-          onClose={() => setModal(null)}
+          onClose={closeDetailsModal}
           onSaveMain={saveMainTitle}
           onSaveRoot={saveRootTitle}
           onSaveSprint={saveSprint}
@@ -5923,12 +9590,28 @@ function App() {
         />
       )}
 
+      {addExistingChildRequest && (
+        <AddExistingChildModal
+          request={addExistingChildRequest}
+          selectedDate={
+            addExistingChildRequest.selectedDate ||
+            selectedContextOption?.id ||
+            formatDateInput(new Date())
+          }
+          workItems={workItems}
+          sprints={graphScopeOptions}
+          projectionState={dayProjectionSelections}
+          onSelect={handleSelectExistingChild}
+          onClose={() => setAddExistingChildRequest(null)}
+        />
+      )}
+
       {selectedEditableItem && (
         <PropertyPanel
           item={selectedEditableItem}
           workItems={workItems}
           sprints={sprints}
-          onClose={() => setSelectedId(null)}
+          onClose={() => setPropertyPanelItemId(null)}
           onSave={saveEditableWorkItem}
           readOnly={isReadOnlyViewer}
         />

@@ -66,17 +66,22 @@ const clientCreateWorklog = extractClassMethod(clientSource, "async createWorklo
 const clientWorklogMatcher = extractClassMethod(clientSource, "private worklogMatchesPayload");
 
 assert.match(clientSource, /function worklogIdFromPayload\(payload: unknown\): string/);
+assert.match(clientSource, /function worklogRecordFromPayload\(payload: unknown\): Worklog \| null/);
 assert.match(clientSource, /Array\.isArray\(payload\)/);
 assert.match(clientCreateWorklog, /const createResponse = await this\.request\(\{/);
 assert.match(clientCreateWorklog, /method: "POST",\s*path: "\/api\/1\/Worklog"/s);
-assert.match(clientCreateWorklog, /const responseWorklogId = worklogIdFromPayload\(createResponse\.payload\)/);
+assert.match(clientCreateWorklog, /const responseWorklog = worklogRecordFromPayload\(createResponse\.payload\)/);
+assert.match(clientCreateWorklog, /const responseWorklogId = responseWorklog \? worklogId\(responseWorklog\) : ""/);
 assert.match(clientCreateWorklog, /if \(responseWorklogId\)/);
+assert.match(clientCreateWorklog, /__eliticalWorklogCreateConfirmed: true/);
+assert.match(clientCreateWorklog, /__eliticalWorklogCreateConfirmationSource: "post-response"/);
 assert.match(clientCreateWorklog, /const beforeIds = new Set\(\(await this\.getWorklogs\(docketId\)\)\.map\(worklogId\)\)/);
 assert.match(clientCreateWorklog, /const after = await this\.getWorklogs\(docketId\)/);
 assert.match(clientCreateWorklog, /const newWorklogs = after\.filter/);
 assert.match(clientCreateWorklog, /return id && !beforeIds\.has\(id\)/);
 assert.match(clientCreateWorklog, /selectUniqueWorklogReconciliationMatch\(/);
 assert.match(clientCreateWorklog, /__eliticalWorklogCreateAccepted: true/);
+assert.match(clientCreateWorklog, /__eliticalWorklogCreateConfirmationSource: "post-accepted-unmatched"/);
 assert.match(clientWorklogMatcher, /worklogMatchesForReconciliation/);
 assert.doesNotMatch(clientWorklogMatcher, /localDateKeyFromMillis/);
 

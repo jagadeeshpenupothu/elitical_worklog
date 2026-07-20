@@ -31,4 +31,5 @@ export interface Worklog {
   comment?: string;
   note?: string;
   description?: string;
+  [key: string]: unknown;
 }

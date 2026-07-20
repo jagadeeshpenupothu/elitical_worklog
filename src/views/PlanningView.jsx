@@ -1,8 +1,16 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   buildProjectedHierarchy,
   isReferenceNode,
 } from "../utils/hierarchyProjection";
+import { calculateStoryPoints } from "../utils/worklogModel";
+import { formatWorkDuration } from "../utils/durationFormat";
+import {
+  CANONICAL_DOCKET_STATES,
+  docketStateLabel,
+  normalizeDocketState,
+} from "../utils/docketStates";
+import { docketNumberForItem } from "../utils/docketIdentity";
 
 const VIEW_LABELS = {
   backlog: "Backlog View",
@@ -21,13 +29,13 @@ function formatDate(value, options = {}) {
   return new Intl.DateTimeFormat("en", options).format(date);
 }
 
-function itemLoggedHours(item) {
+function itemLoggedMinutes(item) {
   if (Number.isFinite(Number(item.loggedHours)) && Number(item.loggedHours) > 0) {
-    return Number(item.loggedHours);
+    return Math.round(Number(item.loggedHours) * 60);
   }
 
   if (Number.isFinite(Number(item.timeMinutes))) {
-    return Number(item.timeMinutes) / 60;
+    return Math.max(0, Math.round(Number(item.timeMinutes)));
   }
 
   return 0;
@@ -37,34 +45,42 @@ function itemStoryPoints(item) {
   return Number(item.storyPoints || 0);
 }
 
-function allStats(items) {
+function worklogMatchesEmployeeScope(entry, employeeScope) {
+  const employeeId = String(employeeScope?.employeeId || employeeScope?.id || "").trim();
+
+  if (!employeeId) return true;
+
+  return String(entry?.employeeId || "").trim() === employeeId;
+}
+
+function allStats(items, aggregateTotals) {
   const totals = items.reduce(
     (acc, item) => ({
       estimated: acc.estimated + Number(item.estimatedHours || 0),
-      logged: acc.logged + itemLoggedHours(item),
       remaining: acc.remaining + Number(item.remainingHours || 0),
-      storyPoints: acc.storyPoints + itemStoryPoints(item),
       completed:
         acc.completed +
-        (["artifact", "closed"].includes(item.docketState) ? 1 : 0),
+        (["artifact", "closed"].includes(normalizeDocketState(item.docketState)) ? 1 : 0),
     }),
     {
       estimated: 0,
-      logged: 0,
       remaining: 0,
-      storyPoints: 0,
       completed: 0,
     }
   );
 
   return {
     ...totals,
+    loggedMinutes: Number(aggregateTotals.rootTimeMinutes || 0),
+    storyPoints: aggregateTotals.rootTotal || 0,
     completion:
       items.length > 0 ? Math.round((totals.completed / items.length) * 100) : 0,
   };
 }
 
 function optionValues(items, field) {
+  if (field === "docketState") return CANONICAL_DOCKET_STATES;
+
   return Array.from(
     new Set(
       items
@@ -78,23 +94,46 @@ function optionValues(items, field) {
   ).sort((a, b) => a.localeCompare(b));
 }
 
-function PlanningCard({ item, onOpenDetails, actionLabel = "Open" }) {
+function PlanningCard({
+  item,
+  onOpenDetails,
+  actionLabel = "Open",
+  searchMatch = false,
+  searchActive = false,
+  nodeRef,
+  aggregateTotals,
+}) {
   const isReference = isReferenceNode(item);
+  const storyPoints =
+    aggregateTotals?.byId?.[item.id] ?? itemStoryPoints(item);
+  const loggedMinutes =
+    aggregateTotals?.timeById?.[item.id] !== undefined
+      ? Number(aggregateTotals.timeById[item.id] || 0)
+      : itemLoggedMinutes(item);
+  const docketNumber = docketNumberForItem(item);
 
   return (
     <button
+      ref={nodeRef}
       type="button"
-      className={`planning-card ${isReference ? "planning-card-reference" : ""}`}
+      className={`planning-card ${isReference ? "planning-card-reference" : ""} ${
+        searchMatch ? "search-match" : ""
+      } ${searchActive ? "search-active" : ""}`}
       onClick={() => {
         if (!isReference) onOpenDetails(item.id);
       }}
       disabled={isReference}
     >
+      {docketNumber && (
+        <em className="planning-card-docket-number">
+          {docketNumber} {docketStateLabel(item.docketState)}
+        </em>
+      )}
       <span>{item.title}</span>
       <small>
-        {isReference ? "Reference " : ""}{item.type} · {item.docketState}
-        {item.storyPoints ? ` · ${item.storyPoints} SP` : ""}
-        {itemLoggedHours(item) ? ` · ${itemLoggedHours(item).toFixed(1)}h logged` : ""}
+        {isReference ? "Reference " : ""}{item.type} · {docketStateLabel(item.docketState)}
+        {storyPoints ? ` · ${storyPoints} SP` : ""}
+        {loggedMinutes ? ` · ${formatWorkDuration(loggedMinutes)} logged` : ""}
       </small>
       <strong>{isReference ? "Reference" : actionLabel}</strong>
     </button>
@@ -104,7 +143,7 @@ function PlanningCard({ item, onOpenDetails, actionLabel = "Open" }) {
 function PlanningStats({ stats }) {
   return (
     <div className="planning-stats">
-      <span>{stats.logged.toFixed(1)}h Logged</span>
+      <span>{formatWorkDuration(stats.loggedMinutes)} Logged</span>
       <span>{stats.remaining.toFixed(1)}h Remaining</span>
       <span>{stats.storyPoints} SP</span>
       <span>{stats.completion}% Complete</span>
@@ -118,7 +157,11 @@ export default function PlanningView({
   allWorkItems = workItems,
   sprints,
   onOpenDetails,
+  searchMatchIds = new Set(),
+  activeSearchId = "",
+  employeeScope = null,
 }) {
+  const searchNodeRefs = useRef(new Map());
   const [filters, setFilters] = useState({
     sprint: "",
     epic: "",
@@ -133,7 +176,7 @@ export default function PlanningView({
     return workItems.filter((item) => {
       if (filters.sprint && item.sprint !== filters.sprint) return false;
       if (filters.epic && item.parentId !== filters.epic) return false;
-      if (filters.status && item.docketState !== filters.status) return false;
+      if (filters.status && normalizeDocketState(item.docketState) !== filters.status) return false;
       if (filters.priority && item.priority !== filters.priority) return false;
       if (filters.type && item.type !== filters.type) return false;
       if (filters.assignee && item.assignee !== filters.assignee) return false;
@@ -152,8 +195,15 @@ export default function PlanningView({
       }).items,
     [allWorkItems, filteredItems, hasActiveFilter, sprints]
   );
+  const aggregateTotals = useMemo(
+    () => calculateStoryPoints(projectedItems, { sprints, employeeScope }),
+    [employeeScope, projectedItems, sprints]
+  );
 
-  const stats = useMemo(() => allStats(filteredItems), [filteredItems]);
+  const stats = useMemo(
+    () => allStats(filteredItems, aggregateTotals),
+    [aggregateTotals, filteredItems]
+  );
   const epicOptions = useMemo(
     () => workItems.filter((item) => item.type === "epic"),
     [workItems]
@@ -166,14 +216,35 @@ export default function PlanningView({
     }));
   }
 
+  useEffect(() => {
+    if (!activeSearchId) return;
+
+    searchNodeRefs.current.get(activeSearchId)?.scrollIntoView({
+      block: "center",
+      behavior: "smooth",
+    });
+  }, [activeSearchId]);
+
+  function searchRefFor(id) {
+    return (node) => {
+      if (node) {
+        searchNodeRefs.current.set(id, node);
+      } else {
+        searchNodeRefs.current.delete(id);
+      }
+    };
+  }
+
   function renderWorklog() {
     const jobs = projectedItems.filter((item) => item.type === "job");
     const entries = jobs.flatMap((item) =>
-      (item.worklogs || []).map((entry) => ({
-        item,
-        entry,
-        key: dateKey(entry.date),
-      }))
+      (item.worklogs || [])
+        .filter((entry) => worklogMatchesEmployeeScope(entry, employeeScope))
+        .map((entry) => ({
+          item,
+          entry,
+          key: dateKey(entry.date),
+        }))
     );
     const grouped = entries.reduce((acc, entry) => {
       if (!acc.has(entry.key)) acc.set(entry.key, []);
@@ -194,14 +265,18 @@ export default function PlanningView({
               item={item}
               onOpenDetails={onOpenDetails}
               actionLabel="Quick Log"
+              searchMatch={searchMatchIds.has(item.id)}
+              searchActive={activeSearchId === item.id}
+              nodeRef={searchRefFor(item.id)}
+              aggregateTotals={aggregateTotals}
             />
           ))}
         </section>
         {Array.from(grouped.entries())
           .sort(([a], [b]) => b.localeCompare(a))
           .map(([key, dayEntries]) => {
-            const total = dayEntries.reduce(
-              (sum, entry) => sum + Number(entry.entry.timeMinutes || 0) / 60,
+            const totalMinutes = dayEntries.reduce(
+              (sum, entry) => sum + Number(entry.entry.timeMinutes || 0),
               0
             );
 
@@ -209,37 +284,25 @@ export default function PlanningView({
               <section key={key}>
                 <header>
                   <strong>{formatDate(key, { day: "numeric", month: "long" })}</strong>
-                  <span>Total {total.toFixed(1)}h</span>
+                  <span>Total {formatWorkDuration(totalMinutes)}</span>
                 </header>
                 {dayEntries.map(({ item, entry }) => (
                   <button
+                    ref={searchRefFor(item.id)}
                     key={`${item.id}:${entry.date}`}
                     type="button"
                     onClick={() => onOpenDetails(item.id)}
+                    className={`${searchMatchIds.has(item.id) ? "search-match" : ""} ${
+                      activeSearchId === item.id ? "search-active" : ""
+                    }`}
                   >
                     <span>{item.title}</span>
-                    <strong>{(Number(entry.timeMinutes || 0) / 60).toFixed(1)}h</strong>
+                    <strong>{formatWorkDuration(entry.timeMinutes)}</strong>
                   </button>
                 ))}
               </section>
             );
           })}
-      </div>
-    );
-  }
-
-  function renderBacklog() {
-    return (
-      <div className="planning-list">
-        {projectedItems
-          .filter((item) => !item.sprint)
-          .map((item) => (
-            <PlanningCard
-              key={item.id}
-              item={item}
-              onOpenDetails={onOpenDetails}
-            />
-          ))}
       </div>
     );
   }
@@ -270,7 +333,7 @@ export default function PlanningView({
         <select value={filters.status} onChange={(event) => updateFilter("status", event.target.value)}>
           <option value="">All statuses</option>
           {optionValues(workItems, "docketState").map((value) => (
-            <option key={value} value={value}>{value}</option>
+            <option key={value} value={value}>{docketStateLabel(value)}</option>
           ))}
         </select>
         <select value={filters.priority} onChange={(event) => updateFilter("priority", event.target.value)}>
@@ -300,7 +363,7 @@ export default function PlanningView({
       </section>
 
       <section className="planning-surface">
-        {viewMode === "backlog" ? renderBacklog() : renderWorklog()}
+        {renderWorklog()}
       </section>
     </main>
   );

@@ -12,11 +12,6 @@
 
 [functions]
   external_node_modules = ["playwright", "playwright-core"]
-  included_files = [
-    "node_modules/playwright/**",
-    "node_modules/playwright-core/**",
-    ".elitical/storage-state.json"
-  ]
 
 [[redirects]]
   from = "/src/*"

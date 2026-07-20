@@ -1,5 +1,6 @@
 import path from "node:path";
 import process from "node:process";
+import { getStoragePaths } from "../../../../local-backend/services/StoragePathService.mjs";
 import type {
   EliticalConfig,
   EliticalConfigInput,
@@ -33,7 +34,7 @@ function configuredStorageStatePath(input?: EliticalConfigInput) {
   const dataDir =
     input?.dataDir ||
     process.env.ELITICAL_DATA_DIR ||
-    path.join(process.cwd(), ".elitical");
+    getStoragePaths().authDir;
 
   return path.join(dataDir, DEFAULT_STORAGE_STATE_FILE);
 }

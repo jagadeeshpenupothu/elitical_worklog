@@ -5,6 +5,7 @@ node_modules/
 dist/
 build/
 release/
+.playwright-build/
 
 # Netlify local development files
 .netlify/
@@ -34,7 +35,9 @@ pnpm-debug.log*
 .cache/
 
 # Local runtime state
+local-backend/cache/*.json
 local-backend/cache/sync-queue.json
+.elitical/storage-state.json
 
 # Accidental generated files
 /node

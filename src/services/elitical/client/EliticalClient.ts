@@ -24,6 +24,12 @@ import {
   worklogMatchesForReconciliation,
 } from "../worklogReconciliation.js";
 import { EliticalClientError } from "./EliticalClientError.js";
+import { normalizeEliticalDescription } from "../../../utils/eliticalDocketCreate.js";
+import {
+  docketStateApiId,
+  docketStateApiName,
+  normalizeDocketState,
+} from "../../../utils/docketStates.js";
 
 let nextEliticalClientId = 1;
 const DOCKET_REFERRER_PATH = "/docket/issues/list";
@@ -81,6 +87,14 @@ function listPayload<T>(payload: unknown, key: string): T[] {
     return Object.values(docketListMap).flatMap((entry) =>
       Array.isArray(entry) ? (entry as T[]) : []
     );
+  }
+
+  for (const nestedKey of ["payload", "data", "body", "response"]) {
+    if (isRecord(payload[nestedKey]) || Array.isArray(payload[nestedKey])) {
+      const nested = listPayload<T>(payload[nestedKey], key);
+
+      if (nested.length > 0) return nested;
+    }
   }
 
   return [];
@@ -216,6 +230,43 @@ function worklogIdFromPayload(payload: unknown): string {
   }
 
   return "";
+}
+
+function worklogRecordFromPayload(payload: unknown): Worklog | null {
+  if (Array.isArray(payload)) {
+    for (const entry of payload) {
+      const nested = worklogRecordFromPayload(entry);
+
+      if (nested) return nested;
+    }
+
+    return null;
+  }
+
+  if (!isRecord(payload)) return null;
+
+  const id = worklogIdFromPayload(payload);
+  const hasWorklogShape = [
+    "docketId",
+    "docketNum",
+    "docketName",
+    "worklogDate",
+    "hour",
+    "min",
+    "comment",
+    "employeeId",
+    "employeeName",
+  ].some((key) => payload[key] !== undefined && payload[key] !== null);
+
+  if (id && hasWorklogShape) return payload as Worklog;
+
+  for (const key of ["payload", "data", "body", "worklog", "worklogDto", "worklogDTO"]) {
+    const nested = worklogRecordFromPayload(payload[key]);
+
+    if (nested) return nested;
+  }
+
+  return id ? ({ id } as Worklog) : null;
 }
 
 function nativeDocketUpdatePayload(
@@ -409,7 +460,16 @@ export class EliticalClient implements EliticalClientContract {
     return this.getIssues(projectId);
   }
 
-  async getIssues(projectId: string): Promise<Issue[]> {
+  async getIssues(
+    projectId: string,
+    options: {
+      onProgress?: (progress: {
+        current: number;
+        total: number;
+        unit: string;
+      }) => void;
+    } = {}
+  ): Promise<Issue[]> {
     const baseBody = {
       projectId,
       currentPage: 1,
@@ -429,6 +489,11 @@ export class EliticalClient implements EliticalClientContract {
     const allDockets = listPayload<Issue>(firstResponse.payload, "issues");
 
     console.log(`Fetching page 1/${totalPage}`);
+    options.onProgress?.({
+      current: 1,
+      total: totalPage,
+      unit: "pages",
+    });
 
     for (let currentPage = 2; currentPage <= totalPage; currentPage += 1) {
       console.log(`Fetching page ${currentPage}/${totalPage}`);
@@ -444,6 +509,11 @@ export class EliticalClient implements EliticalClientContract {
       });
 
       allDockets.push(...listPayload<Issue>(pageResponse.payload, "issues"));
+      options.onProgress?.({
+        current: currentPage,
+        total: totalPage,
+        unit: "pages",
+      });
     }
 
     console.log("Total pages fetched:", totalPage);
@@ -765,13 +835,17 @@ export class EliticalClient implements EliticalClientContract {
       path: "/api/1/Worklog",
       body: this.worklogPayload(payload, { create: true }),
     });
-    const responseWorklogId = worklogIdFromPayload(createResponse.payload);
+    const responseWorklog = worklogRecordFromPayload(createResponse.payload);
+    const responseWorklogId = responseWorklog ? worklogId(responseWorklog) : "";
 
     if (responseWorklogId) {
       return {
         ...payload,
+        ...responseWorklog,
         id: responseWorklogId,
-        docketId,
+        docketId: String(responseWorklog?.docketId || docketId),
+        __eliticalWorklogCreateConfirmed: true,
+        __eliticalWorklogCreateConfirmationSource: "post-response",
       } as Worklog;
     }
 
@@ -788,6 +862,7 @@ export class EliticalClient implements EliticalClientContract {
     return created || {
       __eliticalWorklogCreateAccepted: true,
       __emptyCreateResponse: true,
+      __eliticalWorklogCreateConfirmationSource: "post-accepted-unmatched",
       docketId,
       worklogDate: payload.worklogDate || payload.date,
       comment: payload.comment || payload.description || payload.note,
@@ -841,39 +916,49 @@ export class EliticalClient implements EliticalClientContract {
   }
 
   private docketPayload(payload: CreateDocketPayload) {
-    const description = payload.descr ?? payload.description ?? "";
+    const description = normalizeEliticalDescription(
+      payload.descr ?? payload.description ?? ""
+    );
     const storyPointEst = payload.storyPointEst ?? payload.storyPoints ?? 0;
+    const docketState = normalizeDocketState(
+      payload.docketState || payload.dktStateName || payload.stateName
+    );
+    const resolvedPayload = {
+      ...payload,
+      dktStateId: String(payload.dktStateId || payload.stateId || docketStateApiId(docketState)),
+      dktStateName: String(payload.dktStateName || payload.stateName || docketStateApiName(docketState)),
+    };
 
-    if (payload.type === "STORY") {
-      return this.storyDocketPayload(payload, description, storyPointEst);
+    if (resolvedPayload.type === "STORY") {
+      return this.storyDocketPayload(resolvedPayload, description, storyPointEst);
     }
 
-    if (payload.type === "JOB") {
-      return this.jobDocketPayload(payload, description);
+    if (resolvedPayload.type === "JOB") {
+      return this.jobDocketPayload(resolvedPayload, description);
     }
 
-    if (payload.type === "TASK") {
-      return this.taskDocketPayload(payload, description);
+    if (resolvedPayload.type === "TASK") {
+      return this.taskDocketPayload(resolvedPayload, description);
     }
 
-    if (payload.type === "EPIC") {
-      return this.epicDocketPayload(payload, description);
+    if (resolvedPayload.type === "EPIC") {
+      return this.epicDocketPayload(resolvedPayload, description);
     }
 
     return {
-      ...payload,
-      type: payload.type,
-      title: payload.title,
+      ...resolvedPayload,
+      type: resolvedPayload.type,
+      title: resolvedPayload.title,
       descr: description,
-      projectId: payload.projectId || "",
-      sprintId: payload.sprintId || "",
-      parentId: payload.parentId || "",
-      epicId: payload.epicId || "",
-      storyId: payload.storyId || "",
-      dktStateId: payload.dktStateId || "",
-      category: payload.category || "",
-      priority: payload.priority || "",
-      assigneeId: payload.assigneeId || "",
+      projectId: resolvedPayload.projectId || "",
+      sprintId: resolvedPayload.sprintId || "",
+      parentId: resolvedPayload.parentId || "",
+      epicId: resolvedPayload.epicId || "",
+      storyId: resolvedPayload.storyId || "",
+      dktStateId: resolvedPayload.dktStateId || "",
+      category: resolvedPayload.category || "",
+      priority: resolvedPayload.priority || "",
+      assigneeId: resolvedPayload.assigneeId || "",
       storyPointEst,
     };
   }

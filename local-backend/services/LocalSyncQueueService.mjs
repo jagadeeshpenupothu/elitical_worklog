@@ -1,10 +1,15 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import {
+  docketStateApiName,
+  normalizeDocketState,
+} from "../../src/utils/docketStates.js";
+import { getStoragePaths } from "./StoragePathService.mjs";
 
 const QUEUE_VERSION = 1;
 const MUTATION_ACTIONABLE_STATUSES = new Set(["pending-create", "pending-update"]);
-const COMPLETED_STATUSES = new Set(["synced", "completed"]);
+const COMPLETED_STATUSES = new Set(["synced", "completed", "superseded"]);
 const LOCAL_DOCKET_PREFIX = "local-docket-";
 const LOCAL_WORKLOG_PREFIX = "local-worklog-";
 const ACTIONABILITY = {
@@ -76,7 +81,9 @@ function baselineForItem(item) {
       item?.descr
     ),
     dktStateId: normalizedText(baseline.dktStateId ?? baseline.stateId ?? elitical.stateId ?? item?.dktStateId),
-    dktStateName: normalizedText(baseline.dktStateName ?? baseline.docketState ?? item?.dktStateName ?? item?.docketState),
+    dktStateName: docketStateApiName(
+      normalizeDocketState(baseline.dktStateName ?? baseline.docketState ?? item?.dktStateName ?? item?.docketState)
+    ),
     assigneeId: normalizedText(baseline.assigneeId ?? elitical.assigneeId ?? item?.assigneeId),
     sprintId: normalizedText(baseline.sprintId ?? elitical.sprintId ?? item?.sprintId),
     sprintName: normalizedText(baseline.sprintName ?? item?.sprintName ?? item?.sprint),
@@ -159,7 +166,6 @@ function changesAgainstBaseline(changes = {}, baseline = {}) {
 
   [
     "dktStateId",
-    "dktStateName",
     "assigneeId",
     "sprintId",
     "sprintName",
@@ -171,6 +177,14 @@ function changesAgainstBaseline(changes = {}, baseline = {}) {
       next[field] = normalizedText(changes[field]);
     }
   });
+
+  if (
+    hasOwn(changes, "dktStateName") &&
+    docketStateApiName(normalizeDocketState(changes.dktStateName)) !==
+      docketStateApiName(normalizeDocketState(baseline.dktStateName))
+  ) {
+    next.dktStateName = docketStateApiName(normalizeDocketState(changes.dktStateName));
+  }
 
   if (hasOwn(changes, "hasNoSprint")) {
     next.hasNoSprint = Boolean(changes.hasNoSprint);
@@ -233,6 +247,14 @@ function isAcceptedButUnconfirmed(operation = {}) {
   );
 }
 
+function isConfirmedWorklogCreate(operation = {}) {
+  return (
+    operation.entityType === "worklog" &&
+    operation.operation === "create" &&
+    Boolean(firstString(operation.remoteId, operation.worklogId))
+  );
+}
+
 function isAmbiguousQueueError(value) {
   const text = String(value || "").toLowerCase();
 
@@ -276,7 +298,7 @@ function blockedClassification(reason = "blocked") {
 }
 
 function classifyOperation(operation = {}, queue = {}) {
-  if (COMPLETED_STATUSES.has(operation.status)) {
+  if (COMPLETED_STATUSES.has(operation.status) || isConfirmedWorklogCreate(operation)) {
     return {
       actionability: ACTIONABILITY.COMPLETED,
       actionable: false,
@@ -543,7 +565,7 @@ function mergePendingWorklogsIntoItem(item, operations) {
 }
 
 export class LocalSyncQueueService {
-  constructor({ cacheDir = process.env.ELITICAL_CACHE_DIR || path.resolve("local-backend/cache") } = {}) {
+  constructor({ cacheDir = process.env.ELITICAL_SYNC_DIR || getStoragePaths().syncDir } = {}) {
     this.cacheDir = cacheDir;
     this.queuePath = path.join(cacheDir, "sync-queue.json");
   }
@@ -608,6 +630,7 @@ export class LocalSyncQueueService {
     );
     const failed = operations.filter((operation) => operation.status === "sync-failed");
     const blocked = operations.filter((operation) => operation.classification.blocked);
+    const superseded = operations.filter((operation) => operation.status === "superseded");
 
     return {
       pendingCount: actionable.length,
@@ -618,6 +641,7 @@ export class LocalSyncQueueService {
       unconfirmedCount: reconciliationActionable.length,
       failedCount: failed.length,
       blockedCount: blocked.length,
+      supersededCount: superseded.length,
       operations,
       updatedAt: queue.updatedAt,
     };
@@ -879,6 +903,14 @@ export class LocalSyncQueueService {
     const operation = queue.operations.find((entry) => entry.operationId === operationId);
 
     if (operation) {
+      if (isConfirmedWorklogCreate(operation)) {
+        operation.status = "synced";
+        operation.retryMutation = false;
+        operation.lastError = error?.message || String(error || "Local finalization failed after remote Worklog create confirmation.");
+        operation.updatedAt = nowIso();
+        return this.write(queue);
+      }
+
       operation.status = "sync-failed";
       operation.attempts = Number(operation.attempts || 0) + 1;
       operation.lastError = error?.message || String(error || "Sync failed.");
@@ -932,6 +964,104 @@ export class LocalSyncQueueService {
     }
 
     return this.write(queue);
+  }
+
+  async resolveDuplicateCreateWithDependent({
+    parentOperationId,
+    dependentOperationId,
+    replacementRemoteDocketId,
+    replacementDocketNumber,
+    replacementRemoteWorklogId,
+    reason = "duplicate-existing-remote",
+    resolvedBy = "local-recovery",
+  } = {}) {
+    const queue = await this.load();
+    const parent = queue.operations.find((entry) => entry.operationId === parentOperationId);
+    const dependent = queue.operations.find((entry) => entry.operationId === dependentOperationId);
+
+    function validationError(message) {
+      const error = new Error(message);
+      error.code = "DUPLICATE_RECOVERY_VALIDATION_FAILED";
+      return error;
+    }
+
+    if (!parent) throw validationError("Parent operation was not found.");
+    if (!dependent) throw validationError("Dependent operation was not found.");
+    if (parent.entityType !== "docket" || parent.operation !== "create") {
+      throw validationError("Parent operation must be a Docket create.");
+    }
+    if (parent.status !== "sync-failed") {
+      throw validationError("Parent operation must currently be sync-failed.");
+    }
+    if (dependent.entityType !== "worklog" || dependent.operation !== "create") {
+      throw validationError("Dependent operation must be a Worklog create.");
+    }
+    if (dependent.status !== "dependency-blocked") {
+      throw validationError("Dependent operation must currently be dependency-blocked.");
+    }
+    if (!parent.localId || dependent.dependsOn !== parent.localId) {
+      throw validationError("Dependent operation does not depend on the selected parent operation.");
+    }
+    if (firstString(dependent.docketId, dependent.payload?.docketId) !== parent.localId) {
+      throw validationError("Dependent Worklog does not reference the selected parent Docket.");
+    }
+    if (!firstString(replacementRemoteDocketId)) {
+      throw validationError("Replacement remote Docket ID is required.");
+    }
+    if (!firstString(replacementRemoteWorklogId)) {
+      throw validationError("Replacement remote Worklog ID is required.");
+    }
+
+    const timestamp = nowIso();
+    const parentRecovery = {
+      statusBefore: parent.status,
+      reason,
+      resolvedBy,
+      supersededAt: timestamp,
+      supersededByRemoteId: firstString(replacementRemoteDocketId),
+      supersededByDocketNumber: firstString(replacementDocketNumber),
+      originalOperationId: parent.operationId,
+      localId: parent.localId,
+    };
+    const dependentRecovery = {
+      statusBefore: dependent.status,
+      reason,
+      resolvedBy,
+      supersededAt: timestamp,
+      supersededByRemoteId: firstString(replacementRemoteWorklogId),
+      supersededByDocketId: firstString(replacementRemoteDocketId),
+      supersededByDocketNumber: firstString(replacementDocketNumber),
+      originalOperationId: dependent.operationId,
+      localId: dependent.localId,
+      dependsOn: dependent.dependsOn,
+    };
+
+    parent.status = "superseded";
+    parent.retryMutation = false;
+    parent.supersededAt = timestamp;
+    parent.supersededReason = reason;
+    parent.supersededByRemoteId = firstString(replacementRemoteDocketId);
+    parent.supersededByDocketNumber = firstString(replacementDocketNumber);
+    parent.recovery = parentRecovery;
+    parent.updatedAt = timestamp;
+
+    dependent.status = "superseded";
+    dependent.retryMutation = false;
+    dependent.supersededAt = timestamp;
+    dependent.supersededReason = reason;
+    dependent.supersededByRemoteId = firstString(replacementRemoteWorklogId);
+    dependent.supersededByDocketId = firstString(replacementRemoteDocketId);
+    dependent.supersededByDocketNumber = firstString(replacementDocketNumber);
+    dependent.recovery = dependentRecovery;
+    dependent.updatedAt = timestamp;
+
+    const saved = await this.write(queue);
+
+    return {
+      parentOperation: saved.operations.find((entry) => entry.operationId === parentOperationId),
+      dependentOperation: saved.operations.find((entry) => entry.operationId === dependentOperationId),
+      syncQueue: await this.summary(),
+    };
   }
 
   async markUpdateFieldsSynced(operationId, { remoteId, localId, acceptedChanges = {}, remoteBaseline = null, error = null } = {}) {

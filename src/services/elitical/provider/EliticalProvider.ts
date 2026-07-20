@@ -15,6 +15,7 @@ import type {
   EliticalUser,
   UpdateDocketPayload,
 } from "../types/index.js";
+import { normalizeDocketState } from "../../../utils/docketStates.js";
 
 let nextEliticalProviderId = 1;
 
@@ -253,13 +254,22 @@ export class EliticalProvider {
     return this.getIssues(projectId);
   }
 
-  async getIssues(projectId: string): Promise<EliticalProviderIssue[]> {
+  async getIssues(
+    projectId: string,
+    options: {
+      onProgress?: (progress: {
+        current: number;
+        total: number;
+        unit: string;
+      }) => void;
+    } = {}
+  ): Promise<EliticalProviderIssue[]> {
     console.info("[EliticalProvider] getIssues() called", {
       eliticalProviderInstanceId: this.instanceId,
       projectId,
     });
 
-    const issues = await this.client.getIssues(projectId);
+    const issues = await this.client.getIssues(projectId, options);
 
     return issues.map((issue) => this.toIssue(issue));
   }
@@ -375,6 +385,10 @@ export class EliticalProvider {
   private toIssue(issue: Docket | Issue): EliticalProviderIssue {
     const id = issueId(issue);
     const type = normalizeIssueType(issue);
+    const record = issue as Record<string, unknown>;
+    const docketState = normalizeDocketState(
+      firstString(issue.docketState, issue.dktState, issue.status, record.dktStateName, "concept")
+    );
 
     return {
       ...issue,
@@ -386,8 +400,8 @@ export class EliticalProvider {
       parentId: firstString(issue.parentId, issue.parentDocketId),
       category: firstString(issue.category, "feature"),
       priority: firstString(issue.priority, "info"),
-      docketState: firstString(issue.docketState, issue.dktState, issue.status, "concept"),
-      status: firstString(issue.status, issue.docketState, issue.dktState, "concept"),
+      docketState,
+      status: docketState,
       sprint: firstString("sprint" in issue ? issue.sprint : "", issue.sprintName, issue.sprintId),
       storyPoints: firstNumber(issue.storyPoints, issue.estimatedStoryPoints),
       updatedAt: firstString(issue.updatedAt, issue.updatedTime),

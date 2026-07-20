@@ -8,6 +8,22 @@ function syncEventsEndpoint() {
   return `${syncEndpoint()}/events`;
 }
 
+export function subscribeToSyncProgress(onProgress) {
+  if (typeof EventSource !== "function" || !onProgress) return null;
+
+  const events = new EventSource(syncEventsEndpoint());
+
+  events.addEventListener("message", (event) => {
+    try {
+      onProgress(JSON.parse(event.data));
+    } catch {
+      // Ignore malformed progress frames.
+    }
+  });
+
+  return events;
+}
+
 async function parseSyncResponse(response) {
   let payload;
 

@@ -24,6 +24,10 @@ import {
 } from "../utils/hierarchyProjection";
 import { canCreateChildForNode } from "../utils/nodeCapabilities";
 import { ROOT_ID } from "../utils/worklogModel";
+import {
+  docketStateCssClass,
+  normalizeDocketState,
+} from "../utils/docketStates";
 
 const nodeTypes = {
   jiraNode: JiraNode,
@@ -41,17 +45,10 @@ const EXPANDED_COMPLETED_SUMMARIES_KEY =
   "elitical-worklog.expanded-completed-summaries.v1";
 const COMPLETED_STATES = new Set(["closed", "artifact"]);
 
-function normalizeState(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "-");
-}
-
 function isCompletedItem(item) {
   if (item?.isGhost) return false;
 
-  return COMPLETED_STATES.has(normalizeState(item?.docketState || item?.status));
+  return COMPLETED_STATES.has(normalizeDocketState(item?.docketState || item?.status));
 }
 
 function loadExpandedSummaryIds() {
@@ -89,23 +86,6 @@ function summaryLabelFor(type) {
   return "Completed Items";
 }
 
-function itemMatchesSearch(item, query) {
-  const normalized = query.trim().toLowerCase();
-
-  if (!normalized) return false;
-
-  return [
-    item.title,
-    item.description,
-    item.type,
-    item.category,
-    item.priority,
-    item.docketState,
-    item.sprint,
-    item.id,
-  ].some((value) => String(value || "").toLowerCase().includes(normalized));
-}
-
 function descendantIdsFor(itemId, childrenByParent) {
   const ids = [];
   const pending = [...(childrenByParent.get(itemId) || [])];
@@ -122,7 +102,7 @@ function descendantIdsFor(itemId, childrenByParent) {
 function prepareCompletedCollapse({
   workItems,
   expandedSummaryIds,
-  searchQuery,
+  searchMatchIds = new Set(),
   storyPointTotals,
 }) {
   const childrenByParent = workItems.reduce((acc, item) => {
@@ -133,12 +113,6 @@ function prepareCompletedCollapse({
   }, new Map());
   const itemById = new Map(workItems.map((item) => [item.id, item]));
   const branchCompletion = new Map();
-  const searchMatches = new Set();
-
-  workItems.forEach((item) => {
-    if (itemMatchesSearch(item, searchQuery)) searchMatches.add(item.id);
-  });
-
   function isCompletedBranch(item) {
     if (branchCompletion.has(item.id)) return branchCompletion.get(item.id);
 
@@ -151,11 +125,11 @@ function prepareCompletedCollapse({
   }
 
   function branchContainsSearch(item) {
-    if (!searchQuery.trim()) return false;
-    if (searchMatches.has(item.id)) return true;
+    if (!searchMatchIds.size) return false;
+    if (searchMatchIds.has(item.sourceItemId || item.sourceDocketId || item.sourceId || item.id)) return true;
 
     return descendantIdsFor(item.id, childrenByParent).some((id) =>
-      searchMatches.has(id)
+      searchMatchIds.has(id)
     );
   }
 
@@ -290,7 +264,7 @@ function prepareCompletedCollapse({
     workItems: visible,
     summaryControlsByParent,
     summaryIds,
-    searchMatchIds: searchMatches,
+    searchMatchIds,
   };
 }
 
@@ -366,12 +340,12 @@ const DOCKET_STATE_COLORS = {
   concept: "#22C55E",
   artifact: "#6B7280",
   design: "#EAB308",
-  review: "#F97316",
+  "in-review": "#F97316",
   closed: "#1E3A8A",
 };
 
 function edgeColorFor(item) {
-  return DOCKET_STATE_COLORS[item.docketState || "concept"];
+  return DOCKET_STATE_COLORS[docketStateCssClass(item.docketState)] || DOCKET_STATE_COLORS.concept;
 }
 
 function itemForNode(id, node, itemById) {
@@ -748,6 +722,9 @@ function sameNodeData(first, second) {
     a.calculatedStoryPoints === b.calculatedStoryPoints &&
     a.calculatedTimeMinutes === b.calculatedTimeMinutes &&
     a.dayWorklogCount === b.dayWorklogCount &&
+    a.dayContextDate === b.dayContextDate &&
+    a.isDayProjectionSelected === b.isDayProjectionSelected &&
+    a.isRetainedDayContext === b.isRetainedDayContext &&
     a.isDayRoot === b.isDayRoot &&
     a.isProjectNode === b.isProjectNode &&
     a.isSprintNode === b.isSprintNode &&
@@ -760,10 +737,13 @@ function sameNodeData(first, second) {
     a.childParentId === b.childParentId &&
     a.childSprintId === b.childSprintId &&
     a.childSprint === b.childSprint &&
+    JSON.stringify(a.childActionItems || []) ===
+      JSON.stringify(b.childActionItems || []) &&
     a.hiddenCount === b.hiddenCount &&
     a.hiddenRootCount === b.hiddenRootCount &&
     a.expandedSummaryId === b.expandedSummaryId &&
     a.searchMatch === b.searchMatch &&
+    a.searchActive === b.searchActive &&
     a.isCompletedSummary === b.isCompletedSummary &&
     JSON.stringify(a.completedSummaryControls || []) ===
       JSON.stringify(b.completedSummaryControls || []) &&
@@ -808,6 +788,40 @@ function getNodeBounds(node) {
     right: node.position.x + size.width,
     top: node.position.y,
     bottom: node.position.y + size.height,
+  };
+}
+
+function getNodeCenter(node) {
+  const size = getNodeSize(node);
+
+  return {
+    x: node.position.x + size.width / 2,
+    y: node.position.y + size.height / 2,
+  };
+}
+
+function usableGraphCenter(wrapper) {
+  const graphRect = wrapper?.getBoundingClientRect?.();
+
+  if (!graphRect) {
+    return {
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+    };
+  }
+
+  const toolbarRect = document
+    .querySelector(".top-toolbar")
+    ?.getBoundingClientRect?.();
+  const coveredTop =
+    toolbarRect && toolbarRect.bottom > graphRect.top
+      ? Math.min(graphRect.height, toolbarRect.bottom - graphRect.top)
+      : 0;
+  const usableHeight = Math.max(1, graphRect.height - coveredTop);
+
+  return {
+    x: graphRect.width / 2,
+    y: coveredTop + usableHeight / 2,
   };
 }
 
@@ -1004,8 +1018,10 @@ function toFlowNodes({
   selectedId,
   existingPositions,
   actions,
+  childActionItemsForNode,
   completedSummaryControls = new Map(),
   searchMatchIds = new Set(),
+  activeSearchId = "",
   daySummary,
   readOnly = false,
 }) {
@@ -1043,6 +1059,8 @@ function toFlowNodes({
               nodeType: viewMode === "sprint" ? "sprint" : "project",
               isDayRoot: viewMode === "day",
               selected: selectedId === MAIN_ROOT_ID,
+              searchMatch: searchMatchIds.has(MAIN_ROOT_ID),
+              searchActive: activeSearchId === MAIN_ROOT_ID,
               isRoot: true,
               isVirtual: true,
               isProjectNode: viewMode === "main",
@@ -1079,6 +1097,8 @@ function toFlowNodes({
             calculatedTimeMinutes: storyPointTotals.rootTimeMinutes,
             nodeType: "project",
             selected: selectedId === ROOT_ID,
+            searchMatch: searchMatchIds.has(ROOT_ID),
+            searchActive: activeSearchId === ROOT_ID,
             isRoot: true,
             isProjectNode: true,
             allowChildActions: false,
@@ -1094,6 +1114,7 @@ function toFlowNodes({
           .filter((sprint) => sprint.id !== ROOT_ID)
           .map((sprint) => {
             const isOrphanSprint = isOrphanSprintScope(sprint);
+            const childActionItems = childActionItemsForNode?.(sprint) || [];
 
             return {
               id: sprint.id,
@@ -1112,20 +1133,27 @@ function toFlowNodes({
                   x: 0,
                   y: 64,
                 },
-                calculatedStoryPoints: 0,
+                calculatedStoryPoints:
+                  storyPointTotals.sprintStoryPointsById?.[sprint.id] ??
+                  storyPointTotals.sprintStoryPointsByTitle?.[sprint.title] ??
+                  0,
                 calculatedTimeMinutes:
                   storyPointTotals.sprintTimeById?.[sprint.id] ??
                   storyPointTotals.sprintTimeByTitle?.[sprint.title] ??
                   0,
                 selected: selectedId === sprint.id,
+                searchMatch: searchMatchIds.has(sprint.id),
+                searchActive: activeSearchId === sprint.id,
                 isRoot: true,
                 isVirtual: true,
                 isSprintNode: true,
                 isOrphanSprint,
-                allowChildActions: !readOnly && isOrphanSprint,
-                childParentId: ROOT_ID,
-                childSprintId: "",
+                allowChildActions:
+                  !readOnly && (isOrphanSprint || childActionItems.length > 0),
+                childParentId: isOrphanSprint ? ROOT_ID : sprint.id,
+                childSprintId: isOrphanSprint ? "" : sprint.id,
                 childSprint: sprint.title,
+                childActionItems,
                 completedSummaryControls:
                   completedSummaryControls.get(sprint.id) || [],
                 ...actions,
@@ -1140,7 +1168,8 @@ function toFlowNodes({
     ...extraSprintNodes,
     ...workItems.map((item) => {
       const isGhost = isReferenceNode(item);
-      const metricId = item.sourceItemId || item.sourceDocketId || item.id;
+      const metricId = item.id;
+      const childActionItems = childActionItemsForNode?.(item) || [];
 
       return {
         id: item.id,
@@ -1171,13 +1200,17 @@ function toFlowNodes({
           summaryType: item.summaryType,
           isCompletedSummary: item.isCompletedSummary,
           isVirtual: item.isVirtual,
-          searchMatch: searchMatchIds.has(item.sourceId || item.id),
+          searchMatch: searchMatchIds.has(item.sourceItemId || item.sourceDocketId || item.sourceId || item.id),
+          searchActive:
+            activeSearchId &&
+            activeSearchId === (item.sourceItemId || item.sourceDocketId || item.sourceId || item.id),
           completedSummaryControls:
             completedSummaryControls.get(item.id) || [],
+          childActionItems,
           allowChildActions:
             !readOnly &&
             item.allowChildActions !== false &&
-            canCreateChildForNode(item),
+            (canCreateChildForNode(item) || childActionItems.length > 0),
           ...actions,
         },
       };
@@ -1202,12 +1235,21 @@ export default function GraphView({
   onOpenDetails,
   onStartChild,
   onStartSprint,
+  onAddExistingChild,
+  childActionItemsForNode,
   layoutNonce,
-  searchQuery = "",
+  searchMatchIds: externalSearchMatchIds = new Set(),
+  activeSearchId = "",
+  activeSearchNodeId = "",
+  activeSearchFocusKey = "",
   daySummary,
+  projectHierarchy = true,
+  canvasFullMode = false,
+  onCanvasFullModeChange,
   readOnly = false,
 }) {
   const reactFlowRef = useRef(null);
+  const graphViewRef = useRef(null);
   const initialViewCenteredRef = useRef(false);
   const focusedSearchRef = useRef("");
   const [canvasLocked, setCanvasLocked] = useState(false);
@@ -1221,23 +1263,26 @@ export default function GraphView({
   const collapsedGraph = useMemo(
     () =>
       prepareCompletedCollapse({
-        workItems: buildProjectedHierarchy({
-          items: workItems,
-          allItems: allWorkItems,
-          scopes: sprints,
-          enabled: true,
-        }).items,
+        workItems: projectHierarchy
+          ? buildProjectedHierarchy({
+              items: workItems,
+              allItems: allWorkItems,
+              scopes: sprints,
+              enabled: true,
+            }).items
+          : workItems,
         expandedSummaryIds,
-        searchQuery,
+        searchMatchIds: externalSearchMatchIds,
         storyPointTotals,
       }),
     [
       allWorkItems,
       expandedSummaryIds,
-      searchQuery,
+      externalSearchMatchIds,
       sprints,
       storyPointTotals,
       workItems,
+      projectHierarchy,
     ]
   );
   const renderedWorkItems = collapsedGraph.workItems;
@@ -1274,6 +1319,7 @@ export default function GraphView({
     () => ({
       onStartChild,
       onStartSprint,
+      onAddExistingChild,
       onToggleCompletedSummary: (summaryId) => {
         setExpandedSummaryIds((current) => {
           const next = new Set(current);
@@ -1289,7 +1335,7 @@ export default function GraphView({
         });
       },
     }),
-    [onStartChild, onStartSprint]
+    [onAddExistingChild, onStartChild, onStartSprint]
   );
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
 
@@ -1321,7 +1367,7 @@ export default function GraphView({
 
   const centerInitialViewOnRoot = useCallback(
     (currentNodes) => {
-      if (initialViewCenteredRef.current || !reactFlowRef.current) {
+      if (activeSearchId || initialViewCenteredRef.current || !reactFlowRef.current) {
         return;
       }
 
@@ -1336,10 +1382,9 @@ export default function GraphView({
       initialViewCenteredRef.current = true;
 
       window.requestAnimationFrame(() => {
-        const wrapper = document.querySelector(".graph-view");
+        const wrapper = graphViewRef.current;
         const width = wrapper?.clientWidth || window.innerWidth;
-        const topPadding =
-          viewMode === "day" ? (width < 760 ? 220 : 158) : 96;
+        const topPadding = width < 760 ? 56 : 42;
 
         reactFlowRef.current?.setViewport(
           {
@@ -1353,7 +1398,7 @@ export default function GraphView({
         );
       });
     },
-    [rootNodeId, viewMode]
+    [activeSearchId, rootNodeId, viewMode]
   );
 
   useLayoutEffect(() => {
@@ -1362,6 +1407,10 @@ export default function GraphView({
 
   useLayoutEffect(() => {
     setNodes((currentNodes) => {
+      if (appliedLayoutKeyRef.current !== layoutStructureKey) {
+        return currentNodes;
+      }
+
       const existingPositions = workNodePositions(currentNodes);
 
       const nextNodes = withSeparatorGuideNodes(toFlowNodes({
@@ -1376,8 +1425,10 @@ export default function GraphView({
         selectedId,
         existingPositions,
         actions,
+        childActionItemsForNode,
         completedSummaryControls,
         searchMatchIds,
+        activeSearchId,
         daySummary,
         readOnly,
       }), renderedWorkItems, rootNodeId, sprints);
@@ -1386,6 +1437,7 @@ export default function GraphView({
     });
   }, [
     actions,
+    childActionItemsForNode,
     rootDocketState,
     mainTitle,
     rootTitle,
@@ -1396,7 +1448,9 @@ export default function GraphView({
     storyPointTotals,
     completedSummaryControls,
     searchMatchIds,
+    activeSearchId,
     daySummary,
+    layoutStructureKey,
     readOnly,
     viewRootId,
     viewMode,
@@ -1412,6 +1466,10 @@ export default function GraphView({
     }
 
     appliedLayoutKeyRef.current = layoutStructureKey;
+    const viewportBeforeLayout =
+      !activeSearchId && initialViewCenteredRef.current
+        ? reactFlowRef.current?.getViewport?.()
+        : null;
 
     setNodes((currentNodes) => {
       const existingPositions = workNodePositions(currentNodes);
@@ -1430,8 +1488,10 @@ export default function GraphView({
         selectedId,
         existingPositions,
         actions,
+        childActionItemsForNode,
         completedSummaryControls,
         searchMatchIds,
+        activeSearchId,
         daySummary,
         readOnly,
       }).map((node) => {
@@ -1471,8 +1531,21 @@ export default function GraphView({
 
       return reconciledNodes;
     });
+
+    if (viewportBeforeLayout) {
+      const restoreViewportFrame = window.requestAnimationFrame(() => {
+        reactFlowRef.current?.setViewport?.(viewportBeforeLayout, {
+          duration: 0,
+        });
+      });
+
+      return () => {
+        window.cancelAnimationFrame(restoreViewportFrame);
+      };
+    }
   }, [
     actions,
+    childActionItemsForNode,
     layoutStructureKey,
     layoutNonce,
     rootDocketState,
@@ -1486,6 +1559,7 @@ export default function GraphView({
     storyPointTotals,
     completedSummaryControls,
     searchMatchIds,
+    activeSearchId,
     daySummary,
     readOnly,
     viewRootId,
@@ -1499,33 +1573,68 @@ export default function GraphView({
   }, [centerInitialViewOnRoot, nodes]);
 
   useLayoutEffect(() => {
-    const normalizedSearch = searchQuery.trim().toLowerCase();
-
-    if (!normalizedSearch || !reactFlowRef.current) {
+    if (!activeSearchId || !reactFlowRef.current) {
       focusedSearchRef.current = "";
       return;
     }
 
-    const match = nodes.find(
-      (node) => isWorkNode(node) && node.data?.searchMatch
-    );
+    const match =
+      nodes.find((node) => isWorkNode(node) && node.id === activeSearchNodeId) ||
+      nodes.find((node) => isWorkNode(node) && node.data?.searchActive);
 
-    if (!match?.position || focusedSearchRef.current === `${normalizedSearch}:${match.id}`) {
+    if (!match?.position) {
       return;
     }
 
-    focusedSearchRef.current = `${normalizedSearch}:${match.id}`;
-
     const size = getNodeSize(match);
-    reactFlowRef.current.setCenter(
-      match.position.x + size.width / 2,
-      match.position.y + size.height / 2,
-      {
-        zoom: 1.05,
-        duration: 240,
-      }
-    );
-  }, [nodes, searchQuery]);
+    const viewport = reactFlowRef.current.getViewport?.() || {
+      zoom: reactFlowRef.current.getZoom?.() || 1,
+    };
+    const focusKey = [
+      activeSearchId,
+      activeSearchNodeId,
+      activeSearchFocusKey,
+      match.id,
+      match.position.x,
+      match.position.y,
+      size.width,
+      size.height,
+      viewport.zoom,
+    ].join(":");
+
+    if (focusedSearchRef.current === focusKey) {
+      return;
+    }
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      const instance = reactFlowRef.current;
+
+      if (!instance) return;
+
+      const latestViewport = instance.getViewport?.() || viewport;
+      const zoom = Number.isFinite(latestViewport.zoom)
+        ? latestViewport.zoom
+        : 1;
+      const nodeCenter = getNodeCenter(match);
+      const graphCenter = usableGraphCenter(graphViewRef.current);
+
+      instance.setViewport(
+        {
+          x: graphCenter.x - nodeCenter.x * zoom,
+          y: graphCenter.y - nodeCenter.y * zoom,
+          zoom,
+        },
+        {
+          duration: 260,
+        }
+      );
+      focusedSearchRef.current = focusKey;
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [activeSearchFocusKey, activeSearchId, activeSearchNodeId, nodes]);
 
   const handleNodeClick = useCallback(
     (event, node) => {
@@ -1565,17 +1674,11 @@ export default function GraphView({
   }, []);
 
   const handleFullscreen = useCallback(() => {
-    const element = document.querySelector(".app-container");
-
-    if (!document.fullscreenElement) {
-      element?.requestFullscreen?.();
-    } else {
-      document.exitFullscreen?.();
-    }
-  }, []);
+    onCanvasFullModeChange?.(!canvasFullMode);
+  }, [canvasFullMode, onCanvasFullModeChange]);
 
   return (
-    <div className="graph-view">
+    <div className="graph-view" ref={graphViewRef}>
       <ReactFlow
         nodes={nodes}
         edges={connectorEdges}
@@ -1638,8 +1741,9 @@ export default function GraphView({
         <button
           type="button"
           onClick={handleFullscreen}
-          aria-label="Fullscreen"
-          title="Fullscreen"
+          aria-pressed={canvasFullMode}
+          aria-label={canvasFullMode ? "Exit full canvas" : "Full canvas"}
+          title={canvasFullMode ? "Exit full canvas" : "Full canvas"}
         >
           Full
         </button>

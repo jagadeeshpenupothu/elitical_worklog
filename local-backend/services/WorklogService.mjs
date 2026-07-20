@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { getStoragePaths } from "./StoragePathService.mjs";
 
 function todayDate() {
   return new Date().toISOString().slice(0, 10);
@@ -56,16 +57,26 @@ function metadataForWorklogs(cache = {}) {
 }
 
 export class WorklogService {
-  constructor({ cacheDir = process.env.ELITICAL_CACHE_DIR || path.resolve("local-backend/cache") } = {}) {
-    this.cacheDir = cacheDir;
-    this.draftsPath = path.join(cacheDir, "worklog-drafts.json");
-    this.pendingPath = path.join(cacheDir, "pending-worklogs.json");
-    this.historyPath = path.join(cacheDir, "worklog-history.json");
-    this.importedPath = path.join(cacheDir, "worklogs.json");
+  constructor(options = {}) {
+    const paths = getStoragePaths();
+    const cacheDir = options.cacheDir || "";
+    const dataDir = cacheDir || options.dataDir || process.env.ELITICAL_CACHE_DIR || paths.dataDir;
+    const syncDir = cacheDir || options.syncDir || process.env.ELITICAL_SYNC_DIR || paths.syncDir;
+
+    this.cacheDir = dataDir;
+    this.dataDir = dataDir;
+    this.syncDir = syncDir;
+    this.draftsPath = path.join(this.dataDir, "worklog-drafts.json");
+    this.pendingPath = path.join(this.syncDir, "pending-worklogs.json");
+    this.historyPath = path.join(this.dataDir, "worklog-history.json");
+    this.importedPath = path.join(this.dataDir, "worklogs.json");
   }
 
   async ensureCacheDir() {
-    await fs.mkdir(this.cacheDir, { recursive: true });
+    await Promise.all([
+      fs.mkdir(this.dataDir, { recursive: true }),
+      fs.mkdir(this.syncDir, { recursive: true }),
+    ]);
   }
 
   async readJson(filePath, fallback) {

@@ -1,4 +1,8 @@
 import yaml from "js-yaml";
+import {
+  CANONICAL_DOCKET_STATES,
+  normalizeDocketState,
+} from "./docketStates.js";
 
 export const ROOT_ID = "storyRoot";
 
@@ -46,13 +50,7 @@ export const PRIORITIES = [
   "blocker",
 ];
 
-export const DOCKET_STATES = [
-  "concept",
-  "design",
-  "review",
-  "closed",
-  "artifact",
-];
+export const DOCKET_STATES = CANONICAL_DOCKET_STATES;
 
 const RELATIONSHIPS = {
   [ROOT_ID]: ["epic"],
@@ -110,15 +108,7 @@ function normalizeWorklogDate(value, fallback) {
 }
 
 function normalizeWorklogs(input, fallbackDate, fallbackDescription, fallbackTime) {
-  const source = Array.isArray(input) && input.length > 0
-    ? input
-    : [
-        {
-          date: fallbackDate,
-          description: fallbackDescription,
-          timeMinutes: fallbackTime,
-        },
-      ];
+  const source = Array.isArray(input) ? input : [];
 
   return source.map((entry) => ({
     ...entry,
@@ -166,10 +156,50 @@ function directWorklogEntries(item) {
     .map((entry, index) => ({
       id: worklogStableId(entry, item.id, index),
       minutes: normalizeTimeMinutes(entry?.timeMinutes ?? entry?.durationMinutes),
+      employeeId: String(entry?.employeeId || "").trim(),
+      employeeName: String(entry?.employeeName || "").trim(),
     }));
 }
 
-export function aggregateLoggedDurations(items = []) {
+function employeeScopeId(scope) {
+  return String(scope?.employeeId || scope?.id || "").trim();
+}
+
+function worklogMatchesEmployeeScope(entry, scope) {
+  const scopeId = employeeScopeId(scope);
+
+  if (!scopeId) return true;
+
+  const entryEmployeeId = String(entry?.employeeId || "").trim();
+
+  return entryEmployeeId ? entryEmployeeId === scopeId : false;
+}
+
+function itemAssigneeId(item = {}) {
+  return String(item.elitical?.assigneeId || item.assigneeId || "").trim();
+}
+
+function itemMatchesEmployeeScope(item, scope) {
+  const scopeId = employeeScopeId(scope);
+
+  if (!scopeId) return true;
+
+  return itemAssigneeId(item) === scopeId;
+}
+
+function aggregateParentId(item) {
+  return item?.visualParentId || item?.parentId || ROOT_ID;
+}
+
+function itemDisplayScope(item) {
+  return item?.targetScopeId || item?.targetSprintId || item?.elitical?.sprintId || item?.sprintId || "";
+}
+
+function itemDisplaySprintTitle(item) {
+  return item?.childSprint || item?.sprint || "";
+}
+
+export function aggregateLoggedDurations(items = [], { sprints = [], employeeScope = null } = {}) {
   const timeById = {};
   const ownTimeById = {};
   const worklogIdsById = {};
@@ -177,8 +207,10 @@ export function aggregateLoggedDurations(items = []) {
   const sprintTimeById = {};
   const sprintTimeByTitle = {};
   const childrenByParent = items.reduce((acc, item) => {
-    if (!acc[item.parentId]) acc[item.parentId] = [];
-    acc[item.parentId].push(item);
+    const parentId = aggregateParentId(item);
+
+    if (!acc[parentId]) acc[parentId] = [];
+    acc[parentId].push(item);
     return acc;
   }, {});
 
@@ -187,6 +219,7 @@ export function aggregateLoggedDurations(items = []) {
     let minutes = 0;
 
     directWorklogEntries(item).forEach((entry) => {
+      if (!worklogMatchesEmployeeScope(entry, employeeScope)) return;
       if (!entry.id || uniqueIds.has(entry.id)) return;
 
       uniqueIds.add(entry.id);
@@ -222,8 +255,8 @@ export function aggregateLoggedDurations(items = []) {
   });
 
   const rootIds = new Set();
-  (childrenByParent[ROOT_ID] || []).forEach((child) => {
-    aggregateFor(child).forEach((id) => rootIds.add(id));
+  items.forEach((item) => {
+    ownWorklogsFor(item).forEach((id) => rootIds.add(id));
   });
   worklogIdsById[ROOT_ID] = rootIds;
   timeById[ROOT_ID] = Array.from(rootIds).reduce(
@@ -231,25 +264,54 @@ export function aggregateLoggedDurations(items = []) {
     0
   );
 
-  items.forEach((item) => {
-    const ownIds = ownWorklogsFor(item);
-    const sprintId = item.elitical?.sprintId || item.sprintId || "";
-    const sprintTitle = item.sprint || "";
+  function idsForVisualParent(parentId) {
+    const ids = new Set();
 
-    if (sprintId) {
-      sprintTimeById[sprintId] = sprintTimeById[sprintId] || {
-        ids: new Set(),
+    (childrenByParent[parentId] || []).forEach((child) => {
+      aggregateFor(child).forEach((id) => ids.add(id));
+    });
+
+    return ids;
+  }
+
+  sprints.forEach((sprint) => {
+    if (!sprint?.id) return;
+
+    const ids = idsForVisualParent(sprint.id);
+    const title = sprint.title || sprint.name || "";
+
+    sprintTimeById[sprint.id] = {
+      ids,
+      minutes: 0,
+    };
+
+    if (title) {
+      sprintTimeByTitle[title] = {
+        ids: new Set(ids),
         minutes: 0,
       };
-      ownIds.forEach((id) => sprintTimeById[sprintId].ids.add(id));
+    }
+  });
+
+  items.forEach((item) => {
+    const sprintId = itemDisplayScope(item);
+    const sprintTitle = itemDisplaySprintTitle(item);
+
+    if (sprintId && !sprintTimeById[sprintId]) {
+      sprintTimeById[sprintId] = {
+        ids: idsForVisualParent(sprintId),
+        minutes: 0,
+      };
     }
 
-    if (sprintTitle) {
-      sprintTimeByTitle[sprintTitle] = sprintTimeByTitle[sprintTitle] || {
+    if (sprintTitle && !sprintTimeByTitle[sprintTitle]) {
+      sprintTimeByTitle[sprintTitle] = {
         ids: new Set(),
         minutes: 0,
       };
-      ownIds.forEach((id) => sprintTimeByTitle[sprintTitle].ids.add(id));
+      (childrenByParent[sprintId] || []).forEach((child) => {
+        aggregateFor(child).forEach((id) => sprintTimeByTitle[sprintTitle].ids.add(id));
+      });
     }
   });
 
@@ -307,14 +369,6 @@ function normalizeType(type) {
   if (lower === "task") return "task";
 
   return "task";
-}
-
-function normalizeDocketState(value) {
-  const normalized = String(value || "")
-    .trim()
-    .toLowerCase();
-
-  return DOCKET_STATES.includes(normalized) ? normalized : "concept";
 }
 
 function makeRelationshipId(sourceId, targetId, relationshipType) {
@@ -1267,40 +1321,90 @@ export function deleteWorkItem(items, id) {
   };
 }
 
-export function calculateStoryPoints(items) {
+export function calculateStoryPoints(items, { sprints = [], employeeScope = null } = {}) {
   const byId = {};
+  const sprintStoryPointsById = {};
+  const sprintStoryPointsByTitle = {};
   const childrenByParent = items.reduce((acc, item) => {
-    if (!acc[item.parentId]) acc[item.parentId] = [];
-    acc[item.parentId].push(item);
+    const parentId = aggregateParentId(item);
+
+    if (!acc[parentId]) acc[parentId] = [];
+    acc[parentId].push(item);
     return acc;
   }, {});
+  const itemById = new Map(items.map((item) => [item.id, item]));
+
+  function aggregateStoryPointsForItem(item) {
+    if (!item) return 0;
+    if (Object.prototype.hasOwnProperty.call(byId, item.id)) {
+      return byId[item.id];
+    }
+
+    const ownPoints =
+      item.type === "story" && itemMatchesEmployeeScope(item, employeeScope)
+        ? normalizeStoryPoints(item.storyPoints)
+        : 0;
+    const childPoints = (childrenByParent[item.id] || []).reduce(
+      (total, child) => total + aggregateStoryPointsForItem(child),
+      0
+    );
+
+    byId[item.id] = ownPoints + childPoints;
+
+    return byId[item.id];
+  }
+
+  items.forEach(aggregateStoryPointsForItem);
+
+  function storyPointsForVisualParent(parentId) {
+    return (childrenByParent[parentId] || []).reduce(
+      (total, child) => total + aggregateStoryPointsForItem(child),
+      0
+    );
+  }
+
+  sprints.forEach((sprint) => {
+    if (!sprint?.id) return;
+
+    const points = storyPointsForVisualParent(sprint.id);
+    const title = sprint.title || sprint.name || "";
+
+    sprintStoryPointsById[sprint.id] = points;
+    if (title) sprintStoryPointsByTitle[title] = points;
+  });
 
   items.forEach((item) => {
-    if (item.type === "story") {
-      byId[item.id] = normalizeStoryPoints(item.storyPoints);
+    const sprintId = itemDisplayScope(item);
+    const sprintTitle = itemDisplaySprintTitle(item);
+
+    if (sprintId && !Object.prototype.hasOwnProperty.call(sprintStoryPointsById, sprintId)) {
+      sprintStoryPointsById[sprintId] = storyPointsForVisualParent(sprintId);
+    }
+    if (sprintTitle && !Object.prototype.hasOwnProperty.call(sprintStoryPointsByTitle, sprintTitle)) {
+      sprintStoryPointsByTitle[sprintTitle] = sprintStoryPointsById[sprintId] || 0;
     }
   });
-  const loggedDurations = aggregateLoggedDurations(items);
 
-  items
-    .filter((item) => item.type === "epic")
-    .forEach((epic) => {
-      byId[epic.id] = (childrenByParent[epic.id] || [])
-        .filter((child) => child.type === "story")
-        .reduce(
-          (total, story) =>
-            total + normalizeStoryPoints(story.storyPoints),
-          0
-        );
-    });
+  byId[ROOT_ID] = items
+    .filter((item) => item.type === "story")
+    .filter((item) => itemMatchesEmployeeScope(item, employeeScope))
+    .reduce((total, story) => total + normalizeStoryPoints(story.storyPoints), 0);
 
-  byId[ROOT_ID] = (childrenByParent[ROOT_ID] || [])
-    .filter((child) => child.type === "epic")
-    .reduce((total, epic) => total + (byId[epic.id] || 0), 0);
+  items.forEach((item) => {
+    const sourceId = item.sourceItemId || item.sourceDocketId || "";
+
+    if (sourceId && !itemById.has(sourceId)) {
+      byId[sourceId] = byId[item.id] || 0;
+    }
+  });
+
+  const loggedDurations = aggregateLoggedDurations(items, { sprints, employeeScope });
 
   return {
     rootTotal: byId[ROOT_ID],
     byId,
+    sprintStoryPointsById,
+    sprintStoryPointsByTitle,
     ...loggedDurations,
   };
 }

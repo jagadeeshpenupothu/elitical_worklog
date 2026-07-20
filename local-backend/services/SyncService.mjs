@@ -142,7 +142,12 @@ export class SyncService {
         };
 
         console.warn("[local-backend] GitHub cache publish failed", payload);
-        this.events.progress({ phase: "warning", message: payload.message });
+        this.events.progress({
+          direction: "inbound",
+          state: "running",
+          phase: "warning",
+          message: payload.message,
+        });
         this.events.cache("github-publish-failed", payload);
       });
   }
@@ -161,7 +166,12 @@ export class SyncService {
     const provider = this.provider(providerId);
 
     this.syncInProgress = true;
-    this.events.progress({ phase: "starting", message: "Starting Elitical sync..." });
+    this.events.progress({
+      direction: "inbound",
+      state: "running",
+      phase: "starting",
+      message: "Starting Elitical sync...",
+    });
     this.events.cache("sync-started", { syncInProgress: true, provider: provider.id });
 
     try {
@@ -172,6 +182,12 @@ export class SyncService {
         onProgress: (progress) => this.events.progress(progress),
       });
       const cacheWriteStartedAt = Date.now();
+      this.events.progress({
+        direction: "inbound",
+        state: "running",
+        phase: "saving-cache",
+        message: "Saving local cache...",
+      });
       const { cacheWrite, worklogCacheWrite } = await this.localData.saveImportedData({
         graph: result.normalized,
         worklogs: result.worklogs,
@@ -217,7 +233,12 @@ export class SyncService {
         worklogUpload,
       };
 
-      this.events.progress({ phase: "complete", message: "Sync Complete" });
+      this.events.progress({
+        direction: "inbound",
+        state: "synced",
+        phase: "complete",
+        message: "Synced from Elitical",
+      });
       this.events.cache(cacheWrite.changed ? "cache-updated" : "cache-unchanged", payload);
 
       return payload;
@@ -253,7 +274,12 @@ export class SyncService {
         ...safeError(error),
       };
 
-      this.events.progress({ phase: "failed", message: payload.message || payload.error });
+      this.events.progress({
+        direction: "inbound",
+        state: "failed",
+        phase: "failed",
+        message: payload.message || payload.error,
+      });
       this.events.cache("sync-failed", payload);
 
       error.statusCode = statusCode;

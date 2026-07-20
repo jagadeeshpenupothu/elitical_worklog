@@ -130,7 +130,16 @@ export interface EliticalClientContract {
   getPriorities(): Promise<EliticalLookupValue[]>;
   getCategories(): Promise<EliticalLookupValue[]>;
   getDockets(projectId: string): Promise<Issue[]>;
-  getIssues(projectId: string): Promise<Issue[]>;
+  getIssues(
+    projectId: string,
+    options?: {
+      onProgress?: (progress: {
+        current: number;
+        total: number;
+        unit: string;
+      }) => void;
+    }
+  ): Promise<Issue[]>;
   getDocket(docketId: string): Promise<Docket>;
   getWorklogs(docketId: string): Promise<Worklog[]>;
   createEpic(payload: Omit<CreateDocketPayload, "type">): Promise<Docket>;
