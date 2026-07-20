@@ -1,5 +1,5 @@
 {
-  "lastSyncTime": "2026-07-20T11:20:18.029Z",
+  "lastSyncTime": "2026-07-20T13:26:48.383Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
@@ -9,7 +9,7 @@
   "jobCount": 306,
   "taskCount": 41,
   "hash": "7fa930971dde4eee46be81ca2f3ab9c7dd9cd4c47b15e0feff7398e8ad393f24",
-  "lastSuccessfulSync": "2026-07-20T11:20:18.029Z",
+  "lastSuccessfulSync": "2026-07-20T13:26:48.383Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
     "f7604307-7913-4974-a993-d34619e8ce9b": {
@@ -4200,5 +4200,32 @@
       "createdTimestamp": "1724393264000",
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design icons, screens etc..\",\"epicId\":\"\",\"id\":\"d96a6331-6159-4a2f-be8a-2967923b05ca\",\"num\":\"DES-3\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Eagle Eye View UX Works\",\"type\":\"EPIC\",\"updated\":\"1724409509000\"}"
     }
+  },
+  "snapshotId": "elitical-sync-1784554008383-0c2bae58f1c9",
+  "syncGenerationId": "elitical-sync-1784554008383-0c2bae58f1c9",
+  "syncGenerationSequence": 1784554008383,
+  "snapshot": {
+    "schemaVersion": 1,
+    "snapshotId": "elitical-sync-1784554008383-0c2bae58f1c9",
+    "syncGenerationId": "elitical-sync-1784554008383-0c2bae58f1c9",
+    "syncGenerationSequence": 1784554008383,
+    "syncedAt": "2026-07-20T13:26:48.383Z",
+    "createdAt": "2026-07-20T13:26:48.831Z",
+    "graphHash": "c938935f74840bb2a172678c9abcc27c0335f197392d66783e6e7e8d743b86e5",
+    "worklogsHash": "f3ceb3c00665523a4af2abebff60b40cd87e94ebc8028a18bb5cc3e1dbab78e0",
+    "nodeCount": 698,
+    "worklogCount": 684,
+    "employee": {
+      "id": "97a233c1-0999-4c56-9164-6e3ab2edde57",
+      "employeeId": "97a233c1-0999-4c56-9164-6e3ab2edde57",
+      "name": "Jagadeesh  Penupothu",
+      "source": "synchronized-worklogs"
+    }
+  },
+  "employee": {
+    "id": "97a233c1-0999-4c56-9164-6e3ab2edde57",
+    "employeeId": "97a233c1-0999-4c56-9164-6e3ab2edde57",
+    "name": "Jagadeesh  Penupothu",
+    "source": "synchronized-worklogs"
   }
 }
