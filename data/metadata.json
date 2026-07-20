@@ -1,17 +1,65 @@
 {
-  "lastSyncTime": "2026-07-19T17:33:02.467Z",
+  "lastSyncTime": "2026-07-20T11:20:18.029Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
   "graphVersion": 1,
-  "nodeCount": 690,
-  "storyCount": 321,
-  "jobCount": 299,
+  "nodeCount": 698,
+  "storyCount": 322,
+  "jobCount": 306,
   "taskCount": 41,
-  "hash": "399f2cdb98cf69cd1a6569bf464ad68baf322cad3b1b135408ef494807126808",
-  "lastSuccessfulSync": "2026-07-19T17:33:02.467Z",
+  "hash": "7fa930971dde4eee46be81ca2f3ab9c7dd9cd4c47b15e0feff7398e8ad393f24",
+  "lastSuccessfulSync": "2026-07-20T11:20:18.029Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
+    "f7604307-7913-4974-a993-d34619e8ce9b": {
+      "docketId": "f7604307-7913-4974-a993-d34619e8ce9b",
+      "modifiedTimestamp": "1784551845000",
+      "createdTimestamp": "1784551845000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Assign the work to sashank on on error code image and explain clearly on requirements\",\"epicId\":\"\",\"id\":\"f7604307-7913-4974-a993-d34619e8ce9b\",\"num\":\"DES-698\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Assigning the error code image work and explain the requirements clearly\",\"type\":\"JOB\",\"updated\":\"1784551845000\"}"
+    },
+    "11ec98db-44f9-46ef-983f-018fd1500dc7": {
+      "docketId": "11ec98db-44f9-46ef-983f-018fd1500dc7",
+      "modifiedTimestamp": "1784550508000",
+      "createdTimestamp": "1784550508000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Review the submited light theme error code image submited by sahanak\",\"epicId\":\"\",\"id\":\"11ec98db-44f9-46ef-983f-018fd1500dc7\",\"num\":\"DES-697\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Review of Light theme images\",\"type\":\"JOB\",\"updated\":\"1784550508000\"}"
+    },
+    "b6d78f4b-a2b2-4a9e-8bf6-1041431603cb": {
+      "docketId": "b6d78f4b-a2b2-4a9e-8bf6-1041431603cb",
+      "modifiedTimestamp": "1784515026000",
+      "createdTimestamp": "1784515026000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Do some R7D on borderless desing and start designing\",\"epicId\":\"\",\"id\":\"b6d78f4b-a2b2-4a9e-8bf6-1041431603cb\",\"num\":\"DES-696\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Front page r&d and design\",\"type\":\"JOB\",\"updated\":\"1784515026000\"}"
+    },
+    "954537ff-c615-4587-8cf6-5a7cb83f95b4": {
+      "docketId": "954537ff-c615-4587-8cf6-5a7cb83f95b4",
+      "modifiedTimestamp": "1784507325000",
+      "createdTimestamp": "1784507326000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Provide an Assets like MicorboalX compst logo, Odomon etc to sindhu of image generation\",\"epicId\":\"\",\"id\":\"954537ff-c615-4587-8cf6-5a7cb83f95b4\",\"num\":\"DES-695\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"MicorbilaX compost assets support\",\"type\":\"JOB\",\"updated\":\"1784507325000\"}"
+    },
+    "c092ada1-d6af-4329-8f87-5f32daec12cc": {
+      "docketId": "c092ada1-d6af-4329-8f87-5f32daec12cc",
+      "modifiedTimestamp": "1784507286000",
+      "createdTimestamp": "1784507286000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Provide an Assets like MicorboalX compst logo, Odomon etc to sindhu of image generation\",\"epicId\":\"\",\"id\":\"c092ada1-d6af-4329-8f87-5f32daec12cc\",\"num\":\"DES-694\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"MicrobialX compost Asset support\",\"type\":\"JOB\",\"updated\":\"1784507286000\"}"
+    },
+    "aa668384-0632-4bd0-8047-35f96bdd90ea": {
+      "docketId": "aa668384-0632-4bd0-8047-35f96bdd90ea",
+      "modifiedTimestamp": "1784505046000",
+      "createdTimestamp": "1784505046000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Review the light theme error code image gnerated by sashank.\",\"epicId\":\"\",\"id\":\"aa668384-0632-4bd0-8047-35f96bdd90ea\",\"num\":\"DES-693\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Review of Light theme image\",\"type\":\"JOB\",\"updated\":\"1784505046000\"}"
+    },
+    "4e358e63-55b0-4779-879e-d54b2cb4a159": {
+      "docketId": "4e358e63-55b0-4779-879e-d54b2cb4a159",
+      "modifiedTimestamp": "1784502579000",
+      "createdTimestamp": "1784502579000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Update the ecolly invoice templete as per assigned changes by sindhu\",\"epicId\":\"\",\"id\":\"4e358e63-55b0-4779-879e-d54b2cb4a159\",\"num\":\"DES-692\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Invoice templete update\",\"type\":\"JOB\",\"updated\":\"1784502579000\"}"
+    },
+    "8b6a5330-3935-423e-94cd-5337120b4792": {
+      "docketId": "8b6a5330-3935-423e-94cd-5337120b4792",
+      "modifiedTimestamp": "1784502538000",
+      "createdTimestamp": "1784502538000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Update the ecolly invouce templete\",\"epicId\":\"\",\"id\":\"8b6a5330-3935-423e-94cd-5337120b4792\",\"num\":\"DES-691\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Ecolly Inovice\",\"type\":\"STORY\",\"updated\":\"1784502538000\"}"
+    },
     "437d0099-8784-4c60-bba3-686fdf42d788": {
       "docketId": "437d0099-8784-4c60-bba3-686fdf42d788",
       "modifiedTimestamp": "1784500981000",
@@ -4152,24 +4200,5 @@
       "createdTimestamp": "1724393264000",
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design icons, screens etc..\",\"epicId\":\"\",\"id\":\"d96a6331-6159-4a2f-be8a-2967923b05ca\",\"num\":\"DES-3\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Eagle Eye View UX Works\",\"type\":\"EPIC\",\"updated\":\"1724409509000\"}"
     }
-  },
-  "publishedAt": "2026-07-19T17:33:34.688Z",
-  "publishedCommitSha": "26f5fcd406381d997cd8ed9e4b19bd0f6bc56cca",
-  "publishedFiles": [
-    {
-      "path": "data/graph.json",
-      "sha": "dc20d3b9e3185c7a4ef06a5c5699fde54f1f621f",
-      "commitSha": "acac9f4b1e0c77e7b5898a72f7277570ff3aa781"
-    },
-    {
-      "path": "data/worklogs.json",
-      "sha": "94725a07dee5770f805c4173a555ea2315a630b7",
-      "commitSha": "bb4e6efe1da3a40b230aeab879eb0a6a78e4b6e1"
-    },
-    {
-      "path": "data/metadata.json",
-      "sha": "c3c1b473447e0b2b9fb1d2cad1f3b0fab2404b0a",
-      "commitSha": "26f5fcd406381d997cd8ed9e4b19bd0f6bc56cca"
-    }
-  ]
+  }
 }
