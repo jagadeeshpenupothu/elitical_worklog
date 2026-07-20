@@ -1,5 +1,5 @@
 {
-  "lastSyncTime": "2026-07-20T14:09:27.118Z",
+  "lastSyncTime": "2026-07-20T14:31:04.173Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
@@ -8,8 +8,8 @@
   "storyCount": 322,
   "jobCount": 306,
   "taskCount": 41,
-  "hash": "7fa930971dde4eee46be81ca2f3ab9c7dd9cd4c47b15e0feff7398e8ad393f24",
-  "lastSuccessfulSync": "2026-07-20T14:09:27.118Z",
+  "hash": "b47b681cbde74300df3edcb5a7082af194d2c29b843f3e67a94cb712591b47b1",
+  "lastSuccessfulSync": "2026-07-20T14:31:04.173Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
     "f7604307-7913-4974-a993-d34619e8ce9b": {
@@ -92,9 +92,9 @@
     },
     "f7625b73-5e1b-44bf-9b42-ad7db0cfd474": {
       "docketId": "f7625b73-5e1b-44bf-9b42-ad7db0cfd474",
-      "modifiedTimestamp": "1784424036000",
+      "modifiedTimestamp": "1784577518000",
       "createdTimestamp": "1784424036000",
-      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Convert the provided svg of light theme to svg  by sashank\",\"epicId\":\"\",\"id\":\"f7625b73-5e1b-44bf-9b42-ad7db0cfd474\",\"num\":\"DES-685\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Error code convertion\",\"type\":\"JOB\",\"updated\":\"1784424036000\"}"
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Convert the provided svg of light theme to svg  by sashank\",\"epicId\":\"\",\"id\":\"f7625b73-5e1b-44bf-9b42-ad7db0cfd474\",\"num\":\"DES-685\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Error code convertion\",\"type\":\"JOB\",\"updated\":\"1784577518000\"}"
     },
     "d690001f-6e4b-4936-b6a3-ca0dde6bf596": {
       "docketId": "d690001f-6e4b-4936-b6a3-ca0dde6bf596",
@@ -176,9 +176,9 @@
     },
     "4be8ed06-df96-4821-8ea6-c80c5cd8c664": {
       "docketId": "4be8ed06-df96-4821-8ea6-c80c5cd8c664",
-      "modifiedTimestamp": "1784372935000",
+      "modifiedTimestamp": "1784577514000",
       "createdTimestamp": "1784303198000",
-      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"review the 404 error series\",\"epicId\":\"\",\"id\":\"4be8ed06-df96-4821-8ea6-c80c5cd8c664\",\"num\":\"DES-671\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"404 series error code reviews\",\"type\":\"JOB\",\"updated\":\"1784372935000\"}"
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"review the 404 error series\",\"epicId\":\"\",\"id\":\"4be8ed06-df96-4821-8ea6-c80c5cd8c664\",\"num\":\"DES-671\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"404 series error code reviews\",\"type\":\"JOB\",\"updated\":\"1784577514000\"}"
     },
     "e66582b2-3fcb-4814-a774-af7eab379cee": {
       "docketId": "e66582b2-3fcb-4814-a774-af7eab379cee",
@@ -188,9 +188,9 @@
     },
     "b89c7313-a362-419c-9575-37c580be746f": {
       "docketId": "b89c7313-a362-419c-9575-37c580be746f",
-      "modifiedTimestamp": "1784482171000",
+      "modifiedTimestamp": "1784577516000",
       "createdTimestamp": "1784296198000",
-      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Do cross check the teja hospitals cover photo and do telugu text edits\",\"epicId\":\"\",\"id\":\"b89c7313-a362-419c-9575-37c580be746f\",\"num\":\"DES-669\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Telugu Text Correction Back side\",\"type\":\"JOB\",\"updated\":\"1784482171000\"}"
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Do cross check the teja hospitals cover photo and do telugu text edits\",\"epicId\":\"\",\"id\":\"b89c7313-a362-419c-9575-37c580be746f\",\"num\":\"DES-669\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Telugu Text Correction Back side\",\"type\":\"JOB\",\"updated\":\"1784577516000\"}"
     },
     "c22571da-e0d1-47fa-829b-f066e9f41292": {
       "docketId": "c22571da-e0d1-47fa-829b-f066e9f41292",
@@ -4201,18 +4201,18 @@
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design icons, screens etc..\",\"epicId\":\"\",\"id\":\"d96a6331-6159-4a2f-be8a-2967923b05ca\",\"num\":\"DES-3\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Eagle Eye View UX Works\",\"type\":\"EPIC\",\"updated\":\"1724409509000\"}"
     }
   },
-  "snapshotId": "elitical-sync-1784556567118-45a9aa392d8b",
-  "syncGenerationId": "elitical-sync-1784556567118-45a9aa392d8b",
-  "syncGenerationSequence": 1784556567118,
+  "snapshotId": "elitical-sync-1784557864173-177d4978fa94",
+  "syncGenerationId": "elitical-sync-1784557864173-177d4978fa94",
+  "syncGenerationSequence": 1784557864173,
   "snapshot": {
     "schemaVersion": 1,
-    "snapshotId": "elitical-sync-1784556567118-45a9aa392d8b",
-    "syncGenerationId": "elitical-sync-1784556567118-45a9aa392d8b",
-    "syncGenerationSequence": 1784556567118,
-    "syncedAt": "2026-07-20T14:09:27.118Z",
-    "createdAt": "2026-07-20T14:09:27.436Z",
-    "graphHash": "6279fb9df8663c023f7163d7f2ecf8bb88554a841cc5378cac09d4e0e5583c96",
-    "worklogsHash": "9005d89335e5ec5d8b254556467ccf41158fc54741cfee71457ee9d399e49732",
+    "snapshotId": "elitical-sync-1784557864173-177d4978fa94",
+    "syncGenerationId": "elitical-sync-1784557864173-177d4978fa94",
+    "syncGenerationSequence": 1784557864173,
+    "syncedAt": "2026-07-20T14:31:04.173Z",
+    "createdAt": "2026-07-20T14:31:05.063Z",
+    "graphHash": "98a6aff4fa7f5e418ad20807c7f3bda3d8f945939d6baad855c0ee9172059978",
+    "worklogsHash": "8c659c65b7bc008fc4209231adfc7c73625c4f32116f7217321d2cd13d6fdf76",
     "nodeCount": 698,
     "worklogCount": 684,
     "employee": {
