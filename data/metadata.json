@@ -1,22 +1,28 @@
 {
-  "lastSyncTime": "2026-07-20T14:50:52.187Z",
+  "lastSyncTime": "2026-07-21T03:15:37.743Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
   "graphVersion": 1,
-  "nodeCount": 699,
+  "nodeCount": 700,
   "storyCount": 322,
-  "jobCount": 307,
+  "jobCount": 308,
   "taskCount": 41,
-  "hash": "9ae3166a4d1f3bfb1a69592a95ab11bdc6981bad67945f38078b9f91a39aadc0",
-  "lastSuccessfulSync": "2026-07-20T14:50:52.187Z",
+  "hash": "f57e16f3bcbc7d7395626dccac17d8adffa0d745f41b38cc6a42942ade78d2bd",
+  "lastSuccessfulSync": "2026-07-21T03:15:37.743Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
+    "21db5ec6-be15-46f1-85e8-c47c4eb872c9": {
+      "docketId": "21db5ec6-be15-46f1-85e8-c47c4eb872c9",
+      "modifiedTimestamp": "1784584862000",
+      "createdTimestamp": "1784584862000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Post the Gaptor FTCCI Expo video on LinkedIn and Instagram with the required content.\",\"epicId\":\"\",\"id\":\"21db5ec6-be15-46f1-85e8-c47c4eb872c9\",\"num\":\"DES-700\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Gaptor FTCCI Expo Video Post\",\"type\":\"JOB\",\"updated\":\"1784584862000\"}"
+    },
     "df71ad8c-b4e7-42f3-9017-c158f94fdd9c": {
       "docketId": "df71ad8c-b4e7-42f3-9017-c158f94fdd9c",
-      "modifiedTimestamp": "1784578769000",
+      "modifiedTimestamp": "1784584959000",
       "createdTimestamp": "1784578769000",
-      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Create an Instagram account for Gaptor Tech using the corporate email ID and set up the required login credentials.\",\"epicId\":\"\",\"id\":\"df71ad8c-b4e7-42f3-9017-c158f94fdd9c\",\"num\":\"DES-699\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Create Gaptor Tech Instagram Account\",\"type\":\"JOB\",\"updated\":\"1784578769000\"}"
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Create an Instagram account for Gaptor Tech using the corporate email ID and set up the required login credentials.\",\"epicId\":\"\",\"id\":\"df71ad8c-b4e7-42f3-9017-c158f94fdd9c\",\"num\":\"DES-699\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Create Gaptor Tech Instagram Account\",\"type\":\"JOB\",\"updated\":\"1784584959000\"}"
     },
     "f7604307-7913-4974-a993-d34619e8ce9b": {
       "docketId": "f7604307-7913-4974-a993-d34619e8ce9b",
@@ -4207,20 +4213,20 @@
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design icons, screens etc..\",\"epicId\":\"\",\"id\":\"d96a6331-6159-4a2f-be8a-2967923b05ca\",\"num\":\"DES-3\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Eagle Eye View UX Works\",\"type\":\"EPIC\",\"updated\":\"1724409509000\"}"
     }
   },
-  "snapshotId": "elitical-sync-1784559052187-bb45fbcd42f7",
-  "syncGenerationId": "elitical-sync-1784559052187-bb45fbcd42f7",
-  "syncGenerationSequence": 1784559052187,
+  "snapshotId": "elitical-sync-1784603737743-bcadc89b8371",
+  "syncGenerationId": "elitical-sync-1784603737743-bcadc89b8371",
+  "syncGenerationSequence": 1784603737743,
   "snapshot": {
     "schemaVersion": 1,
-    "snapshotId": "elitical-sync-1784559052187-bb45fbcd42f7",
-    "syncGenerationId": "elitical-sync-1784559052187-bb45fbcd42f7",
-    "syncGenerationSequence": 1784559052187,
-    "syncedAt": "2026-07-20T14:50:52.187Z",
-    "createdAt": "2026-07-20T14:50:52.665Z",
-    "graphHash": "d5deb604e21605492ffe67a1514808c6069e46be115e18a60b6a09adf9cfc880",
-    "worklogsHash": "2877b6fee62ce945deb202dea3828443024dfde2c5ee95214f5d4a5e34a59fe8",
-    "nodeCount": 699,
-    "worklogCount": 685,
+    "snapshotId": "elitical-sync-1784603737743-bcadc89b8371",
+    "syncGenerationId": "elitical-sync-1784603737743-bcadc89b8371",
+    "syncGenerationSequence": 1784603737743,
+    "syncedAt": "2026-07-21T03:15:37.743Z",
+    "createdAt": "2026-07-21T03:15:40.794Z",
+    "graphHash": "af66539f39d1012d4a950b19f0baa49e894d33762b763e05e7ca63ec0dff2705",
+    "worklogsHash": "1726919dffd23bb2430ee27edd23af42d6daacbc19adacef84ecb5bbc19a29d8",
+    "nodeCount": 700,
+    "worklogCount": 686,
     "employee": {
       "id": "97a233c1-0999-4c56-9164-6e3ab2edde57",
       "employeeId": "97a233c1-0999-4c56-9164-6e3ab2edde57",
