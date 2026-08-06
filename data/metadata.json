@@ -1,17 +1,113 @@
 {
-  "lastSyncTime": "2026-07-21T03:15:37.743Z",
+  "lastSyncTime": "2026-08-06T03:35:41.425Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
   "graphVersion": 1,
-  "nodeCount": 700,
-  "storyCount": 322,
-  "jobCount": 308,
+  "nodeCount": 716,
+  "storyCount": 337,
+  "jobCount": 309,
   "taskCount": 41,
-  "hash": "f57e16f3bcbc7d7395626dccac17d8adffa0d745f41b38cc6a42942ade78d2bd",
-  "lastSuccessfulSync": "2026-07-21T03:15:37.743Z",
+  "hash": "85c88f461ba26ad7986231b641f3c425f286aa5245abe7b6995b6654ec365f66",
+  "lastSuccessfulSync": "2026-08-06T03:35:41.425Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
+    "e16f1bae-6848-48ab-8949-3f6162821ef9": {
+      "docketId": "e16f1bae-6848-48ab-8949-3f6162821ef9",
+      "modifiedTimestamp": "1785932029000",
+      "createdTimestamp": "1785932029000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Work on editing the Day 3 Ecolly Eco Sustain Expo video by organizing event footage, enhancing the visual flow, and synchronizing background music with the video for a polished presentation.\",\"epicId\":\"\",\"id\":\"e16f1bae-6848-48ab-8949-3f6162821ef9\",\"num\":\"DES-716\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Ecolly Eco Sustain Expo  Day 3 Video Editing\",\"type\":\"STORY\",\"updated\":\"1785932029000\"}"
+    },
+    "f1f21982-50da-4b72-980f-465a490df256": {
+      "docketId": "f1f21982-50da-4b72-980f-465a490df256",
+      "modifiedTimestamp": "1785931900000",
+      "createdTimestamp": "1785931900000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Recording of video content during Day 3 of the Eco Sustain Expo, capturing event highlights, product demonstrations, customer interactions, and key moments for promotional use.\",\"epicId\":\"\",\"id\":\"f1f21982-50da-4b72-980f-465a490df256\",\"num\":\"DES-715\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Ecolly Eco Sustain Expo  Day 3 Video Recording\",\"type\":\"STORY\",\"updated\":\"1785931900000\"}"
+    },
+    "9a5cdb73-a4db-4419-97b0-b90a5034a125": {
+      "docketId": "9a5cdb73-a4db-4419-97b0-b90a5034a125",
+      "modifiedTimestamp": "1785931643000",
+      "createdTimestamp": "1785931643000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Work on editing the Day 2 Ecolly Eco Sustain Expo video by organizing the recorded footage, enhancing the visual flow, and synchronizing audio to create a professional event highlight video.\",\"epicId\":\"\",\"id\":\"9a5cdb73-a4db-4419-97b0-b90a5034a125\",\"num\":\"DES-714\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Ecolly Eco Sustain Expo  Day 2 Video Editing\",\"type\":\"STORY\",\"updated\":\"1785931643000\"}"
+    },
+    "3cacd6ff-e94f-49e0-8b2e-d63f0dc4881c": {
+      "docketId": "3cacd6ff-e94f-49e0-8b2e-d63f0dc4881c",
+      "modifiedTimestamp": "1785931509000",
+      "createdTimestamp": "1785931509000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Record of video content during Day 2 of the Eco Sustain Expo to capture product demonstrations, visitor interactions, and key highlights for promotional and marketing purposes.\",\"epicId\":\"\",\"id\":\"3cacd6ff-e94f-49e0-8b2e-d63f0dc4881c\",\"num\":\"DES-713\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Ecolly Eco Sustain Expo  Day 2 Video Recording\",\"type\":\"STORY\",\"updated\":\"1785931509000\"}"
+    },
+    "8bf7f864-9deb-4c95-b8fc-7c6193c5d805": {
+      "docketId": "8bf7f864-9deb-4c95-b8fc-7c6193c5d805",
+      "modifiedTimestamp": "1785931354000",
+      "createdTimestamp": "1785931265000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Work on editing of the Day 1 Ecolly Expo video by organizing the recorded footage, arranging clips, adding background music, and creating a smooth, engaging presentation.\",\"epicId\":\"\",\"id\":\"8bf7f864-9deb-4c95-b8fc-7c6193c5d805\",\"num\":\"DES-712\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Ecolly Expo  Day 1 Video Editing\",\"type\":\"STORY\",\"updated\":\"1785931354000\"}"
+    },
+    "7d8cb9e4-0e0e-4503-a233-68aa4d9b42ef": {
+      "docketId": "7d8cb9e4-0e0e-4503-a233-68aa4d9b42ef",
+      "modifiedTimestamp": "1785931363000",
+      "createdTimestamp": "1785930999000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Work on editing the MeruSphere invoice letterhead by refining its layout and branding elements to create a professional and consistent business document.\",\"epicId\":\"\",\"id\":\"7d8cb9e4-0e0e-4503-a233-68aa4d9b42ef\",\"num\":\"DES-711\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"MeruSphere Invoice Letterhead Design Update\",\"type\":\"STORY\",\"updated\":\"1785931363000\"}"
+    },
+    "b319ac82-e701-4ff7-ab98-b2aa086ba97e": {
+      "docketId": "b319ac82-e701-4ff7-ab98-b2aa086ba97e",
+      "modifiedTimestamp": "1785930872000",
+      "createdTimestamp": "1785930616000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Design of professional brochure for Ecolly to effectively present the company's products, services, and sustainable solutions while maintaining a consistent brand identity.\",\"epicId\":\"\",\"id\":\"b319ac82-e701-4ff7-ab98-b2aa086ba97e\",\"num\":\"DES-710\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"3\",\"title\":\"Ecolly Brochure Design\",\"type\":\"STORY\",\"updated\":\"1785930872000\"}"
+    },
+    "22637e8b-7735-4554-9e23-92b3216270de": {
+      "docketId": "22637e8b-7735-4554-9e23-92b3216270de",
+      "modifiedTimestamp": "1785928969000",
+      "createdTimestamp": "1785928859000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Work on editing the final Eco Sustain Expo video by refining the event footage and creating a polished presentation that effectively showcases the highlights of the expo.\",\"epicId\":\"\",\"id\":\"22637e8b-7735-4554-9e23-92b3216270de\",\"num\":\"DES-709\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"2\",\"title\":\"Eco Sustain Expo  Final Video Editing\",\"type\":\"STORY\",\"updated\":\"1785928969000\"}"
+    },
+    "b2f49db4-8fbd-417d-a01b-bee3f41e4a05": {
+      "docketId": "b2f49db4-8fbd-417d-a01b-bee3f41e4a05",
+      "modifiedTimestamp": "1785146840000",
+      "createdTimestamp": "1785146810000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Design of dark theme versions of the 300 and 400 series HTTP error code images, ensuring visual consistency, readability, and compatibility with dark mode interfaces.\",\"epicId\":\"\",\"id\":\"b2f49db4-8fbd-417d-a01b-bee3f41e4a05\",\"num\":\"DES-708\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"300 & 400 HTTP Error Code Dark Theme Design\",\"type\":\"STORY\",\"updated\":\"1785146840000\"}"
+    },
+    "f0af4b74-525e-43df-9eda-363e3a737d11": {
+      "docketId": "f0af4b74-525e-43df-9eda-363e3a737d11",
+      "modifiedTimestamp": "1785931008000",
+      "createdTimestamp": "1785146210000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Design of a new product sticker for Ecolly's Microbial X Poultry, creating a visually appealing and informative label that reflects the product's purpose while maintaining Ecolly's brand identity.\",\"epicId\":\"\",\"id\":\"f0af4b74-525e-43df-9eda-363e3a737d11\",\"num\":\"DES-707\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Microbial X Poultry Sticker Design\",\"type\":\"STORY\",\"updated\":\"1785931008000\"}"
+    },
+    "6ac7f6ea-78a0-43c0-9782-66beff0c7ddc": {
+      "docketId": "6ac7f6ea-78a0-43c0-9782-66beff0c7ddc",
+      "modifiedTimestamp": "1785931020000",
+      "createdTimestamp": "1785145908000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Design  of the product sticker for Ecolly's Microbial X Compost, creating an attractive and informative label that aligns with the brand identity and effectively highlights the product.\",\"epicId\":\"\",\"id\":\"6ac7f6ea-78a0-43c0-9782-66beff0c7ddc\",\"num\":\"DES-706\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"2\",\"title\":\"Microbial X Compost Sticker Design\",\"type\":\"STORY\",\"updated\":\"1785931020000\"}"
+    },
+    "21c8334b-2753-48ec-8695-8e00a2d7af73": {
+      "docketId": "21c8334b-2753-48ec-8695-8e00a2d7af73",
+      "modifiedTimestamp": "1785930887000",
+      "createdTimestamp": "1784815675000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Edit of the Ecolly compost-making video to create an engaging and informative presentation, effectively showcasing the compost production process and the product's sustainability benefits.\",\"epicId\":\"\",\"id\":\"21c8334b-2753-48ec-8695-8e00a2d7af73\",\"num\":\"DES-705\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"2\",\"title\":\"Ecolly Compost Making Video Editing\",\"type\":\"STORY\",\"updated\":\"1785930887000\"}"
+    },
+    "dbb388ea-ee8d-4dd7-a3bd-09d47d9c63b3": {
+      "docketId": "dbb388ea-ee8d-4dd7-a3bd-09d47d9c63b3",
+      "modifiedTimestamp": "1785146927000",
+      "createdTimestamp": "1784747507000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"ENHANCEMENT\",\"descr\":\"Design and generation of light theme illustrations for the 200 and 300 series HTTP error codes, ensuring a consistent visual style and optimized readability for light mode interfaces.\",\"epicId\":\"\",\"id\":\"dbb388ea-ee8d-4dd7-a3bd-09d47d9c63b3\",\"num\":\"DES-704\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"200 and 300 Series HTTP Error Code Design for light theme\",\"type\":\"STORY\",\"updated\":\"1785146927000\"}"
+    },
+    "5cf1f5a5-847d-46e5-b4e5-52725f1822a9": {
+      "docketId": "5cf1f5a5-847d-46e5-b4e5-52725f1822a9",
+      "modifiedTimestamp": "1785146870000",
+      "createdTimestamp": "1784747305000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Designed a professional visiting card for Gayathri Madam, following MeruSphere's branding guidelines and ensuring a clean, modern, and visually appealing layout.\",\"epicId\":\"\",\"id\":\"5cf1f5a5-847d-46e5-b4e5-52725f1822a9\",\"num\":\"DES-703\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"MeruSphere Visiting Card Design\",\"type\":\"STORY\",\"updated\":\"1785146870000\"}"
+    },
+    "707728ea-224e-4aa7-b20a-ec08e6be6f13": {
+      "docketId": "707728ea-224e-4aa7-b20a-ec08e6be6f13",
+      "modifiedTimestamp": "1784638300000",
+      "createdTimestamp": "1784638064000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Redesign the HTTP error code illustrations and converted the updated assets from PNG to SVG format to improve scalability, consistency, and application compatibility.\",\"epicId\":\"\",\"id\":\"707728ea-224e-4aa7-b20a-ec08e6be6f13\",\"num\":\"DES-702\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"f0d71d05-bb1a-4dac-b074-e00aceb18e52\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"HTTP Error Code Redesign & SVG Conversion\",\"type\":\"JOB\",\"updated\":\"1784638300000\"}"
+    },
+    "4dd38687-5594-4cc1-8707-2124b12e83d0": {
+      "docketId": "4dd38687-5594-4cc1-8707-2124b12e83d0",
+      "modifiedTimestamp": "1785146849000",
+      "createdTimestamp": "1784629758000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Generated visual assets for the 500 series HTTP error codes, creating clear and consistent illustrations optimized for application error handling screens.\",\"epicId\":\"\",\"id\":\"4dd38687-5594-4cc1-8707-2124b12e83d0\",\"num\":\"DES-701\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"f0d71d05-bb1a-4dac-b074-e00aceb18e52\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"500 Series HTTP Error Code Image Design\",\"type\":\"STORY\",\"updated\":\"1785146849000\"}"
+    },
     "21db5ec6-be15-46f1-85e8-c47c4eb872c9": {
       "docketId": "21db5ec6-be15-46f1-85e8-c47c4eb872c9",
       "modifiedTimestamp": "1784584862000",
@@ -206,9 +302,9 @@
     },
     "c22571da-e0d1-47fa-829b-f066e9f41292": {
       "docketId": "c22571da-e0d1-47fa-829b-f066e9f41292",
-      "modifiedTimestamp": "1784281415000",
+      "modifiedTimestamp": "1784825885000",
       "createdTimestamp": "1784281415000",
-      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Edit of the recorded promotional video for Ecolly's upcoming eco-sustainable expo, enhancing the content to effectively communicate the brand's sustainability initiatives.\",\"epicId\":\"\",\"id\":\"c22571da-e0d1-47fa-829b-f066e9f41292\",\"num\":\"DES-668\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Ecolly Eco-Sustainable Expo Promotional Video Editing\",\"type\":\"STORY\",\"updated\":\"1784281415000\"}"
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Edit of the recorded promotional video for Ecolly's upcoming eco-sustainable expo, enhancing the content to effectively communicate the brand's sustainability initiatives.\",\"epicId\":\"\",\"id\":\"c22571da-e0d1-47fa-829b-f066e9f41292\",\"num\":\"DES-668\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"f0d71d05-bb1a-4dac-b074-e00aceb18e52\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Ecolly Eco-Sustainable Expo Promotional Video Editing\",\"type\":\"STORY\",\"updated\":\"1784825885000\"}"
     },
     "0a84c4f1-0a13-4ceb-9aa1-c64d9ab08230": {
       "docketId": "0a84c4f1-0a13-4ceb-9aa1-c64d9ab08230",
@@ -3858,6 +3954,12 @@
       "createdTimestamp": "1730178093000",
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Meet with PC sir on Admin app UX work\",\"epicId\":\"\",\"id\":\"e3ca864b-66c0-496e-aa0c-5fbbebd67a9e\",\"num\":\"DES-60\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"b7477f63-72c0-4915-be1e-d8b1096ed63d\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Meet with PC sir\",\"type\":\"STORY\",\"updated\":\"1749643897000\"}"
     },
+    "51fc2054-3e5d-4bdf-bad8-256eb47abd44": {
+      "docketId": "51fc2054-3e5d-4bdf-bad8-256eb47abd44",
+      "modifiedTimestamp": "1784665568000",
+      "createdTimestamp": "1724977036000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"All tasks that fall outside the scope of the project work.\",\"epicId\":\"\",\"id\":\"51fc2054-3e5d-4bdf-bad8-256eb47abd44\",\"num\":\"DES-11\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Office Works\",\"type\":\"EPIC\",\"updated\":\"1784665568000\"}"
+    },
     "07a3afa9-32bd-471d-8f5b-1ebe8c4a1786": {
       "docketId": "07a3afa9-32bd-471d-8f5b-1ebe8c4a1786",
       "modifiedTimestamp": "1769109922000",
@@ -3887,12 +3989,6 @@
       "modifiedTimestamp": "1769109622000",
       "createdTimestamp": "1724410627000",
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design and make a post in linkedIn for assigned festivals in calendar.\",\"epicId\":\"\",\"id\":\"5d77371c-d1fb-42be-9abd-64fd25f94188\",\"num\":\"DES-5\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Festival Posts\",\"type\":\"EPIC\",\"updated\":\"1769109622000\"}"
-    },
-    "51fc2054-3e5d-4bdf-bad8-256eb47abd44": {
-      "docketId": "51fc2054-3e5d-4bdf-bad8-256eb47abd44",
-      "modifiedTimestamp": "1769109615000",
-      "createdTimestamp": "1724977036000",
-      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"All tasks that fall outside the scope of the project work.\",\"epicId\":\"\",\"id\":\"51fc2054-3e5d-4bdf-bad8-256eb47abd44\",\"num\":\"DES-11\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Office Works\",\"type\":\"EPIC\",\"updated\":\"1769109615000\"}"
     },
     "343b4550-dc3e-40cc-b1bf-bd3cc1c30931": {
       "docketId": "343b4550-dc3e-40cc-b1bf-bd3cc1c30931",
@@ -4213,20 +4309,20 @@
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design icons, screens etc..\",\"epicId\":\"\",\"id\":\"d96a6331-6159-4a2f-be8a-2967923b05ca\",\"num\":\"DES-3\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Eagle Eye View UX Works\",\"type\":\"EPIC\",\"updated\":\"1724409509000\"}"
     }
   },
-  "snapshotId": "elitical-sync-1784603737743-bcadc89b8371",
-  "syncGenerationId": "elitical-sync-1784603737743-bcadc89b8371",
-  "syncGenerationSequence": 1784603737743,
+  "snapshotId": "elitical-sync-1785987341425-dd51527e5012",
+  "syncGenerationId": "elitical-sync-1785987341425-dd51527e5012",
+  "syncGenerationSequence": 1785987341425,
   "snapshot": {
     "schemaVersion": 1,
-    "snapshotId": "elitical-sync-1784603737743-bcadc89b8371",
-    "syncGenerationId": "elitical-sync-1784603737743-bcadc89b8371",
-    "syncGenerationSequence": 1784603737743,
-    "syncedAt": "2026-07-21T03:15:37.743Z",
-    "createdAt": "2026-07-21T03:15:40.794Z",
-    "graphHash": "af66539f39d1012d4a950b19f0baa49e894d33762b763e05e7ca63ec0dff2705",
-    "worklogsHash": "1726919dffd23bb2430ee27edd23af42d6daacbc19adacef84ecb5bbc19a29d8",
-    "nodeCount": 700,
-    "worklogCount": 686,
+    "snapshotId": "elitical-sync-1785987341425-dd51527e5012",
+    "syncGenerationId": "elitical-sync-1785987341425-dd51527e5012",
+    "syncGenerationSequence": 1785987341425,
+    "syncedAt": "2026-08-06T03:35:41.425Z",
+    "createdAt": "2026-08-06T03:35:48.261Z",
+    "graphHash": "ea4e8ac52f61c75f04de491754e479c8240de432e800277eb0fcd6399bb0512f",
+    "worklogsHash": "3f975aac78f566316b3b273af61b83dcaa936dbdefaa771779072736efaaedf8",
+    "nodeCount": 716,
+    "worklogCount": 706,
     "employee": {
       "id": "97a233c1-0999-4c56-9164-6e3ab2edde57",
       "employeeId": "97a233c1-0999-4c56-9164-6e3ab2edde57",
