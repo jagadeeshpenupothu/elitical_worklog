@@ -1,22 +1,34 @@
 {
-  "lastSyncTime": "2026-08-06T03:35:41.425Z",
+  "lastSyncTime": "2026-08-09T08:05:06.711Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
   "graphVersion": 1,
-  "nodeCount": 716,
-  "storyCount": 337,
+  "nodeCount": 718,
+  "storyCount": 339,
   "jobCount": 309,
   "taskCount": 41,
-  "hash": "85c88f461ba26ad7986231b641f3c425f286aa5245abe7b6995b6654ec365f66",
-  "lastSuccessfulSync": "2026-08-06T03:35:41.425Z",
+  "hash": "a095ead0129fbe9135c943e2c49833f3ec55a7bfa5e36a7c4bafe7b3d99621c9",
+  "lastSuccessfulSync": "2026-08-09T08:05:06.711Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
+    "cce48dd3-fc57-4457-ba82-16e48a08d351": {
+      "docketId": "cce48dd3-fc57-4457-ba82-16e48a08d351",
+      "modifiedTimestamp": "1786126045000",
+      "createdTimestamp": "1786126045000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Design of Independence Day posters for SaYukth, MeruSphere, and Gaptor, combining patriotic themes with each company's branding to create engaging and professional festive creatives.\",\"epicId\":\"\",\"id\":\"cce48dd3-fc57-4457-ba82-16e48a08d351\",\"num\":\"DES-718\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Independence Day Poster Design for Corporate Branding\",\"type\":\"STORY\",\"updated\":\"1786126045000\"}"
+    },
+    "8148e885-5a40-45ab-9e42-c914fef87d11": {
+      "docketId": "8148e885-5a40-45ab-9e42-c914fef87d11",
+      "modifiedTimestamp": "1786125712000",
+      "createdTimestamp": "1786125645000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Designed Bonalu festival posters for SaYukth, MeruSphere, and Gaptor, incorporating festive themes while maintaining each company's brand identity and visual style.\",\"epicId\":\"\",\"id\":\"8148e885-5a40-45ab-9e42-c914fef87d11\",\"num\":\"DES-717\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Bonalu Festival Poster Design for Corporate Branding\",\"type\":\"STORY\",\"updated\":\"1786125712000\"}"
+    },
     "e16f1bae-6848-48ab-8949-3f6162821ef9": {
       "docketId": "e16f1bae-6848-48ab-8949-3f6162821ef9",
-      "modifiedTimestamp": "1785932029000",
+      "modifiedTimestamp": "1786126103000",
       "createdTimestamp": "1785932029000",
-      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Work on editing the Day 3 Ecolly Eco Sustain Expo video by organizing event footage, enhancing the visual flow, and synchronizing background music with the video for a polished presentation.\",\"epicId\":\"\",\"id\":\"e16f1bae-6848-48ab-8949-3f6162821ef9\",\"num\":\"DES-716\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Ecolly Eco Sustain Expo  Day 3 Video Editing\",\"type\":\"STORY\",\"updated\":\"1785932029000\"}"
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Work on editing the Day 3 Ecolly Eco Sustain Expo video by organizing event footage, enhancing the visual flow, and synchronizing background music with the video for a polished presentation.\",\"epicId\":\"\",\"id\":\"e16f1bae-6848-48ab-8949-3f6162821ef9\",\"num\":\"DES-716\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Ecolly Eco Sustain Expo  Day 3 Video Editing\",\"type\":\"STORY\",\"updated\":\"1786126103000\"}"
     },
     "f1f21982-50da-4b72-980f-465a490df256": {
       "docketId": "f1f21982-50da-4b72-980f-465a490df256",
@@ -26,15 +38,15 @@
     },
     "9a5cdb73-a4db-4419-97b0-b90a5034a125": {
       "docketId": "9a5cdb73-a4db-4419-97b0-b90a5034a125",
-      "modifiedTimestamp": "1785931643000",
+      "modifiedTimestamp": "1786126098000",
       "createdTimestamp": "1785931643000",
-      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Work on editing the Day 2 Ecolly Eco Sustain Expo video by organizing the recorded footage, enhancing the visual flow, and synchronizing audio to create a professional event highlight video.\",\"epicId\":\"\",\"id\":\"9a5cdb73-a4db-4419-97b0-b90a5034a125\",\"num\":\"DES-714\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Ecolly Eco Sustain Expo  Day 2 Video Editing\",\"type\":\"STORY\",\"updated\":\"1785931643000\"}"
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Work on editing the Day 2 Ecolly Eco Sustain Expo video by organizing the recorded footage, enhancing the visual flow, and synchronizing audio to create a professional event highlight video.\",\"epicId\":\"\",\"id\":\"9a5cdb73-a4db-4419-97b0-b90a5034a125\",\"num\":\"DES-714\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Ecolly Eco Sustain Expo  Day 2 Video Editing\",\"type\":\"STORY\",\"updated\":\"1786126098000\"}"
     },
     "3cacd6ff-e94f-49e0-8b2e-d63f0dc4881c": {
       "docketId": "3cacd6ff-e94f-49e0-8b2e-d63f0dc4881c",
-      "modifiedTimestamp": "1785931509000",
+      "modifiedTimestamp": "1786126092000",
       "createdTimestamp": "1785931509000",
-      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Record of video content during Day 2 of the Eco Sustain Expo to capture product demonstrations, visitor interactions, and key highlights for promotional and marketing purposes.\",\"epicId\":\"\",\"id\":\"3cacd6ff-e94f-49e0-8b2e-d63f0dc4881c\",\"num\":\"DES-713\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Ecolly Eco Sustain Expo  Day 2 Video Recording\",\"type\":\"STORY\",\"updated\":\"1785931509000\"}"
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Record of video content during Day 2 of the Eco Sustain Expo to capture product demonstrations, visitor interactions, and key highlights for promotional and marketing purposes.\",\"epicId\":\"\",\"id\":\"3cacd6ff-e94f-49e0-8b2e-d63f0dc4881c\",\"num\":\"DES-713\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Ecolly Eco Sustain Expo  Day 2 Video Recording\",\"type\":\"STORY\",\"updated\":\"1786126092000\"}"
     },
     "8bf7f864-9deb-4c95-b8fc-7c6193c5d805": {
       "docketId": "8bf7f864-9deb-4c95-b8fc-7c6193c5d805",
@@ -4309,20 +4321,20 @@
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design icons, screens etc..\",\"epicId\":\"\",\"id\":\"d96a6331-6159-4a2f-be8a-2967923b05ca\",\"num\":\"DES-3\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Eagle Eye View UX Works\",\"type\":\"EPIC\",\"updated\":\"1724409509000\"}"
     }
   },
-  "snapshotId": "elitical-sync-1785987341425-dd51527e5012",
-  "syncGenerationId": "elitical-sync-1785987341425-dd51527e5012",
-  "syncGenerationSequence": 1785987341425,
+  "snapshotId": "elitical-sync-1786262706711-55387bf72fa5",
+  "syncGenerationId": "elitical-sync-1786262706711-55387bf72fa5",
+  "syncGenerationSequence": 1786262706711,
   "snapshot": {
     "schemaVersion": 1,
-    "snapshotId": "elitical-sync-1785987341425-dd51527e5012",
-    "syncGenerationId": "elitical-sync-1785987341425-dd51527e5012",
-    "syncGenerationSequence": 1785987341425,
-    "syncedAt": "2026-08-06T03:35:41.425Z",
-    "createdAt": "2026-08-06T03:35:48.261Z",
-    "graphHash": "ea4e8ac52f61c75f04de491754e479c8240de432e800277eb0fcd6399bb0512f",
-    "worklogsHash": "3f975aac78f566316b3b273af61b83dcaa936dbdefaa771779072736efaaedf8",
-    "nodeCount": 716,
-    "worklogCount": 706,
+    "snapshotId": "elitical-sync-1786262706711-55387bf72fa5",
+    "syncGenerationId": "elitical-sync-1786262706711-55387bf72fa5",
+    "syncGenerationSequence": 1786262706711,
+    "syncedAt": "2026-08-09T08:05:06.711Z",
+    "createdAt": "2026-08-09T08:05:07.232Z",
+    "graphHash": "d317ad0add5ccf3ad9131954f8153b7fc169fe918f66c4c7e1e4a9ec480efa1b",
+    "worklogsHash": "d507e0517757fe42940ca73e5d86230581e877a4da869fa8a952974624f9f2bf",
+    "nodeCount": 718,
+    "worklogCount": 708,
     "employee": {
       "id": "97a233c1-0999-4c56-9164-6e3ab2edde57",
       "employeeId": "97a233c1-0999-4c56-9164-6e3ab2edde57",
