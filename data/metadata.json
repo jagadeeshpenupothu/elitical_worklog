@@ -1,28 +1,94 @@
 {
-  "lastSyncTime": "2026-08-11T06:49:53.122Z",
+  "lastSyncTime": "2026-08-17T10:21:39.152Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
   "graphVersion": 1,
-  "nodeCount": 718,
-  "storyCount": 339,
+  "nodeCount": 729,
+  "storyCount": 350,
   "jobCount": 309,
   "taskCount": 41,
-  "hash": "a095ead0129fbe9135c943e2c49833f3ec55a7bfa5e36a7c4bafe7b3d99621c9",
-  "lastSuccessfulSync": "2026-08-11T06:49:53.122Z",
+  "hash": "2baf03be2b421bf1c47a92db07744330add4f8001b0e10f3a89846b60e2ecdf3",
+  "lastSuccessfulSync": "2026-08-17T10:21:39.152Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
+    "edb08839-61cf-4083-b3ab-b077490f60ea": {
+      "docketId": "edb08839-61cf-4083-b3ab-b077490f60ea",
+      "modifiedTimestamp": "1786962045000",
+      "createdTimestamp": "1786961923000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Design of Day 4 digital poster for MeruSphere, focusing on creating a professional and visually appealing design that effectively supports the campaign and enhances brand visibility across social media channels.\",\"epicId\":\"\",\"id\":\"edb08839-61cf-4083-b3ab-b077490f60ea\",\"num\":\"DES-729\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"MeruSphere  Day 4 Digital Poster Design\",\"type\":\"STORY\",\"updated\":\"1786962045000\"}"
+    },
+    "f25788d4-bae0-4694-91d6-447136c53f02": {
+      "docketId": "f25788d4-bae0-4694-91d6-447136c53f02",
+      "modifiedTimestamp": "1786962025000",
+      "createdTimestamp": "1786961751000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Create of Day 4 tech poster for SaYukth, focusing on delivering a fresh and impactful visual that supports the ongoing campaign and maintains consistency with the company's branding.\",\"epicId\":\"\",\"id\":\"f25788d4-bae0-4694-91d6-447136c53f02\",\"num\":\"DES-728\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"SaYukth  Day 4 Tech Poster Design\",\"type\":\"STORY\",\"updated\":\"1786962025000\"}"
+    },
+    "0e35a89d-8817-4566-b48a-32165687d20e": {
+      "docketId": "0e35a89d-8817-4566-b48a-32165687d20e",
+      "modifiedTimestamp": "1786962032000",
+      "createdTimestamp": "1786702862000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Design of the Day 3 promotional poster for MeruSphere, creating a visually engaging creative that reflects the brand identity while effectively communicating the campaign message to the target audience.\",\"epicId\":\"\",\"id\":\"0e35a89d-8817-4566-b48a-32165687d20e\",\"num\":\"DES-727\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"MeruSphere  Day 3 Promotional Poster Design\",\"type\":\"STORY\",\"updated\":\"1786962032000\"}"
+    },
+    "f4af81a2-2abe-42b0-8594-f5019f895dde": {
+      "docketId": "f4af81a2-2abe-42b0-8594-f5019f895dde",
+      "modifiedTimestamp": "1786962038000",
+      "createdTimestamp": "1786702740000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Developmnet of the Day 3 promotional poster for SaYukth, focusing on delivering a professional and engaging visual that aligns with the campaign objectives and strengthens the company's digital presence.\",\"epicId\":\"\",\"id\":\"f4af81a2-2abe-42b0-8594-f5019f895dde\",\"num\":\"DES-726\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"SaYukth  Day 3 Social Media Creative Design\",\"type\":\"STORY\",\"updated\":\"1786962038000\"}"
+    },
+    "8a149b64-0e60-481e-92c5-3893ce3d4849": {
+      "docketId": "8a149b64-0e60-481e-92c5-3893ce3d4849",
+      "modifiedTimestamp": "1786619891000",
+      "createdTimestamp": "1786619787000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Create of digital poster for SaYukth's Day 1 technology campaign, focusing on presenting the topic in a visually compelling manner suitable for social media engagement and internal brand promotion.\",\"epicId\":\"\",\"id\":\"8a149b64-0e60-481e-92c5-3893ce3d4849\",\"num\":\"DES-725\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"SaYukth  Day 1 Technology Awarness Poster\",\"type\":\"STORY\",\"updated\":\"1786619891000\"}"
+    },
+    "15a823e1-fa82-46e4-bfbc-167f0171ed0a": {
+      "docketId": "15a823e1-fa82-46e4-bfbc-167f0171ed0a",
+      "modifiedTimestamp": "1786619902000",
+      "createdTimestamp": "1786619282000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Development of social media creative for MeruSphere's Day 1 campaign, focusing on delivering an eye-catching visual that effectively communicates the campaign message while maintaining brand consistency.\",\"epicId\":\"\",\"id\":\"15a823e1-fa82-46e4-bfbc-167f0171ed0a\",\"num\":\"DES-724\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"MeruSphere  Day 1 Promotional Creative Design\",\"type\":\"STORY\",\"updated\":\"1786619902000\"}"
+    },
+    "0fde7870-b33f-4f21-86f8-5bd0872b68a6": {
+      "docketId": "0fde7870-b33f-4f21-86f8-5bd0872b68a6",
+      "modifiedTimestamp": "1786619009000",
+      "createdTimestamp": "1786618965000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Update of the Karpagam invoice by modifying key billing information to ensure the document reflects the latest transaction details accurately.\",\"epicId\":\"\",\"id\":\"0fde7870-b33f-4f21-86f8-5bd0872b68a6\",\"num\":\"DES-723\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Karpagam Invoice  Data Update & Revision\",\"type\":\"STORY\",\"updated\":\"1786619009000\"}"
+    },
+    "02d25b8d-bf62-4700-a7c5-e4bec9e1a0ff": {
+      "docketId": "02d25b8d-bf62-4700-a7c5-e4bec9e1a0ff",
+      "modifiedTimestamp": "1786619022000",
+      "createdTimestamp": "1786618907000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Updat of the Karpagam invoice by modifying key billing information to ensure the document reflects the latest transaction details accurately.\",\"epicId\":\"\",\"id\":\"02d25b8d-bf62-4700-a7c5-e4bec9e1a0ff\",\"num\":\"DES-722\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Karpagam Invoice  Data Update & Revision\",\"type\":\"STORY\",\"updated\":\"1786619022000\"}"
+    },
+    "85c39862-b6ac-41fa-8024-7a13ef510ea2": {
+      "docketId": "85c39862-b6ac-41fa-8024-7a13ef510ea2",
+      "modifiedTimestamp": "1786619017000",
+      "createdTimestamp": "1786618658000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Design of professional invoice for Nanaji Hardware & Sanitary, ensuring a clear, organized, and business-friendly layout for billing and transaction documentation.\",\"epicId\":\"\",\"id\":\"85c39862-b6ac-41fa-8024-7a13ef510ea2\",\"num\":\"DES-721\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Nanaji Hardware & Sanitary  Invoice Design\",\"type\":\"STORY\",\"updated\":\"1786619017000\"}"
+    },
+    "358f53b8-78fe-4d13-984d-88a1b85b6914": {
+      "docketId": "358f53b8-78fe-4d13-984d-88a1b85b6914",
+      "modifiedTimestamp": "1786619028000",
+      "createdTimestamp": "1786618383000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Design of Day 2 promotional poster for SaYukth to be published on social media platforms, ensuring the design aligns with the company's branding and effectively conveys the intended message.\",\"epicId\":\"\",\"id\":\"358f53b8-78fe-4d13-984d-88a1b85b6914\",\"num\":\"DES-720\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"SaYukth  Day 2 Social Media Poster Design\",\"type\":\"STORY\",\"updated\":\"1786619028000\"}"
+    },
+    "4b5b858e-c1d1-4eda-8588-90cf53865047": {
+      "docketId": "4b5b858e-c1d1-4eda-8588-90cf53865047",
+      "modifiedTimestamp": "1786619038000",
+      "createdTimestamp": "1786618209000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Design of  Day 2 tech poster for MeruSphere to be published on social media platforms, ensuring the design aligns with the company's branding and effectively communicates the intended message.\",\"epicId\":\"\",\"id\":\"4b5b858e-c1d1-4eda-8588-90cf53865047\",\"num\":\"DES-719\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"MeruSphere  Day 2 Social Media Poster Design\",\"type\":\"STORY\",\"updated\":\"1786619038000\"}"
+    },
     "cce48dd3-fc57-4457-ba82-16e48a08d351": {
       "docketId": "cce48dd3-fc57-4457-ba82-16e48a08d351",
-      "modifiedTimestamp": "1786126045000",
+      "modifiedTimestamp": "1786619043000",
       "createdTimestamp": "1786126045000",
-      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Design of Independence Day posters for SaYukth, MeruSphere, and Gaptor, combining patriotic themes with each company's branding to create engaging and professional festive creatives.\",\"epicId\":\"\",\"id\":\"cce48dd3-fc57-4457-ba82-16e48a08d351\",\"num\":\"DES-718\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Independence Day Poster Design for Corporate Branding\",\"type\":\"STORY\",\"updated\":\"1786126045000\"}"
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Design of Independence Day posters for SaYukth, MeruSphere, and Gaptor, combining patriotic themes with each company's branding to create engaging and professional festive creatives.\",\"epicId\":\"\",\"id\":\"cce48dd3-fc57-4457-ba82-16e48a08d351\",\"num\":\"DES-718\",\"parentId\":\"\",\"priority\":\"MAJOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Independence Day Poster Design for Corporate Branding\",\"type\":\"STORY\",\"updated\":\"1786619043000\"}"
     },
     "8148e885-5a40-45ab-9e42-c914fef87d11": {
       "docketId": "8148e885-5a40-45ab-9e42-c914fef87d11",
-      "modifiedTimestamp": "1786125712000",
+      "modifiedTimestamp": "1786619052000",
       "createdTimestamp": "1786125645000",
-      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Designed Bonalu festival posters for SaYukth, MeruSphere, and Gaptor, incorporating festive themes while maintaining each company's brand identity and visual style.\",\"epicId\":\"\",\"id\":\"8148e885-5a40-45ab-9e42-c914fef87d11\",\"num\":\"DES-717\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Bonalu Festival Poster Design for Corporate Branding\",\"type\":\"STORY\",\"updated\":\"1786125712000\"}"
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Designed Bonalu festival posters for SaYukth, MeruSphere, and Gaptor, incorporating festive themes while maintaining each company's brand identity and visual style.\",\"epicId\":\"\",\"id\":\"8148e885-5a40-45ab-9e42-c914fef87d11\",\"num\":\"DES-717\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Bonalu Festival Poster Design for Corporate Branding\",\"type\":\"STORY\",\"updated\":\"1786619052000\"}"
     },
     "e16f1bae-6848-48ab-8949-3f6162821ef9": {
       "docketId": "e16f1bae-6848-48ab-8949-3f6162821ef9",
@@ -32,9 +98,9 @@
     },
     "f1f21982-50da-4b72-980f-465a490df256": {
       "docketId": "f1f21982-50da-4b72-980f-465a490df256",
-      "modifiedTimestamp": "1785931900000",
+      "modifiedTimestamp": "1786619065000",
       "createdTimestamp": "1785931900000",
-      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Recording of video content during Day 3 of the Eco Sustain Expo, capturing event highlights, product demonstrations, customer interactions, and key moments for promotional use.\",\"epicId\":\"\",\"id\":\"f1f21982-50da-4b72-980f-465a490df256\",\"num\":\"DES-715\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Ecolly Eco Sustain Expo  Day 3 Video Recording\",\"type\":\"STORY\",\"updated\":\"1785931900000\"}"
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Recording of video content during Day 3 of the Eco Sustain Expo, capturing event highlights, product demonstrations, customer interactions, and key moments for promotional use.\",\"epicId\":\"\",\"id\":\"f1f21982-50da-4b72-980f-465a490df256\",\"num\":\"DES-715\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Ecolly Eco Sustain Expo  Day 3 Video Recording\",\"type\":\"STORY\",\"updated\":\"1786619065000\"}"
     },
     "9a5cdb73-a4db-4419-97b0-b90a5034a125": {
       "docketId": "9a5cdb73-a4db-4419-97b0-b90a5034a125",
@@ -4321,20 +4387,20 @@
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design icons, screens etc..\",\"epicId\":\"\",\"id\":\"d96a6331-6159-4a2f-be8a-2967923b05ca\",\"num\":\"DES-3\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Eagle Eye View UX Works\",\"type\":\"EPIC\",\"updated\":\"1724409509000\"}"
     }
   },
-  "snapshotId": "elitical-sync-1786430993122-ddbb2720f11d",
-  "syncGenerationId": "elitical-sync-1786430993122-ddbb2720f11d",
-  "syncGenerationSequence": 1786430993122,
+  "snapshotId": "elitical-sync-1786962099152-6dd581856038",
+  "syncGenerationId": "elitical-sync-1786962099152-6dd581856038",
+  "syncGenerationSequence": 1786962099152,
   "snapshot": {
     "schemaVersion": 1,
-    "snapshotId": "elitical-sync-1786430993122-ddbb2720f11d",
-    "syncGenerationId": "elitical-sync-1786430993122-ddbb2720f11d",
-    "syncGenerationSequence": 1786430993122,
-    "syncedAt": "2026-08-11T06:49:53.122Z",
-    "createdAt": "2026-08-11T06:49:53.668Z",
-    "graphHash": "d4a3a718836a5f4715468d54ffc4903a175b89796a107a25ff2a2988a6392325",
-    "worklogsHash": "c1f59a9b12809a04b3b7de6f4000cb7a231192be1c1504cc1a68269ba467e255",
-    "nodeCount": 718,
-    "worklogCount": 708,
+    "snapshotId": "elitical-sync-1786962099152-6dd581856038",
+    "syncGenerationId": "elitical-sync-1786962099152-6dd581856038",
+    "syncGenerationSequence": 1786962099152,
+    "syncedAt": "2026-08-17T10:21:39.152Z",
+    "createdAt": "2026-08-17T10:21:51.405Z",
+    "graphHash": "a304585ab82d5ba66dbfbb7fa61f19b67743c211772abe3d72a512141f5644b3",
+    "worklogsHash": "75125b003a99131105cc1536e96227dcff920a3f56ea5cd9b5d95e36344fea09",
+    "nodeCount": 729,
+    "worklogCount": 718,
     "employee": {
       "id": "97a233c1-0999-4c56-9164-6e3ab2edde57",
       "employeeId": "97a233c1-0999-4c56-9164-6e3ab2edde57",
