@@ -44,7 +44,7 @@ includes(app, /addDayProjectionSelection\(/, "Day View Add Existing still uses p
 includes(app, /canonicalAddExistingUpdates/, "canonical Add Existing uses explicit update payload helper");
 includes(app, /updateEliticalDocket\(canonicalDocketId, updates\)/, "canonical Add Existing reuses local-first update endpoint");
 includes(app, /Add Existing is not supported for this relationship yet/, "unsupported canonical reparenting is not faked");
-includes(app, /action\.kind !== "add-existing"[\s\S]*node\.isOrphanSprint/, "Orphan Sprint no-sprint Add Existing is not offered outside Day projection context");
+includes(app, /return capabilityActionItemsForNode\(node\);/, "Orphan Sprint Add Existing discovery is not hidden by the App action layer");
 includes(graph, /childActionItemsForNode\?\.\(sprint\)/, "Sprint nodes receive shared action capabilities in graph views");
 includes(graph, /childActionItemsForNode\?\.\(item\)/, "Docket nodes receive shared action capabilities in graph views");
 includes(graph, /canCreateChildForNode\(item\) \|\| childActionItems\.length > 0/, "future JiraNode graph views inherit capability rendering");

@@ -1,7 +1,7 @@
 {
   "name": "jira-flow",
   "private": true,
-  "version": "0.0.4",
+  "version": "0.0.6",
   "type": "module",
   "main": "electron/main.mjs",
   "scripts": {
@@ -49,10 +49,14 @@
     "verify:retained-local-creation-context": "node scripts/verify-retained-local-creation-context.mjs",
     "verify:aggregation-rollups": "node scripts/verify-aggregation-rollups.mjs",
     "verify:employee-scoped-aggregation": "node scripts/verify-employee-scoped-aggregation.mjs",
+    "verify:report-model": "node scripts/verify-report-model.mjs",
+    "verify:report-date-range": "node scripts/verify-report-date-range.mjs",
+    "verify:report-renderers": "node scripts/verify-report-renderers.mjs",
     "verify:sync-activity-progress": "node scripts/verify-sync-activity-progress.mjs",
     "verify:storage-architecture": "node scripts/verify-storage-architecture.mjs",
     "verify:snapshot-convergence": "node scripts/verify-snapshot-convergence-architecture.mjs",
     "verify:github-publication-config": "node scripts/verify-github-publication-config.mjs",
+    "verify:github-publication-transport": "node scripts/verify-github-publication-transport.mjs",
     "verify:dmg-packaging": "node scripts/verify-dmg-packaging.mjs",
     "import:elitical:live": "tsx scripts/import-elitical-live.ts",
     "capture:worklog-api": "node tools/capture-worklog-api.js"

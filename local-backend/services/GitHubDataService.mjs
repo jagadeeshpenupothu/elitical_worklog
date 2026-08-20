@@ -1,4 +1,8 @@
+import { execFile } from "node:child_process";
+import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import {
   assertSnapshotBundle,
   snapshotDescriptorFor,
@@ -10,6 +14,16 @@ import {
 } from "./GitHubPublicationConfigService.mjs";
 
 let latestPublicationSequence = 0;
+const execFileAsync = promisify(execFile);
+// GitHub's Contents API requires base64 content inside a JSON body, so the
+// request can be much larger than the raw JSON file. Keep this threshold below
+// the observed 10 MB-class failure range so growing snapshots switch to git
+// transport before GitHub can reject the request as malformed.
+export const GITHUB_CONTENTS_API_SAFE_BODY_BYTES = 8_000_000;
+
+function jsonFileContent(payload) {
+  return `${JSON.stringify(payload, null, 2)}\n`;
+}
 
 function decodeBase64(value) {
   return Buffer.from(String(value || ""), "base64").toString("utf8");
@@ -21,6 +35,37 @@ function hasBase64Content(file) {
 
 function encodeBase64(value) {
   return Buffer.from(value, "utf8").toString("base64");
+}
+
+export function contentsApiRequestBodyForJson({ message, content, branch, sha }) {
+  return JSON.stringify({
+    message,
+    content: encodeBase64(content),
+    ...(sha ? { sha } : {}),
+    branch,
+  });
+}
+
+export function contentsApiRequestBodyBytes({ message, content, branch, sha }) {
+  return Buffer.byteLength(
+    contentsApiRequestBodyForJson({
+      message,
+      content,
+      branch,
+      sha,
+    })
+  );
+}
+
+export function contentsApiRequestIsSafe({ message, content, branch, sha }) {
+  return (
+    contentsApiRequestBodyBytes({
+      message,
+      content,
+      branch,
+      sha,
+    }) <= GITHUB_CONTENTS_API_SAFE_BODY_BYTES
+  );
 }
 
 function cleanPath(value = "") {
@@ -79,17 +124,142 @@ export function githubFileUrl({ owner, repo, path: filePath }) {
     .join("/")}`;
 }
 
+function githubRequestErrorMessage({
+  action,
+  filePath,
+  status,
+  payload,
+  fallback = "GitHub request failed.",
+}) {
+  const detail = payload?.message || fallback;
+  const location = filePath ? ` for ${filePath}` : "";
+  const statusText = status ? ` (${status})` : "";
+
+  return `${action}${statusText}${location}: ${detail}`;
+}
+
+async function fetchGitHub(url, options, { action, filePath } = {}) {
+  try {
+    return await fetch(url, options);
+  } catch (error) {
+    const causeMessage =
+      error?.cause?.message && error.cause.message !== error.message
+        ? `: ${error.cause.message}`
+        : "";
+    const requestError = new Error(
+      githubRequestErrorMessage({
+        action,
+        filePath,
+        status: 0,
+        payload: {
+          message: `${error?.message || "request failed"}${causeMessage}`,
+        },
+      })
+    );
+
+    requestError.statusCode = 0;
+    requestError.code = error?.code || error?.cause?.code || "";
+    requestError.cause = error;
+    throw requestError;
+  }
+}
+
 export function cacheFilePath(config, fileName) {
   const cacheDir = cleanPath(config.cacheDir || "data");
 
   return cacheDir ? `${cacheDir}/${fileName}` : fileName;
 }
 
+function assertSafeRepoPath(filePath) {
+  const normalized = cleanPath(filePath);
+  const parts = normalized.split("/");
+
+  if (!normalized || parts.some((part) => !part || part === "." || part === "..")) {
+    const error = new Error(`GitHub publication file path is invalid: ${filePath}`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return normalized;
+}
+
+function unsafeContentsApiRequestError({ filePath, bodyBytes }) {
+  const error = new Error(
+    `GitHub Contents API request is too large for ${filePath}: ${bodyBytes} bytes exceeds the safe ${GITHUB_CONTENTS_API_SAFE_BODY_BYTES} byte limit. Use git publication transport.`
+  );
+
+  error.statusCode = 413;
+  error.transport = "contents-api";
+  error.filePath = filePath;
+  error.bodyBytes = bodyBytes;
+  throw error;
+}
+
+function githubNeedsShaForExistingFile({ status, payload }) {
+  return (
+    status === 422 &&
+    /sha/i.test(String(payload?.message || "")) &&
+    /supplied|required/i.test(String(payload?.message || ""))
+  );
+}
+
+export function publicationFilesForSnapshot({ graph, worklogs, metadata, config }) {
+  return [
+    ["graph.json", graph],
+    ["worklogs.json", worklogs],
+    ["metadata.json", metadata],
+  ].map(([fileName, payload]) => ({
+    fileName,
+    filePath: cacheFilePath(config, fileName),
+    payload,
+    content: jsonFileContent(payload),
+  }));
+}
+
+export function githubPublicationTransportForFiles({
+  files,
+  message,
+  branch,
+  assumeUpdateSha = "0000000000000000000000000000000000000000",
+} = {}) {
+  const unsafeFile = files.find((file) => {
+    const bodyBytes = contentsApiRequestBodyBytes({
+      message,
+      content: file.content,
+      branch,
+      sha: assumeUpdateSha,
+    });
+
+    file.contentsApiBodyBytes = bodyBytes;
+
+    return bodyBytes > GITHUB_CONTENTS_API_SAFE_BODY_BYTES;
+  });
+
+  return unsafeFile
+    ? {
+        transport: "git",
+        reason: "contents-api-body-too-large",
+        filePath: unsafeFile.filePath,
+        bodyBytes: unsafeFile.contentsApiBodyBytes,
+        safeBodyBytes: GITHUB_CONTENTS_API_SAFE_BODY_BYTES,
+      }
+    : {
+        transport: "contents-api",
+        reason: "contents-api-body-safe",
+        bodyBytes: Math.max(0, ...files.map((file) => file.contentsApiBodyBytes || 0)),
+        safeBodyBytes: GITHUB_CONTENTS_API_SAFE_BODY_BYTES,
+      };
+}
+
 export async function getGitHubFile(config, filePath = config.path) {
-  const response = await fetch(
+  const response = await fetchGitHub(
     `${githubFileUrl({ ...config, path: filePath })}?ref=${encodeURIComponent(config.branch)}`,
     {
       headers: githubHeaders(config.token),
+    },
+    {
+      action: "GitHub load request failed",
+      filePath,
     }
   );
   const payload = await response.json().catch(() => null);
@@ -101,8 +271,17 @@ export async function getGitHubFile(config, filePath = config.path) {
       throw error;
     }
 
-    const error = new Error(payload?.message || "GitHub load failed.");
+    const error = new Error(
+      githubRequestErrorMessage({
+        action: "GitHub load failed",
+        filePath,
+        status: response.status,
+        payload,
+        fallback: "GitHub load failed.",
+      })
+    );
     error.statusCode = response.status;
+    error.payload = payload;
     throw error;
   }
 
@@ -122,12 +301,27 @@ async function loadRawGitHubFile(config, file) {
     throw error;
   }
 
-  const response = await fetch(file.download_url, {
-    headers: githubHeaders(config.token),
-  });
+  const response = await fetchGitHub(
+    file.download_url,
+    {
+      headers: githubHeaders(config.token),
+    },
+    {
+      action: "GitHub raw file download request failed",
+      filePath: file.path || "",
+    }
+  );
 
   if (!response.ok) {
-    const error = new Error("GitHub raw file download failed.");
+    const error = new Error(
+      githubRequestErrorMessage({
+        action: "GitHub raw file download failed",
+        filePath: file.path || "",
+        status: response.status,
+        payload: null,
+        fallback: "GitHub raw file download failed.",
+      })
+    );
     error.statusCode = response.status;
     throw error;
   }
@@ -156,33 +350,73 @@ export async function loadJsonFile(config, filePath = config.path) {
 }
 
 export async function putJsonFile(config, filePath, payload, { message } = {}) {
+  const safeFilePath = assertSafeRepoPath(filePath);
   let current = null;
 
   try {
-    current = await getGitHubFile(config, filePath);
+    current = await getGitHubFile(config, safeFilePath);
   } catch (error) {
     if (error.statusCode !== 404) throw error;
   }
 
-  const content = `${JSON.stringify(payload, null, 2)}\n`;
-  const response = await fetch(githubFileUrl({ ...config, path: filePath }), {
-    method: "PUT",
-    headers: {
-      ...githubHeaders(config.token),
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      message: message || `data: update ${filePath}`,
-      content: encodeBase64(content),
-      ...(current?.sha ? { sha: current.sha } : {}),
+  const content = jsonFileContent(payload);
+  const putWithCurrentSha = async (sha) => {
+    const requestBody = contentsApiRequestBodyForJson({
+      message: message || `data: update ${safeFilePath}`,
+      content,
       branch: config.branch,
-    }),
-  });
-  const result = await response.json().catch(() => null);
+      sha,
+    });
+    const bodyBytes = Buffer.byteLength(requestBody);
+
+    if (bodyBytes > GITHUB_CONTENTS_API_SAFE_BODY_BYTES) {
+      unsafeContentsApiRequestError({
+        filePath: safeFilePath,
+        bodyBytes,
+      });
+    }
+
+    const response = await fetchGitHub(
+      githubFileUrl({ ...config, path: safeFilePath }),
+      {
+        method: "PUT",
+        headers: {
+          ...githubHeaders(config.token),
+          "Content-Type": "application/json",
+        },
+        body: requestBody,
+      },
+      {
+        action: "GitHub save request failed",
+        filePath: safeFilePath,
+      }
+    );
+    const result = await response.json().catch(() => null);
+
+    return {
+      response,
+      result,
+    };
+  };
+  let { response, result } = await putWithCurrentSha(current?.sha);
+
+  if (githubNeedsShaForExistingFile({ status: response.status, payload: result }) && !current?.sha) {
+    current = await getGitHubFile(config, safeFilePath);
+    ({ response, result } = await putWithCurrentSha(current?.sha));
+  }
 
   if (!response.ok) {
-    const error = new Error(result?.message || "GitHub save failed.");
+    const error = new Error(
+      githubRequestErrorMessage({
+        action: "GitHub save failed",
+        filePath: safeFilePath,
+        status: response.status,
+        payload: result,
+        fallback: "GitHub save failed.",
+      })
+    );
     error.statusCode = response.status;
+    error.payload = result;
     throw error;
   }
 
@@ -193,10 +427,167 @@ export async function putJsonFile(config, filePath, payload, { message } = {}) {
   }
 
   return {
-    path: filePath,
+    path: safeFilePath,
     sha: result.content.sha,
     commitSha: result.commit?.sha || "",
   };
+}
+
+async function writeAskPassScript(token) {
+  const askPassDir = await fs.mkdtemp(path.join(os.tmpdir(), "elitical-git-askpass-"));
+  const askPassPath = path.join(askPassDir, "askpass.sh");
+
+  await fs.writeFile(
+    askPassPath,
+    [
+      "#!/bin/sh",
+      "case \"$1\" in",
+      "  *Username*) printf '%s\\n' 'x-access-token' ;;",
+      "  *) printf '%s\\n' \"$GIT_PUBLISH_TOKEN\" ;;",
+      "esac",
+      "",
+    ].join("\n"),
+    { encoding: "utf8", mode: 0o700 }
+  );
+
+  return {
+    askPassDir,
+    askPassPath,
+  };
+}
+
+async function runGit(args, { cwd, env, step }) {
+  try {
+    return await execFileAsync("git", args, {
+      cwd,
+      env,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+  } catch (error) {
+    const stderr = String(error?.stderr || "").trim();
+    const stdout = String(error?.stdout || "").trim();
+    const detail = stderr || stdout || error?.message || "git command failed";
+    const gitError = new Error(`GitHub publication ${step} failed: ${detail}`);
+
+    gitError.statusCode = 502;
+    gitError.transport = "git";
+    gitError.step = step;
+    gitError.cause = error;
+    throw gitError;
+  }
+}
+
+async function publishCacheFilesWithGit({ config, files, message, bundle, descriptor, sequence }) {
+  const repoDir = await fs.mkdtemp(path.join(os.tmpdir(), "elitical-github-publish-"));
+  const { askPassDir, askPassPath } = await writeAskPassScript(config.token);
+  const gitEnv = {
+    ...process.env,
+    GIT_ASKPASS: askPassPath,
+    GIT_PUBLISH_TOKEN: config.token,
+    GIT_TERMINAL_PROMPT: "0",
+  };
+  const remoteUrl = `https://github.com/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}.git`;
+
+  try {
+    await runGit(["init"], { cwd: repoDir, env: gitEnv, step: "init" });
+    await runGit(["remote", "add", "origin", remoteUrl], {
+      cwd: repoDir,
+      env: gitEnv,
+      step: "remote setup",
+    });
+    await runGit(["config", "user.name", "Elitical Worklog"], {
+      cwd: repoDir,
+      env: gitEnv,
+      step: "author setup",
+    });
+    await runGit(["config", "user.email", "elitical-worklog@users.noreply.github.com"], {
+      cwd: repoDir,
+      env: gitEnv,
+      step: "author setup",
+    });
+    await runGit(["fetch", "--depth=1", "origin", config.branch], {
+      cwd: repoDir,
+      env: gitEnv,
+      step: "fetch",
+    });
+    await runGit(["checkout", "-B", config.branch, "FETCH_HEAD"], {
+      cwd: repoDir,
+      env: gitEnv,
+      step: "checkout",
+    });
+
+    for (const file of files) {
+      const safeFilePath = assertSafeRepoPath(file.filePath);
+      const destination = path.join(repoDir, ...safeFilePath.split("/"));
+
+      await fs.mkdir(path.dirname(destination), { recursive: true });
+      await fs.writeFile(destination, file.content, "utf8");
+    }
+
+    await runGit(["add", "--", ...files.map((file) => assertSafeRepoPath(file.filePath))], {
+      cwd: repoDir,
+      env: gitEnv,
+      step: "stage",
+    });
+
+    const status = await runGit(
+      ["status", "--porcelain", "--", ...files.map((file) => assertSafeRepoPath(file.filePath))],
+      { cwd: repoDir, env: gitEnv, step: "status" }
+    );
+    const changed = String(status.stdout || "").trim().length > 0;
+
+    if (changed) {
+      await runGit(["commit", "-m", message], {
+        cwd: repoDir,
+        env: gitEnv,
+        step: "commit",
+      });
+      await runGit(["push", "origin", `HEAD:${config.branch}`], {
+        cwd: repoDir,
+        env: gitEnv,
+        step: "push",
+      });
+    }
+
+    const commit = await runGit(["rev-parse", "HEAD"], {
+      cwd: repoDir,
+      env: gitEnv,
+      step: "resolve commit",
+    });
+    const commitSha = String(commit.stdout || "").trim();
+    const published = [];
+
+    for (const file of files) {
+      const safeFilePath = assertSafeRepoPath(file.filePath);
+      const blob = await runGit(["hash-object", "--", safeFilePath], {
+        cwd: repoDir,
+        env: gitEnv,
+        step: "resolve blob",
+      });
+
+      published.push({
+        path: safeFilePath,
+        sha: String(blob.stdout || "").trim(),
+        commitSha,
+      });
+    }
+
+    return {
+      status: "published",
+      transport: "git",
+      changed,
+      publishedAt: new Date().toISOString(),
+      snapshotId: bundle.snapshotId,
+      syncGenerationId: descriptor.syncGenerationId,
+      syncGenerationSequence: sequence,
+      commitSha,
+      files: published,
+    };
+  } finally {
+    delete gitEnv.GIT_PUBLISH_TOKEN;
+    await fs.rm(repoDir, { recursive: true, force: true }).catch(() => {});
+    await fs.rm(askPassDir, { recursive: true, force: true }).catch(() => {});
+  }
 }
 
 export async function publishCacheFiles({
@@ -204,6 +595,10 @@ export async function publishCacheFiles({
   worklogs,
   metadata,
   message = "data: publish Elitical cache",
+} = {}, {
+  publicationConfig,
+  contentsPublisher = putJsonFile,
+  gitPublisher = publishCacheFilesWithGit,
 } = {}) {
   const bundle = assertSnapshotBundle({ graph, worklogs, metadata });
   const descriptor = snapshotDescriptorFor(metadata);
@@ -211,24 +606,44 @@ export async function publishCacheFiles({
 
   latestPublicationSequence = Math.max(latestPublicationSequence, sequence);
 
-  const env = await githubDataConfig();
+  const env = publicationConfig || await githubDataConfig();
 
   if (!env.ok) {
-    const error = new Error("GitHub data repository is not configured.");
+    const error = new Error(
+      `GitHub publication is missing required configuration: ${env.missing.join(", ")}.`
+    );
     error.statusCode = 500;
     error.missing = env.missing;
     throw error;
   }
 
   const config = env.config;
-  const files = [
-    ["graph.json", graph],
-    ["worklogs.json", worklogs],
-    ["metadata.json", metadata],
-  ];
+  const messageText = message || "data: publish Elitical cache";
+  const files = publicationFilesForSnapshot({ graph, worklogs, metadata, config });
   const published = [];
+  const transportDecision = githubPublicationTransportForFiles({
+    files,
+    message: messageText,
+    branch: config.branch,
+  });
 
-  for (const [fileName, payload] of files) {
+  // Keep a snapshot publication on one transport. Small files use the Contents
+  // API for simple create/update + SHA semantics; if any encoded JSON body is
+  // unsafe, the whole graph/worklogs/metadata batch switches to one git commit
+  // so generations cannot be partially published.
+  if (transportDecision.transport === "git") {
+    return gitPublisher({
+      config,
+      files,
+      message: messageText,
+      bundle,
+      descriptor,
+      sequence,
+      transportDecision,
+    });
+  }
+
+  for (const file of files) {
     if (sequence < latestPublicationSequence) {
       const error = new Error("A newer synchronized snapshot is already being published.");
       error.statusCode = 409;
@@ -237,8 +652,8 @@ export async function publishCacheFiles({
     }
 
     published.push(
-      await putJsonFile(config, cacheFilePath(config, fileName), payload, {
-        message,
+      await contentsPublisher(config, file.filePath, file.payload, {
+        message: messageText,
       })
     );
   }
@@ -249,6 +664,7 @@ export async function publishCacheFiles({
     snapshotId: bundle.snapshotId,
     syncGenerationId: descriptor.syncGenerationId,
     syncGenerationSequence: sequence,
+    transport: "contents-api",
     commitSha: published[published.length - 1]?.commitSha || "",
     files: published,
   };

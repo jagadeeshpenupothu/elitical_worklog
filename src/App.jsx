@@ -69,7 +69,6 @@ import {
 import {
   addDayProjectionSelection,
   dateKeyFromValue,
-  dayEpicScopeKey,
   dayScopeIdForItem,
   daySelectionForDate,
   loadDayProjectionState,
@@ -82,6 +81,20 @@ import {
   childActionItemsForNode as capabilityActionItemsForNode,
   childCreateTypesForCanonicalType,
 } from "./utils/nodeCapabilities";
+import {
+  addExistingDiscoveryScopeId,
+  discoverAddExistingItems,
+} from "./utils/addExistingDiscovery";
+import {
+  buildReportQuery,
+  resolveReportDateRange,
+} from "./utils/reportDateRange";
+import { generateReportModel } from "./utils/reportModel";
+import {
+  renderReportEmail,
+  renderReportText,
+  renderReportTsv,
+} from "./utils/reportRenderers";
 import {
   EMPTY_SEARCH_FILTERS,
   SEARCH_FILTER_KEYS,
@@ -142,10 +155,11 @@ const APP_VIEWS = [
   { id: "backlog", label: "Backlog View" },
   { id: "worklog", label: "Worklog View" },
   { id: "dashboard", label: "Dashboard" },
+  { id: "reports", label: "Reports" },
 ];
 const PLANNING_VIEW_IDS = new Set(["worklog"]);
 const CONTEXT_VIEW_IDS = new Set(["sprint", "epic", "story", "job", "task", "day"]);
-const WORKLOG_DEPENDENT_VIEW_IDS = new Set(["day", "worklog", "dashboard"]);
+const WORKLOG_DEPENDENT_VIEW_IDS = new Set(["day", "worklog", "dashboard", "reports"]);
 const DOCKET_CONTEXT_TYPES = new Set(["epic", "story", "job", "task"]);
 const BROWSER_REFRESH_STATE_KEY = "elitical-worklog.browser-refresh-state.v1";
 const BACKLOG_GROUPING_STORAGE_KEY = "elitical-worklog.backlog-grouping.v1";
@@ -2513,6 +2527,505 @@ function DashboardView({ workItems, sprints, rootTitle, totals, lastSyncedAt, em
   );
 }
 
+const REPORT_DATE_PRESETS = [
+  { id: "single", label: "Single Date" },
+  { id: "this-week", label: "This Week" },
+  { id: "last-week", label: "Last Week" },
+  { id: "this-month", label: "This Month" },
+  { id: "custom", label: "Custom Range" },
+];
+const REPORT_RENDER_OPTIONS = {
+  teamName: "UX Designer Team",
+  senderName: "Jagadeesh P",
+  senderContact: "+91 9121154724",
+};
+const UX_DESIGNER_REPORT_EMPLOYEE_IDS = new Set([
+  "97a233c1-0999-4c56-9164-6e3ab2edde57",
+  "13b71512-ccd5-4845-891e-3d279b18d168",
+]);
+const REPORT_OUTPUT_TABS = [
+  { id: "email", label: "Email" },
+  { id: "text", label: "TXT" },
+  { id: "tsv", label: "Google Sheets" },
+];
+
+function reportPresetName(preset) {
+  if (preset === "this-week") return "this week";
+  if (preset === "last-week") return "last week";
+  if (preset === "this-month") return "this month";
+  if (preset === "single") return "selected day";
+
+  return "selected period";
+}
+
+function employeeNameForReports(employee = {}) {
+  return employeeDisplayName(employee) || employee.employeeId || employee.id || "Unknown Employee";
+}
+
+function reportEmployeeOptions(employeeDirectory = new Map()) {
+  return Array.from(employeeDirectory.values())
+    .map((employee) => {
+      const employeeId = String(employee?.employeeId || employee?.id || "").trim();
+
+      return employeeId
+        ? {
+            ...employee,
+            employeeId,
+            id: employeeId,
+            name: employeeNameForReports(employee),
+          }
+        : null;
+    })
+    .filter((employee) => employee && UX_DESIGNER_REPORT_EMPLOYEE_IDS.has(employee.employeeId))
+    .sort((first, second) =>
+      [
+        first.name.toLowerCase(),
+        first.employeeId.toLowerCase(),
+      ].join("\u0000").localeCompare([
+        second.name.toLowerCase(),
+        second.employeeId.toLowerCase(),
+      ].join("\u0000"))
+    );
+}
+
+function reportDateOptions({ preset, singleDate, customStartDate, customEndDate }) {
+  if (preset === "single") {
+    return { preset, date: singleDate };
+  }
+
+  if (preset === "custom") {
+    return { preset, startDate: customStartDate, endDate: customEndDate };
+  }
+
+  return { preset };
+}
+
+function reportCopyPayload(outputTab, generated) {
+  if (!generated) return "";
+  if (outputTab === "email") return generated.email.body;
+  if (outputTab === "text") return generated.text;
+
+  return generated.tsv;
+}
+
+function ReportsCopyIcon({ copied = false }) {
+  if (copied) {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="m5 12 4 4 10-10" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <rect x="8" y="8" width="11" height="11" rx="2" />
+      <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+    </svg>
+  );
+}
+
+function ReportsCopyIconButton({ label, copied, onClick }) {
+  return (
+    <button
+      type="button"
+      className={`reports-copy-icon-button ${copied ? "copied" : ""}`}
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+    >
+      <ReportsCopyIcon copied={copied} />
+    </button>
+  );
+}
+
+function ReportsView({ workItems, sprints, employeeDirectory }) {
+  const todayKey = useMemo(() => formatDateInput(new Date()), []);
+  const [preset, setPreset] = useState("this-week");
+  const [singleDate, setSingleDate] = useState(todayKey);
+  const [customStartDate, setCustomStartDate] = useState(todayKey);
+  const [customEndDate, setCustomEndDate] = useState(todayKey);
+  const [allTeamMembers, setAllTeamMembers] = useState(true);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState([]);
+  const [generated, setGenerated] = useState(null);
+  const [outputTab, setOutputTab] = useState("email");
+  const [copyStatus, setCopyStatus] = useState("");
+  const [copiedTarget, setCopiedTarget] = useState("");
+  const copyStatusTimerRef = useRef(0);
+  const employeeOptions = useMemo(
+    () => reportEmployeeOptions(employeeDirectory),
+    [employeeDirectory]
+  );
+  const selectedEmployeeIdSet = useMemo(
+    () => new Set(selectedEmployeeIds),
+    [selectedEmployeeIds]
+  );
+  const dateOptions = useMemo(
+    () => reportDateOptions({ preset, singleDate, customStartDate, customEndDate }),
+    [customEndDate, customStartDate, preset, singleDate]
+  );
+  const resolvedRange = useMemo(
+    () => resolveReportDateRange(dateOptions),
+    [dateOptions]
+  );
+  const requestedEmployeeIds = allTeamMembers
+    ? employeeOptions.map((employee) => employee.employeeId)
+    : selectedEmployeeIds;
+  const selectedEmployeeLabel = allTeamMembers
+    ? "All Team Members"
+    : employeeOptions
+        .filter((employee) => selectedEmployeeIdSet.has(employee.employeeId))
+        .map((employee) => employee.name)
+        .join(", ") || "No team members selected";
+  const hasGenerated = Boolean(generated);
+  const generatedReport = generated?.report || null;
+  const worklogCount = generatedReport?.totals?.worklogCount || 0;
+  const totalMinutes = generatedReport?.totals?.durationMinutes || 0;
+  const emptyGeneratedReport = hasGenerated && worklogCount === 0;
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(copyStatusTimerRef.current);
+    },
+    []
+  );
+
+  function toggleEmployee(employeeId) {
+    setSelectedEmployeeIds((current) =>
+      current.includes(employeeId)
+        ? current.filter((id) => id !== employeeId)
+        : [...current, employeeId]
+    );
+  }
+
+  function handleGenerateReport() {
+    const query = buildReportQuery(
+      {
+        ...dateOptions,
+        employeeIds: requestedEmployeeIds,
+      }
+    );
+
+    if (query.error) {
+      setGenerated({
+        error: query.error,
+        query,
+      });
+      return;
+    }
+
+    if (requestedEmployeeIds.length === 0) {
+      setGenerated({
+        error: "Select at least one team member or choose All Team Members.",
+        query,
+      });
+      return;
+    }
+
+    const report = generateReportModel({
+      workItems,
+      sprints,
+      employeeDirectory,
+      employees: employeeOptions,
+      query,
+    });
+    const renderOptions = {
+      ...REPORT_RENDER_OPTIONS,
+      periodName: reportPresetName(query.preset),
+    };
+
+    setGenerated({
+      query,
+      report,
+      email: renderReportEmail(report, renderOptions),
+      text: renderReportText(report, renderOptions),
+      tsv: renderReportTsv(report, renderOptions),
+      employeeLabel: selectedEmployeeLabel,
+    });
+    setOutputTab("email");
+  }
+
+  async function copyReportContent(label, value, htmlValue = "", feedbackTarget = "") {
+    if (!value) return;
+
+    window.clearTimeout(copyStatusTimerRef.current);
+
+    try {
+      if (htmlValue && typeof ClipboardItem !== "undefined" && typeof navigator.clipboard.write === "function") {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/html": new Blob([htmlValue], { type: "text/html" }),
+            "text/plain": new Blob([value], { type: "text/plain" }),
+          }),
+        ]);
+      } else {
+        await navigator.clipboard.writeText(value);
+      }
+      setCopiedTarget(feedbackTarget);
+      setCopyStatus(feedbackTarget ? "" : `${label} copied to clipboard`);
+    } catch {
+      try {
+        await navigator.clipboard.writeText(value);
+        setCopiedTarget(feedbackTarget);
+        setCopyStatus(feedbackTarget ? "" : `${label} copied to clipboard`);
+      } catch {
+        setCopiedTarget("");
+        setCopyStatus("Unable to copy. Select the preview text and copy manually.");
+      }
+    }
+
+    copyStatusTimerRef.current = window.setTimeout(() => {
+      setCopiedTarget("");
+      setCopyStatus("");
+    }, feedbackTarget ? 1800 : 2400);
+  }
+
+  return (
+    <main className="reports-view">
+      <header className="dashboard-header">
+        <span>Worklog outputs</span>
+        <h1>Reports</h1>
+      </header>
+
+      <section className="reports-layout">
+        <form
+          className="reports-controls"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleGenerateReport();
+          }}
+        >
+          <div className="reports-control-section">
+            <h2>Date Range</h2>
+            <label className="reports-field">
+              <span>Preset</span>
+              <select
+                className="modal-control"
+                value={preset}
+                onChange={(event) => setPreset(event.target.value)}
+              >
+                {REPORT_DATE_PRESETS.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {preset === "single" ? (
+              <label className="reports-field">
+                <span>Date</span>
+                <input
+                  className="modal-control"
+                  type="date"
+                  value={singleDate}
+                  onChange={(event) => setSingleDate(event.target.value)}
+                />
+              </label>
+            ) : null}
+
+            {preset === "custom" ? (
+              <div className="reports-date-grid">
+                <label className="reports-field">
+                  <span>Start</span>
+                  <input
+                    className="modal-control"
+                    type="date"
+                    value={customStartDate}
+                    onChange={(event) => setCustomStartDate(event.target.value)}
+                  />
+                </label>
+                <label className="reports-field">
+                  <span>End</span>
+                  <input
+                    className="modal-control"
+                    type="date"
+                    value={customEndDate}
+                    onChange={(event) => setCustomEndDate(event.target.value)}
+                  />
+                </label>
+              </div>
+            ) : null}
+
+            <div className={`reports-range-preview ${resolvedRange.error ? "error" : ""}`}>
+              {resolvedRange.error || resolvedRange.label || "Select a valid date range."}
+            </div>
+          </div>
+
+          <div className="reports-control-section">
+            <h2>Team Members</h2>
+            <label className="reports-checkbox">
+              <input
+                type="checkbox"
+                checked={allTeamMembers}
+                onChange={(event) => setAllTeamMembers(event.target.checked)}
+              />
+              <span>All Team Members</span>
+            </label>
+
+            <div className="reports-member-list" aria-label="Team member selection">
+              {employeeOptions.length === 0 ? (
+                <p>No employee records found in the current worklog data.</p>
+              ) : (
+                employeeOptions.map((employee) => (
+                  <label
+                    key={employee.employeeId}
+                    className={`reports-checkbox ${allTeamMembers ? "disabled" : ""}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={allTeamMembers || selectedEmployeeIdSet.has(employee.employeeId)}
+                      disabled={allTeamMembers}
+                      onChange={() => toggleEmployee(employee.employeeId)}
+                    />
+                    <span>{employee.name}</span>
+                    <small>{employee.employeeId}</small>
+                  </label>
+                ))
+              )}
+            </div>
+          </div>
+
+          <button type="submit" className="primary-button reports-generate-button">
+            Generate Report
+          </button>
+        </form>
+
+        <section className="reports-output">
+          {!hasGenerated ? (
+            <div className="reports-empty-state">
+              <h2>Choose filters and generate a report.</h2>
+            </div>
+          ) : generated.error ? (
+            <div className="reports-empty-state error">
+              <h2>{generated.error}</h2>
+            </div>
+          ) : (
+            <>
+              {emptyGeneratedReport ? (
+                <div className="reports-empty-inline">
+                  No worklog entries found for the selected period.
+                </div>
+              ) : null}
+
+              <div className="reports-tabs" role="tablist" aria-label="Report outputs">
+                {REPORT_OUTPUT_TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={outputTab === tab.id}
+                    className={outputTab === tab.id ? "selected" : ""}
+                    onClick={() => setOutputTab(tab.id)}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {outputTab === "email" ? (
+                <div className="reports-output-panel reports-output-panel-email">
+                  <label className="reports-field">
+                    <span className="reports-field-header">
+                      <span>Subject</span>
+                      <ReportsCopyIconButton
+                        label="Copy subject"
+                        copied={copiedTarget === "email-subject"}
+                        onClick={() =>
+                          copyReportContent(
+                            "Subject",
+                            generated.email.subject,
+                            "",
+                            "email-subject"
+                          )
+                        }
+                      />
+                    </span>
+                    <input
+                      className="modal-control"
+                      value={generated.email.subject}
+                      readOnly
+                    />
+                  </label>
+                  <label className="reports-field reports-body-field">
+                    <span className="reports-field-header">
+                      <span>Body</span>
+                      <ReportsCopyIconButton
+                        label="Copy email"
+                        copied={copiedTarget === "email-body"}
+                        onClick={() =>
+                          copyReportContent(
+                            "Email",
+                            reportCopyPayload("email", generated),
+                            generated.email.html,
+                            "email-body"
+                          )
+                        }
+                      />
+                    </span>
+                    <div
+                      className="reports-email-body-preview"
+                      dangerouslySetInnerHTML={{ __html: generated.email.html }}
+                    />
+                  </label>
+                </div>
+              ) : null}
+
+              {outputTab === "text" ? (
+                <div className="reports-output-panel">
+                  <label className="reports-field">
+                    <span>TXT Preview</span>
+                    <textarea
+                      className="modal-control reports-output-textarea"
+                      value={generated.text}
+                      readOnly
+                    />
+                  </label>
+                  <div className="reports-output-actions">
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => copyReportContent("TXT", reportCopyPayload("text", generated))}
+                    >
+                      Copy TXT
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {outputTab === "tsv" ? (
+                <div className="reports-output-panel">
+                  <label className="reports-field">
+                    <span>Google Sheets TSV</span>
+                    <textarea
+                      className="modal-control reports-output-textarea"
+                      value={generated.tsv}
+                      readOnly
+                    />
+                  </label>
+                  <div className="reports-output-actions">
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() =>
+                        copyReportContent("Google Sheets TSV", reportCopyPayload("tsv", generated))
+                      }
+                    >
+                      Copy for Google Sheets
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {copyStatus ? <div className="reports-copy-status">{copyStatus}</div> : null}
+            </>
+          )}
+        </section>
+      </section>
+    </main>
+  );
+}
+
 function ModalSection({ title, children, className = "" }) {
   return (
     <section className={`modal-section ${className}`}>
@@ -3192,55 +3705,21 @@ function AddExistingChildModal({
   const [query, setQuery] = useState("");
   const modalRef = useRef(null);
   const isDayMode = request?.mode === "day";
-  const scopeId = request?.isOrphanSprint
-    ? ORPHAN_SPRINT_ID
-    : request?.sprintId || ORPHAN_SPRINT_ID;
+  const scopeId = addExistingDiscoveryScopeId(request);
   const scopeTitle = sprintTitleForScope(scopeId, sprints);
   const daySelection = useMemo(
     () => daySelectionForDate(projectionState, selectedDate),
     [projectionState, selectedDate]
   );
   const options = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    const alreadySelected = isDayMode
-      ? new Set(
-          request?.type === "story"
-            ? daySelection.storiesByEpicScope[
-                dayEpicScopeKey(request.parentId, scopeId)
-              ] || []
-            : daySelection.epicsBySprint[scopeId] || []
-        )
-      : new Set();
-    const candidates = workItems.filter((item) => {
-      if (item.type !== request?.type) return false;
-      if (alreadySelected.has(item.id)) return false;
-      if (isReferenceNode(item)) return false;
-
-      if (isDayMode) {
-        if (dayScopeIdForItem(item) !== scopeId) return false;
-        if (request.type === "story" && item.parentId !== request.parentId) return false;
-      } else if (request.type === "epic") {
-        if (!request.sprintId || dayScopeIdForItem(item) === request.sprintId) return false;
-      } else if (request.type === "story") {
-        if (!request.parentId || item.parentId === request.parentId) return false;
-      } else {
-        return false;
-      }
-
-      if (!normalizedQuery) return true;
-
-      return [
-        item.title,
-        item.elitical?.num,
-        item.id,
-        item.description,
-      ].some((value) => String(value || "").toLowerCase().includes(normalizedQuery));
+    return discoverAddExistingItems({
+      workItems,
+      request,
+      query,
+      daySelection,
+      scopeId,
     });
-
-    return candidates.sort((first, second) =>
-      String(first.title || "").localeCompare(String(second.title || ""))
-    );
-  }, [daySelection, isDayMode, query, request, scopeId, workItems]);
+  }, [daySelection, query, request, scopeId, workItems]);
   const title = `Add Existing ${formatType(request?.type || "docket")}`;
   const parentTitle =
     request?.type === "story"
@@ -7398,11 +7877,13 @@ function App() {
   const isPlanningView = PLANNING_VIEW_IDS.has(viewMode);
   const usesPlanningSurface = isPlanningView;
   const isDashboardView = viewMode === "dashboard";
+  const isReportsView = viewMode === "reports";
   const showGraphEmptyState =
     viewMode !== "day" &&
     graphWorkItems.length === 0 &&
     !usesPlanningSurface &&
     !isDashboardView &&
+    !isReportsView &&
     viewMode !== "main";
   const detailsDrawerOpen = modal?.kind === "details";
   const selectedEditableItem = propertyPanelItemId && !detailsDrawerOpen
@@ -7424,7 +7905,7 @@ function App() {
   const contextItemCount =
     graphWorkItems.length +
     (!isPlanningView && viewMode === "main" ? graphSprints.length : 0) +
-    (!isPlanningView && !isDashboardView && viewMode !== "main" ? 1 : 0);
+    (!isPlanningView && !isDashboardView && !isReportsView && viewMode !== "main" ? 1 : 0);
   const contextStoryPoints =
     graphRootId ? graphTotals.byId[graphRootId] || 0 : graphTotals.rootTotal;
   const contextTimeMinutes =
@@ -8218,13 +8699,8 @@ function App() {
   const childActionItemsForNode = useCallback((node) => {
     if (!node) return [];
 
-    return capabilityActionItemsForNode(node).filter(
-      (action) =>
-        viewMode === "day" ||
-        action.kind !== "add-existing" ||
-        !(node.isOrphanSprint || node.isOrphanSprintContext)
-    );
-  }, [viewMode]);
+    return capabilityActionItemsForNode(node);
+  }, []);
 
   const handleAddExistingChild = useCallback((request) => {
     setAddExistingChildRequest({
@@ -9229,6 +9705,11 @@ function App() {
     { label: "SP", value: totals.rootTotal },
     { label: "Logged", value: formatWorkDuration(totals.rootTimeMinutes || 0) },
   ];
+  const reportsStats = [
+    { label: "Dockets", value: workItems.length },
+    { label: "Employees", value: employeeDirectory.size },
+    { label: "Worklogs", value: importedWorklogs.length },
+  ];
   const contextSelectorControl = isContextView && viewMode !== "day"
     ? (
         <ContextGraphSelector
@@ -9286,6 +9767,7 @@ function App() {
       ],
     },
     dashboard: { stats: dashboardStats },
+    reports: { stats: reportsStats },
   };
   const headerContext = headerContextByView[viewMode] || { stats: [] };
   const handleSearchFilterChange = (key, value) => {
@@ -9541,6 +10023,12 @@ function App() {
             totals={totals}
             lastSyncedAt={lastSyncedAt}
             employeeScope={selectedEmployeeScope}
+          />
+        ) : isReportsView ? (
+          <ReportsView
+            workItems={workItems}
+            sprints={sprints}
+            employeeDirectory={employeeDirectory}
           />
         ) : showGraphEmptyState ? null : (
           <GraphView

@@ -142,6 +142,9 @@ export class SyncService {
           error?.message ||
           "Elitical sync completed locally, but the latest cache could not be published to GitHub.",
         statusCode: error?.statusCode || error?.status || 0,
+        transport: error?.transport || "",
+        step: error?.step || "",
+        filePath: error?.filePath || "",
         snapshotId: metadata?.syncGenerationId || metadata?.snapshotId || "",
       };
 
@@ -182,8 +185,14 @@ export class SyncService {
   messageForPublication(publication) {
     if (publication?.status === "skipped") return "Synced from Elitical.";
 
-    return publication?.status === "published"
-      ? "Synced from Elitical and published for Web."
+    if (publication?.status === "published") {
+      return "Synced from Elitical and published for Web.";
+    }
+
+    const detail = String(publication?.message || "").trim();
+
+    return detail
+      ? `Local sync complete — Web publication failed: ${detail}`
       : "Local sync complete — Web publication failed.";
   }
 

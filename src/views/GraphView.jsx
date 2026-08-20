@@ -1148,8 +1148,7 @@ function toFlowNodes({
                 isVirtual: true,
                 isSprintNode: true,
                 isOrphanSprint,
-                allowChildActions:
-                  !readOnly && (isOrphanSprint || childActionItems.length > 0),
+                allowChildActions: !readOnly,
                 childParentId: isOrphanSprint ? ROOT_ID : sprint.id,
                 childSprintId: isOrphanSprint ? "" : sprint.id,
                 childSprint: sprint.title,

@@ -1,9 +1,9 @@
 export function canonicalNodeType(node) {
   if (!node) return "";
   if (node.isOrphanSprint) return "orphan-sprint";
+  if (node.nodeType === "sprint" || node.isSprintNode) return "sprint";
   if (node.type === "main-root" || node.type === "story-root") return "";
   if (node.nodeType === "project" || node.isProjectNode) return "";
-  if (node.nodeType === "sprint" || node.isSprintNode) return "sprint";
 
   return node.type || "";
 }

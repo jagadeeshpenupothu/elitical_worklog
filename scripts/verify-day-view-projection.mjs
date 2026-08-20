@@ -187,7 +187,7 @@ assert.match(
 );
 assert.match(
   graphViewSource,
-  /allowChildActions:\s*!readOnly && \(isOrphanSprint \|\| childActionItems\.length > 0\)/,
+  /allowChildActions:\s*!readOnly/,
   "real and orphan Day View sprint nodes keep their shared child action menu"
 );
 assert.match(
