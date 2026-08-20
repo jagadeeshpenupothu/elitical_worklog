@@ -1,5 +1,5 @@
 {
-  "lastSyncTime": "2026-08-20T17:40:56.437Z",
+  "lastSyncTime": "2026-08-20T18:21:13.995Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
@@ -9,7 +9,7 @@
   "jobCount": 309,
   "taskCount": 41,
   "hash": "cccf0d21383656e9f0aea5c94bc6fa3b93fca98bd6ea304473363a8e74a2bc54",
-  "lastSuccessfulSync": "2026-08-20T17:40:56.437Z",
+  "lastSuccessfulSync": "2026-08-20T18:21:13.995Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
     "df2e674e-c10a-4fe6-8e0b-280b821793bf": {
@@ -4417,18 +4417,18 @@
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design icons, screens etc..\",\"epicId\":\"\",\"id\":\"d96a6331-6159-4a2f-be8a-2967923b05ca\",\"num\":\"DES-3\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Eagle Eye View UX Works\",\"type\":\"EPIC\",\"updated\":\"1724409509000\"}"
     }
   },
-  "snapshotId": "elitical-sync-1787247656437-b923b170575e",
-  "syncGenerationId": "elitical-sync-1787247656437-b923b170575e",
-  "syncGenerationSequence": 1787247656437,
+  "snapshotId": "elitical-sync-1787250073995-57829c1d9278",
+  "syncGenerationId": "elitical-sync-1787250073995-57829c1d9278",
+  "syncGenerationSequence": 1787250073995,
   "snapshot": {
     "schemaVersion": 1,
-    "snapshotId": "elitical-sync-1787247656437-b923b170575e",
-    "syncGenerationId": "elitical-sync-1787247656437-b923b170575e",
-    "syncGenerationSequence": 1787247656437,
-    "syncedAt": "2026-08-20T17:40:56.437Z",
-    "createdAt": "2026-08-20T17:40:57.274Z",
-    "graphHash": "6232bcf5a2ae5a637e04055db88847e19f8c74f957dc7b9854ce503099d59be0",
-    "worklogsHash": "2ec4422328439bf9b004efc90801950b1fa21e820c0b6a8c41b41cde8b94d113",
+    "snapshotId": "elitical-sync-1787250073995-57829c1d9278",
+    "syncGenerationId": "elitical-sync-1787250073995-57829c1d9278",
+    "syncGenerationSequence": 1787250073995,
+    "syncedAt": "2026-08-20T18:21:13.995Z",
+    "createdAt": "2026-08-20T18:21:14.625Z",
+    "graphHash": "46d50b838c1172d857a4d44a7884a03b18e86e8d386e14847a717b00fb69c1dc",
+    "worklogsHash": "e31ed9765ef0882bcc24a3fed3dc46742cc5e8f9be4eca1ba90a1c2d4f423b8f",
     "nodeCount": 734,
     "worklogCount": 722,
     "employee": {
