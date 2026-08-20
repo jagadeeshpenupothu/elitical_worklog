@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-20T12:33:32.815Z",
+  "generatedAt": "2026-08-20T13:41:42.984Z",
   "sourceDir": "live-api",
   "targetProject": {
     "code": "DES",
@@ -1253,6 +1253,37 @@
     }
   ],
   "stories": [
+    {
+      "id": "df2e674e-c10a-4fe6-8e0b-280b821793bf",
+      "num": "DES-734",
+      "type": "STORY",
+      "title": "SaYukth  Day 6 Poster Design",
+      "description": "Design of Day 6 campaign poster for SaYukth with a clean and modern visual approach, emphasizing simplicity, readability, and strong brand communication.",
+      "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
+      "sprintId": "ca031858-1986-4cc8-bdbb-a65311dfe4e8",
+      "epicId": "51fc2054-3e5d-4bdf-bad8-256eb47abd44",
+      "epicName": "Office Works",
+      "epicNum": "DES-11",
+      "storyId": "df2e674e-c10a-4fe6-8e0b-280b821793bf",
+      "storyName": "SaYukth  Day 6 Poster Design",
+      "storyNum": "DES-734",
+      "parentId": "51fc2054-3e5d-4bdf-bad8-256eb47abd44",
+      "stateId": "875c558b-60da-4192-8981-fd6e3d4e62c3",
+      "stateName": "Concept",
+      "docketState": "concept",
+      "category": "feature",
+      "priority": "info",
+      "assigneeId": "13b71512-ccd5-4845-891e-3d279b18d168",
+      "assigneeName": "Sashank Meesala",
+      "reporterId": "13b71512-ccd5-4845-891e-3d279b18d168",
+      "reporterName": "",
+      "storyPoints": 1,
+      "createdBy": "Sashank Meesala",
+      "createdAt": "2026-08-20T19:08:19.000Z",
+      "updatedBy": "",
+      "updatedAt": "2026-08-20T19:08:19.000Z",
+      "worklogs": []
+    },
     {
       "id": "8f381dd1-cc71-4acb-9ac6-ab8653588957",
       "num": "DES-733",
@@ -53991,7 +54022,7 @@
       "projects": 1,
       "sprints": 21,
       "epics": 30,
-      "stories": 353,
+      "stories": 354,
       "jobs": 309,
       "tasks": 41
     }
@@ -55112,6 +55143,35 @@
         },
         "type": "epic",
         "parentId": "storyRoot"
+      },
+      {
+        "id": "df2e674e-c10a-4fe6-8e0b-280b821793bf",
+        "sourceId": "df2e674e-c10a-4fe6-8e0b-280b821793bf",
+        "title": "SaYukth  Day 6 Poster Design",
+        "description": "Design of Day 6 campaign poster for SaYukth with a clean and modern visual approach, emphasizing simplicity, readability, and strong brand communication.",
+        "category": "feature",
+        "priority": "info",
+        "sprint": "UX Designer -17",
+        "docketState": "concept",
+        "assignee": "Sashank Meesala",
+        "createdBy": "Sashank Meesala",
+        "createdAt": "2026-08-20T19:08:19.000Z",
+        "updatedBy": "",
+        "updatedAt": "2026-08-20T19:08:19.000Z",
+        "elitical": {
+          "num": "DES-734",
+          "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
+          "sprintId": "ca031858-1986-4cc8-bdbb-a65311dfe4e8",
+          "epicId": "51fc2054-3e5d-4bdf-bad8-256eb47abd44",
+          "storyId": "df2e674e-c10a-4fe6-8e0b-280b821793bf",
+          "stateId": "875c558b-60da-4192-8981-fd6e3d4e62c3",
+          "assigneeId": "13b71512-ccd5-4845-891e-3d279b18d168",
+          "reporterId": "13b71512-ccd5-4845-891e-3d279b18d168"
+        },
+        "type": "story",
+        "parentId": "51fc2054-3e5d-4bdf-bad8-256eb47abd44",
+        "storyPoints": 1,
+        "worklogs": []
       },
       {
         "id": "8f381dd1-cc71-4acb-9ac6-ab8653588957",
@@ -81528,9 +81588,9 @@
       }
     ],
     "metadata": {
-      "snapshotId": "elitical-sync-1787229212697-71561fc817fc",
-      "syncGenerationId": "elitical-sync-1787229212697-71561fc817fc",
-      "syncGenerationSequence": 1787229212697,
+      "snapshotId": "elitical-sync-1787233302900-c406dd3fb426",
+      "syncGenerationId": "elitical-sync-1787233302900-c406dd3fb426",
+      "syncGenerationSequence": 1787233302900,
       "employee": {
         "id": "97a233c1-0999-4c56-9164-6e3ab2edde57",
         "employeeId": "97a233c1-0999-4c56-9164-6e3ab2edde57",
@@ -81545,19 +81605,19 @@
       "source": "synchronized-worklogs"
     }
   },
-  "snapshotId": "elitical-sync-1787229212697-71561fc817fc",
-  "syncGenerationId": "elitical-sync-1787229212697-71561fc817fc",
-  "syncGenerationSequence": 1787229212697,
+  "snapshotId": "elitical-sync-1787233302900-c406dd3fb426",
+  "syncGenerationId": "elitical-sync-1787233302900-c406dd3fb426",
+  "syncGenerationSequence": 1787233302900,
   "snapshot": {
     "schemaVersion": 1,
-    "snapshotId": "elitical-sync-1787229212697-71561fc817fc",
-    "syncGenerationId": "elitical-sync-1787229212697-71561fc817fc",
-    "syncGenerationSequence": 1787229212697,
-    "syncedAt": "2026-08-20T12:33:32.697Z",
-    "createdAt": "2026-08-20T12:33:33.586Z",
-    "graphHash": "2e233128ec549e2c8f35ebd2ebf8b8484d5d7c109e8eee968bb386013541fcf2",
-    "worklogsHash": "c33f7e2927a3c7e3b6f23e4723eec4a9eafa6dfce29065f22cdb73000e54ed81",
-    "nodeCount": 733,
+    "snapshotId": "elitical-sync-1787233302900-c406dd3fb426",
+    "syncGenerationId": "elitical-sync-1787233302900-c406dd3fb426",
+    "syncGenerationSequence": 1787233302900,
+    "syncedAt": "2026-08-20T13:41:42.900Z",
+    "createdAt": "2026-08-20T13:41:43.664Z",
+    "graphHash": "25871e0cc9d3e9ff6c244423a87943ec6f16ce5ba3a6b6777f81490c92c202c6",
+    "worklogsHash": "41debe57823bda6d6bad36ae3da57f428838b877585208dc9658af25346ae0d1",
+    "nodeCount": 734,
     "worklogCount": 722,
     "employee": {
       "id": "97a233c1-0999-4c56-9164-6e3ab2edde57",
