@@ -1,17 +1,41 @@
 {
-  "lastSyncTime": "2026-08-18T04:50:34.212Z",
+  "lastSyncTime": "2026-08-20T11:05:43.593Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
   "graphVersion": 1,
-  "nodeCount": 729,
-  "storyCount": 350,
+  "nodeCount": 733,
+  "storyCount": 353,
   "jobCount": 309,
   "taskCount": 41,
-  "hash": "2baf03be2b421bf1c47a92db07744330add4f8001b0e10f3a89846b60e2ecdf3",
-  "lastSuccessfulSync": "2026-08-18T04:50:34.212Z",
+  "hash": "775892119aad8cdfe03a9a68567247d4fb937e28d84a3528ad3eee56ee527253",
+  "lastSuccessfulSync": "2026-08-20T11:05:43.593Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
+    "8f381dd1-cc71-4acb-9ac6-ab8653588957": {
+      "docketId": "8f381dd1-cc71-4acb-9ac6-ab8653588957",
+      "modifiedTimestamp": "1787078673000",
+      "createdTimestamp": "1787078673000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Design of a new corporate letterhead for SaYukth, focusing on creating a professional document template that reflects the company's brand identity and enhances official communications.\",\"epicId\":\"\",\"id\":\"8f381dd1-cc71-4acb-9ac6-ab8653588957\",\"num\":\"DES-733\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"SaYukth  Corporate Letterhead Redesign\",\"type\":\"STORY\",\"updated\":\"1787078673000\"}"
+    },
+    "f5999faa-b298-4cdc-816f-1789f04c1068": {
+      "docketId": "f5999faa-b298-4cdc-816f-1789f04c1068",
+      "modifiedTimestamp": "1787078417000",
+      "createdTimestamp": "1787078417000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Create of Day 5 social media poster for MeruSphere, focusing on delivering a compelling visual design that aligns with the campaign objectives and strengthens brand communication.\",\"epicId\":\"\",\"id\":\"f5999faa-b298-4cdc-816f-1789f04c1068\",\"num\":\"DES-732\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"MeruSphere Day 5 Social Media Poster Development\",\"type\":\"STORY\",\"updated\":\"1787078417000\"}"
+    },
+    "28033625-0731-423c-8b6e-984def03fe9d": {
+      "docketId": "28033625-0731-423c-8b6e-984def03fe9d",
+      "modifiedTimestamp": "1787078300000",
+      "createdTimestamp": "1787078300000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Design of Day 5 marketing poster for SaYukth, creating a visually engaging social media asset that effectively communicates the campaign message while reinforcing the company's brand identity.\",\"epicId\":\"\",\"id\":\"28033625-0731-423c-8b6e-984def03fe9d\",\"num\":\"DES-731\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"SaYukth Day 5 Tech Poster Design\",\"type\":\"STORY\",\"updated\":\"1787078300000\"}"
+    },
+    "b2cb0a34-0661-49ac-96c0-80c9db8f6454": {
+      "docketId": "b2cb0a34-0661-49ac-96c0-80c9db8f6454",
+      "modifiedTimestamp": "1787048685000",
+      "createdTimestamp": "1787048643000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Review and finalize social media posters for Sayukth and Merusphere before posting.\",\"epicId\":\"\",\"id\":\"b2cb0a34-0661-49ac-96c0-80c9db8f6454\",\"num\":\"DES-730\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Social Media Tech Posters  Review\",\"type\":\"EPIC\",\"updated\":\"1787048685000\"}"
+    },
     "edb08839-61cf-4083-b3ab-b077490f60ea": {
       "docketId": "edb08839-61cf-4083-b3ab-b077490f60ea",
       "modifiedTimestamp": "1786962045000",
@@ -4387,20 +4411,20 @@
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design icons, screens etc..\",\"epicId\":\"\",\"id\":\"d96a6331-6159-4a2f-be8a-2967923b05ca\",\"num\":\"DES-3\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Eagle Eye View UX Works\",\"type\":\"EPIC\",\"updated\":\"1724409509000\"}"
     }
   },
-  "snapshotId": "elitical-sync-1787028634212-6568e2d1d4f8",
-  "syncGenerationId": "elitical-sync-1787028634212-6568e2d1d4f8",
-  "syncGenerationSequence": 1787028634212,
+  "snapshotId": "elitical-sync-1787223943593-7620434c1711",
+  "syncGenerationId": "elitical-sync-1787223943593-7620434c1711",
+  "syncGenerationSequence": 1787223943593,
   "snapshot": {
     "schemaVersion": 1,
-    "snapshotId": "elitical-sync-1787028634212-6568e2d1d4f8",
-    "syncGenerationId": "elitical-sync-1787028634212-6568e2d1d4f8",
-    "syncGenerationSequence": 1787028634212,
-    "syncedAt": "2026-08-18T04:50:34.212Z",
-    "createdAt": "2026-08-18T04:50:35.122Z",
-    "graphHash": "e10fa2f0ef9967b38a5881afb6b28783c81be53840c00b29fb87b1656ee21aa3",
-    "worklogsHash": "0ace29539ce939444149438af8371f34b14677e293d802124dbba6b6a72b1f85",
-    "nodeCount": 729,
-    "worklogCount": 718,
+    "snapshotId": "elitical-sync-1787223943593-7620434c1711",
+    "syncGenerationId": "elitical-sync-1787223943593-7620434c1711",
+    "syncGenerationSequence": 1787223943593,
+    "syncedAt": "2026-08-20T11:05:43.593Z",
+    "createdAt": "2026-08-20T11:05:44.758Z",
+    "graphHash": "b91c9d08f0f78865b49846d49830b1221e769fe7f9f515ebe1b7c0ec949db7ba",
+    "worklogsHash": "4984c9da0146b521fe95d8d317d92445ef2b836287662664f2ef85fcc59a99e5",
+    "nodeCount": 733,
+    "worklogCount": 722,
     "employee": {
       "id": "97a233c1-0999-4c56-9164-6e3ab2edde57",
       "employeeId": "97a233c1-0999-4c56-9164-6e3ab2edde57",
