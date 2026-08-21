@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-20T18:21:14.042Z",
+  "generatedAt": "2026-08-21T05:35:27.882Z",
   "sourceDir": "live-api",
   "targetProject": {
     "code": "DES",
@@ -1253,6 +1253,84 @@
     }
   ],
   "stories": [
+    {
+      "id": "0461450f-0930-4db4-849f-e5c42c6cdf72",
+      "num": "DES-735",
+      "type": "STORY",
+      "title": "MeruSphere  Day 6 Poster Design",
+      "description": "Design of Day 6 promotional poster for MeruSphere using a clean and modern design style. Focused on delivering a visually appealing creative with strong typography and minimal elements to enhance readability and audience engagement.",
+      "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
+      "sprintId": "ca031858-1986-4cc8-bdbb-a65311dfe4e8",
+      "epicId": "51fc2054-3e5d-4bdf-bad8-256eb47abd44",
+      "epicName": "Office Works",
+      "epicNum": "DES-11",
+      "storyId": "0461450f-0930-4db4-849f-e5c42c6cdf72",
+      "storyName": "MeruSphere  Day 6 Poster Design",
+      "storyNum": "DES-735",
+      "parentId": "51fc2054-3e5d-4bdf-bad8-256eb47abd44",
+      "stateId": "875c558b-60da-4192-8981-fd6e3d4e62c3",
+      "stateName": "Concept",
+      "docketState": "concept",
+      "category": "feature",
+      "priority": "info",
+      "assigneeId": "13b71512-ccd5-4845-891e-3d279b18d168",
+      "assigneeName": "Sashank Meesala",
+      "reporterId": "13b71512-ccd5-4845-891e-3d279b18d168",
+      "reporterName": "",
+      "storyPoints": 1,
+      "createdBy": "Sashank Meesala",
+      "createdAt": "2026-08-21T10:33:50.000Z",
+      "updatedBy": "Sesha Sai Gubbala",
+      "updatedAt": "2026-08-21T10:34:59.000Z",
+      "worklogs": [
+        {
+          "id": "be8637ad-468b-4154-800d-e79c908fab92",
+          "docketId": "0461450f-0930-4db4-849f-e5c42c6cdf72",
+          "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
+          "projectName": "UX Designer",
+          "docketType": "STORY",
+          "docketNumber": "DES-735",
+          "docketTitle": "MeruSphere  Day 6 Poster Design",
+          "employeeId": "13b71512-ccd5-4845-891e-3d279b18d168",
+          "employeeName": "Sashank Meesala",
+          "worklogDate": "2026-08-20T05:30:00.000Z",
+          "durationMinutes": 240,
+          "comment": "Developed the Day 6 poster by creating a structured layout with clean design elements and refined typography. Emphasized visual clarity, balanced spacing, and brand consistency while optimizing the creative for social media platforms and digital communication.",
+          "raw": {
+            "id": "be8637ad-468b-4154-800d-e79c908fab92",
+            "randomNumber": 1787290527913,
+            "createdTime": 1787308464000,
+            "updatedTime": 1787308512000,
+            "sortedTime": 1787308512000,
+            "createdUserId": "4446817c-d60b-46bc-9e8c-7f77050188a5",
+            "updatedUserId": "4446817c-d60b-46bc-9e8c-7f77050188a5",
+            "createdUserName": "Sashank Meesala",
+            "updatedUserName": "Sashank Meesala",
+            "hasPagination": true,
+            "employeeId": "13b71512-ccd5-4845-891e-3d279b18d168",
+            "employeeName": "Sashank Meesala",
+            "docketId": "0461450f-0930-4db4-849f-e5c42c6cdf72",
+            "docketName": "MeruSphere  Day 6 Poster Design",
+            "worklogDate": 1787203800000,
+            "hour": 4,
+            "min": 0,
+            "comment": "Developed the Day 6 poster by creating a structured layout with clean design elements and refined typography. Emphasized visual clarity, balanced spacing, and brand consistency while optimizing the creative for social media platforms and digital communication.",
+            "designation": "Associate UX Desginer",
+            "empId": "EIN0093",
+            "docketNum": "DES-735",
+            "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
+            "projectName": "UX Designer",
+            "docketType": "STORY",
+            "storyPointEst": 1,
+            "eliticalId": "be8637ad-468b-4154-800d-e79c908fab92",
+            "date": "1787203800000",
+            "description": "Developed the Day 6 poster by creating a structured layout with clean design elements and refined typography. Emphasized visual clarity, balanced spacing, and brand consistency while optimizing the creative for social media platforms and digital communication.",
+            "timeMinutes": 240,
+            "durationMinutes": 240
+          }
+        }
+      ]
+    },
     {
       "id": "df2e674e-c10a-4fe6-8e0b-280b821793bf",
       "num": "DES-734",
@@ -54022,7 +54100,7 @@
       "projects": 1,
       "sprints": 21,
       "epics": 30,
-      "stories": 354,
+      "stories": 355,
       "jobs": 309,
       "tasks": 41
     }
@@ -55143,6 +55221,44 @@
         },
         "type": "epic",
         "parentId": "storyRoot"
+      },
+      {
+        "id": "0461450f-0930-4db4-849f-e5c42c6cdf72",
+        "sourceId": "0461450f-0930-4db4-849f-e5c42c6cdf72",
+        "title": "MeruSphere  Day 6 Poster Design",
+        "description": "Design of Day 6 promotional poster for MeruSphere using a clean and modern design style. Focused on delivering a visually appealing creative with strong typography and minimal elements to enhance readability and audience engagement.",
+        "category": "feature",
+        "priority": "info",
+        "sprint": "UX Designer -17",
+        "docketState": "concept",
+        "assignee": "Sashank Meesala",
+        "createdBy": "Sashank Meesala",
+        "createdAt": "2026-08-21T10:33:50.000Z",
+        "updatedBy": "Sesha Sai Gubbala",
+        "updatedAt": "2026-08-21T10:34:59.000Z",
+        "elitical": {
+          "num": "DES-735",
+          "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
+          "sprintId": "ca031858-1986-4cc8-bdbb-a65311dfe4e8",
+          "epicId": "51fc2054-3e5d-4bdf-bad8-256eb47abd44",
+          "storyId": "0461450f-0930-4db4-849f-e5c42c6cdf72",
+          "stateId": "875c558b-60da-4192-8981-fd6e3d4e62c3",
+          "assigneeId": "13b71512-ccd5-4845-891e-3d279b18d168",
+          "reporterId": "13b71512-ccd5-4845-891e-3d279b18d168"
+        },
+        "type": "story",
+        "parentId": "51fc2054-3e5d-4bdf-bad8-256eb47abd44",
+        "storyPoints": 1,
+        "worklogs": [
+          {
+            "id": "be8637ad-468b-4154-800d-e79c908fab92",
+            "date": "2026-08-20T05:30:00.000Z",
+            "description": "Developed the Day 6 poster by creating a structured layout with clean design elements and refined typography. Emphasized visual clarity, balanced spacing, and brand consistency while optimizing the creative for social media platforms and digital communication.",
+            "timeMinutes": 240,
+            "employeeId": "13b71512-ccd5-4845-891e-3d279b18d168",
+            "employeeName": "Sashank Meesala"
+          }
+        ]
       },
       {
         "id": "df2e674e-c10a-4fe6-8e0b-280b821793bf",
@@ -81588,9 +81704,9 @@
       }
     ],
     "metadata": {
-      "snapshotId": "elitical-sync-1787250073995-57829c1d9278",
-      "syncGenerationId": "elitical-sync-1787250073995-57829c1d9278",
-      "syncGenerationSequence": 1787250073995,
+      "snapshotId": "elitical-sync-1787290527676-1269efd2b785",
+      "syncGenerationId": "elitical-sync-1787290527676-1269efd2b785",
+      "syncGenerationSequence": 1787290527676,
       "employee": {
         "id": "97a233c1-0999-4c56-9164-6e3ab2edde57",
         "employeeId": "97a233c1-0999-4c56-9164-6e3ab2edde57",
@@ -81605,20 +81721,20 @@
       "source": "synchronized-worklogs"
     }
   },
-  "snapshotId": "elitical-sync-1787250073995-57829c1d9278",
-  "syncGenerationId": "elitical-sync-1787250073995-57829c1d9278",
-  "syncGenerationSequence": 1787250073995,
+  "snapshotId": "elitical-sync-1787290527676-1269efd2b785",
+  "syncGenerationId": "elitical-sync-1787290527676-1269efd2b785",
+  "syncGenerationSequence": 1787290527676,
   "snapshot": {
     "schemaVersion": 1,
-    "snapshotId": "elitical-sync-1787250073995-57829c1d9278",
-    "syncGenerationId": "elitical-sync-1787250073995-57829c1d9278",
-    "syncGenerationSequence": 1787250073995,
-    "syncedAt": "2026-08-20T18:21:13.995Z",
-    "createdAt": "2026-08-20T18:21:14.625Z",
-    "graphHash": "46d50b838c1172d857a4d44a7884a03b18e86e8d386e14847a717b00fb69c1dc",
-    "worklogsHash": "e31ed9765ef0882bcc24a3fed3dc46742cc5e8f9be4eca1ba90a1c2d4f423b8f",
-    "nodeCount": 734,
-    "worklogCount": 722,
+    "snapshotId": "elitical-sync-1787290527676-1269efd2b785",
+    "syncGenerationId": "elitical-sync-1787290527676-1269efd2b785",
+    "syncGenerationSequence": 1787290527676,
+    "syncedAt": "2026-08-21T05:35:27.676Z",
+    "createdAt": "2026-08-21T05:35:28.368Z",
+    "graphHash": "64b131c080df01795d859df0efc9ee3b23fdf10e149df1bb6e993b55652b2d20",
+    "worklogsHash": "654c9a45dfab8d343ec853390d2d3185c3c69eccc3757f70addad495f825a70f",
+    "nodeCount": 735,
+    "worklogCount": 723,
     "employee": {
       "id": "97a233c1-0999-4c56-9164-6e3ab2edde57",
       "employeeId": "97a233c1-0999-4c56-9164-6e3ab2edde57",
