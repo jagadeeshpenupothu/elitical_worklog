@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-21T17:16:08.049Z",
+  "generatedAt": "2026-08-21T17:19:41.793Z",
   "sourceDir": "live-api",
   "targetProject": {
     "code": "DES",
@@ -81704,9 +81704,9 @@
       }
     ],
     "metadata": {
-      "snapshotId": "elitical-sync-1787332568029-ca90923474aa",
-      "syncGenerationId": "elitical-sync-1787332568029-ca90923474aa",
-      "syncGenerationSequence": 1787332568029,
+      "snapshotId": "elitical-sync-1787332781724-3ed59a3376e2",
+      "syncGenerationId": "elitical-sync-1787332781724-3ed59a3376e2",
+      "syncGenerationSequence": 1787332781724,
       "employee": {
         "id": "97a233c1-0999-4c56-9164-6e3ab2edde57",
         "employeeId": "97a233c1-0999-4c56-9164-6e3ab2edde57",
@@ -81721,18 +81721,18 @@
       "source": "synchronized-worklogs"
     }
   },
-  "snapshotId": "elitical-sync-1787332568029-ca90923474aa",
-  "syncGenerationId": "elitical-sync-1787332568029-ca90923474aa",
-  "syncGenerationSequence": 1787332568029,
+  "snapshotId": "elitical-sync-1787332781724-3ed59a3376e2",
+  "syncGenerationId": "elitical-sync-1787332781724-3ed59a3376e2",
+  "syncGenerationSequence": 1787332781724,
   "snapshot": {
     "schemaVersion": 1,
-    "snapshotId": "elitical-sync-1787332568029-ca90923474aa",
-    "syncGenerationId": "elitical-sync-1787332568029-ca90923474aa",
-    "syncGenerationSequence": 1787332568029,
-    "syncedAt": "2026-08-21T17:16:08.029Z",
-    "createdAt": "2026-08-21T17:16:08.670Z",
-    "graphHash": "2e1de940668f213b86f72745bf35c150b32c14df7f3d800a9e93b0b9209b9e33",
-    "worklogsHash": "96134f94e0c98b766b998c7e31b96e1e8528d3d450f7b92ce2e92b323acf7478",
+    "snapshotId": "elitical-sync-1787332781724-3ed59a3376e2",
+    "syncGenerationId": "elitical-sync-1787332781724-3ed59a3376e2",
+    "syncGenerationSequence": 1787332781724,
+    "syncedAt": "2026-08-21T17:19:41.724Z",
+    "createdAt": "2026-08-21T17:19:42.620Z",
+    "graphHash": "83a5e458ef5ab54946a09b928cd73ff9fda5ca6b28fcb0d9e1283d0ed697662d",
+    "worklogsHash": "cedaca62efafe71928486c6322d72ebe5954397152a0c73984dce7afe35ac218",
     "nodeCount": 735,
     "worklogCount": 723,
     "employee": {
