@@ -1,17 +1,107 @@
 {
-  "lastSyncTime": "2026-08-22T12:26:53.943Z",
+  "lastSyncTime": "2026-09-02T09:53:12.793Z",
   "eliticalProjectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "cacheVersion": 1,
   "importerVersion": 1,
   "graphVersion": 1,
-  "nodeCount": 747,
-  "storyCount": 366,
-  "jobCount": 310,
-  "taskCount": 41,
-  "hash": "71452ad81502c4fbaa9cd567ddf7000b38f39fee78a5d07297fb4ad9cef4f0e4",
-  "lastSuccessfulSync": "2026-08-22T12:26:53.943Z",
+  "nodeCount": 756,
+  "storyCount": 367,
+  "jobCount": 314,
+  "taskCount": 43,
+  "hash": "2d6ca589b44228d1957c09255b57fce5f42dd2ae1f5b5403d46cd922ba8430fb",
+  "lastSuccessfulSync": "2026-09-02T09:53:12.793Z",
   "projectId": "b9da5042-33d2-4b89-9190-69a9ca5103e0",
   "dockets": {
+    "385f2ad2-c683-4175-a70b-1e7f5d65c790": {
+      "docketId": "385f2ad2-c683-4175-a70b-1e7f5d65c790",
+      "modifiedTimestamp": "1788258731000",
+      "createdTimestamp": "1788258705000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Contact the printer maintenance person, check the service schedule, and confirm when they can visit the office.\",\"epicId\":\"\",\"id\":\"385f2ad2-c683-4175-a70b-1e7f5d65c790\",\"num\":\"DES-750\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Printer Maintenance\",\"type\":\"TASK\",\"updated\":\"1788258731000\"}"
+    },
+    "2b8c7500-6ae2-4877-88b7-9e2eb0b6a2b3": {
+      "docketId": "2b8c7500-6ae2-4877-88b7-9e2eb0b6a2b3",
+      "modifiedTimestamp": "1788258601000",
+      "createdTimestamp": "1788258554000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Add the required post details and active status to the social media Google Docs and Google Sheets for tracking.\",\"epicId\":\"\",\"id\":\"2b8c7500-6ae2-4877-88b7-9e2eb0b6a2b3\",\"num\":\"DES-749\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"Update Social Media Post Details\",\"type\":\"STORY\",\"updated\":\"1788258601000\"}"
+    },
+    "aaba6ac3-35bb-496b-adca-70db06d2dcc9": {
+      "docketId": "aaba6ac3-35bb-496b-adca-70db06d2dcc9",
+      "modifiedTimestamp": "1788258425000",
+      "createdTimestamp": "1788258407000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"share the required social media account details for Sayukth and Merusphere  with Varma sir.\",\"epicId\":\"\",\"id\":\"aaba6ac3-35bb-496b-adca-70db06d2dcc9\",\"num\":\"DES-748\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Share Sayukth and Merusphere Account Details\",\"type\":\"TASK\",\"updated\":\"1788258425000\"}"
+    },
+    "b37a092d-6cd4-4b10-92e0-8682e70e2f16": {
+      "docketId": "b37a092d-6cd4-4b10-92e0-8682e70e2f16",
+      "modifiedTimestamp": "1788258339000",
+      "createdTimestamp": "1788258288000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Transfer the required files from the hard disk to Google Drive and make sure the backup is completed properly.\",\"epicId\":\"\",\"id\":\"b37a092d-6cd4-4b10-92e0-8682e70e2f16\",\"num\":\"DES-747\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Hard Disk File Backup\",\"type\":\"JOB\",\"updated\":\"1788258339000\"}"
+    },
+    "c9e7b9f9-4d56-4f76-913c-1c383edd489f": {
+      "docketId": "c9e7b9f9-4d56-4f76-913c-1c383edd489f",
+      "modifiedTimestamp": "1788258217000",
+      "createdTimestamp": "1788258213000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Back up all files from the hard disk to Google Drive for safe storage and future access.\",\"epicId\":\"\",\"id\":\"c9e7b9f9-4d56-4f76-913c-1c383edd489f\",\"num\":\"DES-746\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"2\",\"title\":\"Hard Disk Files Backup to Google Drive\",\"type\":\"STORY\",\"updated\":\"1788258217000\"}"
+    },
+    "d913f450-d31e-4a05-be89-673e7806e128": {
+      "docketId": "d913f450-d31e-4a05-be89-673e7806e128",
+      "modifiedTimestamp": "1788258083000",
+      "createdTimestamp": "1788258050000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Edit the 3 assigned images for ProdOps documentation and share the final images with Sindhu.\",\"epicId\":\"\",\"id\":\"d913f450-d31e-4a05-be89-673e7806e128\",\"num\":\"DES-745\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"e75cccf5-12a4-464a-8732-15ea367361b0\",\"stateName\":\"Closed\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Edit Images for ProdOps Documentation\",\"type\":\"JOB\",\"updated\":\"1788258083000\"}"
+    },
+    "7eae98f9-94dd-4f34-b773-e5d105a64c0e": {
+      "docketId": "7eae98f9-94dd-4f34-b773-e5d105a64c0e",
+      "modifiedTimestamp": "1788258019000",
+      "createdTimestamp": "1788258014000",
+      "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"ENHANCEMENT\",\"descr\":\"Edit the required images for ProdOps documentation and prepare them for use in the documents.\",\"epicId\":\"\",\"id\":\"7eae98f9-94dd-4f34-b773-e5d105a64c0e\",\"num\":\"DES-744\",\"parentId\":\"\",\"priority\":\"MINOR\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"2\",\"title\":\"ProdOps Documentation Image Editing\",\"type\":\"STORY\",\"updated\":\"1788258019000\"}"
+    },
+    "5315666f-39a4-459b-87f9-1dfe8b207883": {
+      "docketId": "5315666f-39a4-459b-87f9-1dfe8b207883",
+      "modifiedTimestamp": "1788202862000",
+      "createdTimestamp": "1788202862000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Development of captions for all 9 MeruSphere social media posts using AI-assisted content generation and research tools, then compiled and organized the finalized content in Google Docs for easy access and publishing.\",\"epicId\":\"\",\"id\":\"5315666f-39a4-459b-87f9-1dfe8b207883\",\"num\":\"DES-743\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"MeruSphere Social Media Caption Development & Documentation\",\"type\":\"STORY\",\"updated\":\"1788202862000\"}"
+    },
+    "f7e74a4b-9fd3-4a3f-a64f-b0bea3d18f8e": {
+      "docketId": "f7e74a4b-9fd3-4a3f-a64f-b0bea3d18f8e",
+      "modifiedTimestamp": "1788202737000",
+      "createdTimestamp": "1788202737000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Creating of captions for all 9 SaYukth social media posts using AI-assisted research and content ideation sources, and organized the finalized content in a Google Docs document for review and publishing.\",\"epicId\":\"\",\"id\":\"f7e74a4b-9fd3-4a3f-a64f-b0bea3d18f8e\",\"num\":\"DES-742\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"ca031858-1986-4cc8-bdbb-a65311dfe4e8\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"SaYukth Social Media Content Creation & Documentation\",\"type\":\"STORY\",\"updated\":\"1788202737000\"}"
+    },
+    "ddf49e8b-8520-4ad5-8c93-d713351a336a": {
+      "docketId": "ddf49e8b-8520-4ad5-8c93-d713351a336a",
+      "modifiedTimestamp": "1788201021000",
+      "createdTimestamp": "1788201021000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Create Day 8 promotional artwork for MeruSphere, focusing on a clean and engaging design that effectively presents the campaign content while maintaining a strong brand identity.\",\"epicId\":\"\",\"id\":\"ddf49e8b-8520-4ad5-8c93-d713351a336a\",\"num\":\"DES-741\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"MeruSphere  Day 8 Digital Campaign Poster\",\"type\":\"STORY\",\"updated\":\"1788201021000\"}"
+    },
+    "af76bb6e-db87-4ef0-aa3c-50cb312605ff": {
+      "docketId": "af76bb6e-db87-4ef0-aa3c-50cb312605ff",
+      "modifiedTimestamp": "1788200815000",
+      "createdTimestamp": "1788200815000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Create of Day 8 campaign poster for SaYukth, focusing on a visually appealing design that effectively communicates the campaign message while reinforcing the company's professional brand image\",\"epicId\":\"\",\"id\":\"af76bb6e-db87-4ef0-aa3c-50cb312605ff\",\"num\":\"DES-740\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"SaYukth  Day 8 Promotional Poster Design\",\"type\":\"STORY\",\"updated\":\"1788200815000\"}"
+    },
+    "e3d6c361-7720-4681-8e4c-91621a2b8e76": {
+      "docketId": "e3d6c361-7720-4681-8e4c-91621a2b8e76",
+      "modifiedTimestamp": "1787826860000",
+      "createdTimestamp": "1787826860000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Development of Day 7 promotional poster for MeruSphere, focusing on delivering a compelling visual narrative that strengthens brand communication and captures audience attention on digital platforms.\",\"epicId\":\"\",\"id\":\"e3d6c361-7720-4681-8e4c-91621a2b8e76\",\"num\":\"DES-739\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"MeruSphere  Day 7 Campaign Creative Design\",\"type\":\"STORY\",\"updated\":\"1787826860000\"}"
+    },
+    "d45704bd-7151-4cf1-b3da-d494fda83e47": {
+      "docketId": "d45704bd-7151-4cf1-b3da-d494fda83e47",
+      "modifiedTimestamp": "1787826672000",
+      "createdTimestamp": "1787826672000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Designed of Day 7 campaign poster for SaYukth, creating a visually distinctive creative that highlights the campaign theme while maintaining a strong and consistent brand presence across social media platforms.\",\"epicId\":\"\",\"id\":\"d45704bd-7151-4cf1-b3da-d494fda83e47\",\"num\":\"DES-738\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"SaYukth  Day 7 Social Media Poster Design\",\"type\":\"STORY\",\"updated\":\"1787826672000\"}"
+    },
+    "08522ad6-5f49-41c5-8114-76f89b63352c": {
+      "docketId": "08522ad6-5f49-41c5-8114-76f89b63352c",
+      "modifiedTimestamp": "1787826492000",
+      "createdTimestamp": "1787826492000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Design of new letterhead concepts for SaYukth, exploring different visual styles and layouts to enhance the company's official document branding and provide multiple design options.\",\"epicId\":\"\",\"id\":\"08522ad6-5f49-41c5-8114-76f89b63352c\",\"num\":\"DES-737\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"SaYukth  Alternative Letterhead Design Concepts\",\"type\":\"JOB\",\"updated\":\"1787826492000\"}"
+    },
+    "6fb2d65d-9038-4869-823e-f3e6a13c37fc": {
+      "docketId": "6fb2d65d-9038-4869-823e-f3e6a13c37fc",
+      "modifiedTimestamp": "1787581792000",
+      "createdTimestamp": "1787581792000",
+      "fingerprint": "{\"assigneeId\":\"13b71512-ccd5-4845-891e-3d279b18d168\",\"category\":\"FEATURE\",\"descr\":\"Create of Day 6 social media creative for SaYukth with a modern, minimalistic design approach. Focused on presenting the content in a visually appealing format using clean graphics and effective typography.\",\"epicId\":\"\",\"id\":\"6fb2d65d-9038-4869-823e-f3e6a13c37fc\",\"num\":\"DES-736\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"875c558b-60da-4192-8981-fd6e3d4e62c3\",\"stateName\":\"Concept\",\"storyId\":\"\",\"storyPointEst\":\"1\",\"title\":\"SaYukth  Day 6 Creative Poster Design\",\"type\":\"STORY\",\"updated\":\"1787581792000\"}"
+    },
     "0461450f-0930-4db4-849f-e5c42c6cdf72": {
       "docketId": "0461450f-0930-4db4-849f-e5c42c6cdf72",
       "modifiedTimestamp": "1787308499000",
@@ -4423,20 +4513,20 @@
       "fingerprint": "{\"assigneeId\":\"97a233c1-0999-4c56-9164-6e3ab2edde57\",\"category\":\"FEATURE\",\"descr\":\"Design icons, screens etc..\",\"epicId\":\"\",\"id\":\"d96a6331-6159-4a2f-be8a-2967923b05ca\",\"num\":\"DES-3\",\"parentId\":\"\",\"priority\":\"INFO\",\"projectId\":\"b9da5042-33d2-4b89-9190-69a9ca5103e0\",\"sprintId\":\"\",\"stateId\":\"29a14b10-583d-4fe8-ad35-3314cb5d74db\",\"stateName\":\"Design\",\"storyId\":\"\",\"storyPointEst\":\"0\",\"title\":\"Eagle Eye View UX Works\",\"type\":\"EPIC\",\"updated\":\"1724409509000\"}"
     }
   },
-  "snapshotId": "elitical-sync-1787401613943-d7bdcfd3fd1a",
-  "syncGenerationId": "elitical-sync-1787401613943-d7bdcfd3fd1a",
-  "syncGenerationSequence": 1787401613943,
+  "snapshotId": "elitical-sync-1788342792793-0a71072dd76d",
+  "syncGenerationId": "elitical-sync-1788342792793-0a71072dd76d",
+  "syncGenerationSequence": 1788342792793,
   "snapshot": {
     "schemaVersion": 1,
-    "snapshotId": "elitical-sync-1787401613943-d7bdcfd3fd1a",
-    "syncGenerationId": "elitical-sync-1787401613943-d7bdcfd3fd1a",
-    "syncGenerationSequence": 1787401613943,
-    "syncedAt": "2026-08-22T12:26:53.943Z",
-    "createdAt": "2026-08-22T12:26:56.263Z",
-    "graphHash": "808ee2702e153e469b5f58879b6ccdd762008a2d72bb8a4343924d610522aad5",
-    "worklogsHash": "d5d2583a676b8d6bdcd6ab704bc88b2c3810ae3324194d4987444bf37bff20b5",
-    "nodeCount": 747,
-    "worklogCount": 723,
+    "snapshotId": "elitical-sync-1788342792793-0a71072dd76d",
+    "syncGenerationId": "elitical-sync-1788342792793-0a71072dd76d",
+    "syncGenerationSequence": 1788342792793,
+    "syncedAt": "2026-09-02T09:53:12.793Z",
+    "createdAt": "2026-09-02T09:53:13.641Z",
+    "graphHash": "e3269f0c39bc29cc0064fb817404e1bb1dfeb51d74e88bed7c067046923b3fa3",
+    "worklogsHash": "5630102093e1417ba8f138aefa0cd244ba75185e3cfb87bcc489f4f4151287f8",
+    "nodeCount": 756,
+    "worklogCount": 734,
     "employee": {
       "id": "97a233c1-0999-4c56-9164-6e3ab2edde57",
       "employeeId": "97a233c1-0999-4c56-9164-6e3ab2edde57",
