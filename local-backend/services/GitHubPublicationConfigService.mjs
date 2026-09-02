@@ -276,8 +276,12 @@ export async function provisionGithubPublicationConfig({
   targetEnvPath = getStoragePaths().githubPublicationEnvPath,
   env = process.env,
 } = {}) {
+  const sourceRaw = await fs.readFile(sourceEnvPath, "utf8").catch((error) => {
+    if (error?.code === "ENOENT") return "";
+    throw error;
+  });
   const sourceValues = {
-    ...parseEnvContent(await fs.readFile(sourceEnvPath, "utf8")),
+    ...parseEnvContent(sourceRaw),
     ...pickPublicationEnv(env),
   };
   const existingRaw = await fs.readFile(targetEnvPath, "utf8").catch((error) => {
