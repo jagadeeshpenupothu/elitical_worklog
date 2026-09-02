@@ -93,7 +93,7 @@ export function addRetainedCreationContext({
   });
 }
 
-export function retainedNodeIdsForContext({
+export function retainedRecordsForContext({
   state,
   viewMode,
   contextId,
@@ -103,13 +103,21 @@ export function retainedNodeIdsForContext({
 
   if (!normalizedViewMode || !normalizedContextId) return [];
 
-  return normalizeRetainedCreationContextState(state).contexts
-    .filter(
-      (context) =>
-        context.viewMode === normalizedViewMode &&
-        context.contextId === normalizedContextId
-    )
-    .map((context) => context.nodeId);
+  return normalizeRetainedCreationContextState(state).contexts.filter(
+    (context) =>
+      context.viewMode === normalizedViewMode &&
+      context.contextId === normalizedContextId
+  );
+}
+
+export function retainedNodeIdsForContext({
+  state,
+  viewMode,
+  contextId,
+}) {
+  return retainedRecordsForContext({ state, viewMode, contextId }).map(
+    (context) => context.nodeId
+  );
 }
 
 export function removeRetainedCreationContexts(state, nodeIds = []) {

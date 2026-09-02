@@ -3,6 +3,7 @@ import { CacheService } from "./services/CacheService.mjs";
 import { LogBufferService } from "./services/LogBufferService.mjs";
 import { LocalDataService } from "./services/LocalDataService.mjs";
 import { LocalEventService } from "./services/LocalEventService.mjs";
+import { LocalStateService } from "./services/LocalStateService.mjs";
 import { LocalSyncQueueService } from "./services/LocalSyncQueueService.mjs";
 import { initializeStorage } from "./services/StoragePathService.mjs";
 import { SyncService, createEliticalSyncProvider } from "./services/SyncService.mjs";
@@ -46,9 +47,15 @@ const storageInitialization = await initializeStorage();
 const cacheService = new CacheService();
 const worklogService = new WorklogService();
 const syncQueueService = new LocalSyncQueueService();
+const localStateService = new LocalStateService();
 const events = new LocalEventService();
 const logBuffer = new LogBufferService({ limit: 1000 });
-const localData = new LocalDataService({ cacheService, worklogService, syncQueueService });
+const localData = new LocalDataService({
+  cacheService,
+  worklogService,
+  syncQueueService,
+  localStateService,
+});
 const syncService = new SyncService({ localData, events });
 const ROOT_ID = "storyRoot";
 const ORPHAN_SPRINT_ID = "virtual-orphan-sprint";
@@ -779,7 +786,12 @@ function buildCreatedDocketRecords({ graph, issue, payload }) {
     graph.projects?.[0]?.id,
     graph.targetProject?.id
   );
-  const sprintId = firstString(issue?.sprintId, payload.sprintId);
+  const sprintId = firstString(
+    issue?.sprintId,
+    payload.sprintId,
+    type === "epic" ? "" : parent?.elitical?.sprintId,
+    type === "epic" ? "" : parent?.sprintId
+  );
   const parentId = type === "epic" ? ROOT_ID : firstString(payload.parentId, issue?.parentId);
   const parentEpicId =
     type === "epic"
@@ -937,7 +949,7 @@ async function saveLocalGraph(nextGraph, { status = "updated" } = {}) {
 }
 
 async function createLocalDocket(payload) {
-  const graph = await cacheService.loadGraph();
+  const graph = await localStateService.applyGraph(await cacheService.loadGraph());
 
   if (!graph?.appState?.workItems) {
     const error = new Error("No local graph cache is available.");
@@ -988,17 +1000,24 @@ async function createLocalDocket(payload) {
       id: localId,
     },
   });
-	  const sync = {
-	    status: "pending-create",
-	    remoteId: "",
-	    localId,
-	    pendingChanges: {
-	      ...createPayload,
-	      title: records.appItem.title,
-	      description: records.appItem.description || "",
-	      descr: records.appItem.description || "",
-	    },
-	  };
+  const canonicalCreatePayload = {
+    ...createPayload,
+    projectId: records.appItem.elitical?.projectId || createPayload.projectId,
+    sprintId: records.appItem.elitical?.sprintId || createPayload.sprintId || "",
+    sprintName: records.rawRecord.sprint || createPayload.sprintName,
+    sprint: records.appItem.sprint || createPayload.sprint || "",
+  };
+  const sync = {
+    status: "pending-create",
+    remoteId: "",
+    localId,
+    pendingChanges: {
+      ...canonicalCreatePayload,
+      title: records.appItem.title,
+      description: records.appItem.description || "",
+      descr: records.appItem.description || "",
+    },
+  };
   const appItem = withSyncMetadata(records.appItem, sync);
   const rawRecord = withSyncMetadata(records.rawRecord, sync);
   const localWorklog = meaningfulWorklog
@@ -1045,14 +1064,19 @@ async function createLocalDocket(payload) {
     },
   };
 
-	  await syncQueueService.enqueueCreate({
-	    item: appItem,
-	    payload: {
-	      ...createPayload,
-	      worklog: undefined,
-	      id: localId,
-	    },
-	  });
+  await syncQueueService.enqueueCreate({
+    item: appItem,
+    payload: {
+      ...canonicalCreatePayload,
+      worklog: undefined,
+      id: localId,
+    },
+  });
+  await localStateService.upsertDocket({
+    item: appItem,
+    rawRecord,
+    type: records.type,
+  });
 
   if (localWorklog) {
     await syncQueueService.enqueueWorklogCreate({
@@ -1468,7 +1492,7 @@ async function queueLocalWorklogSave(graph, docketId, item, worklogInput) {
 }
 
 async function updateLocalDocket(docketId, updates) {
-  let graph = await cacheService.loadGraph();
+  let graph = await localStateService.applyGraph(await cacheService.loadGraph());
 
   if (!graph?.appState?.workItems) {
     const error = new Error("No local graph cache is available.");
@@ -1578,6 +1602,17 @@ async function updateLocalDocket(docketId, updates) {
   itemCollections(nextGraph).forEach(([key, items]) => {
     nextGraph[key] = items.map(updateRaw);
   });
+  if (syncQueueService.isLocalId(docketId)) {
+    const rawRecord = itemCollections(nextGraph)
+      .flatMap(([, items]) => items)
+      .find((entry) => entry?.id === docketId);
+
+    await localStateService.upsertDocket({
+      item: nextItem,
+      rawRecord: rawRecord || nextItem,
+      type: nextItem.type,
+    });
+  }
 
   const saved = await saveLocalGraph(nextGraph, { status: "local-updated" });
 
@@ -1983,7 +2018,7 @@ async function syncPendingToElitical() {
     };
   }
 
-  let graph = await cacheService.loadGraph();
+  let graph = await localStateService.applyGraph(await cacheService.loadGraph());
 
   if (!graph?.appState?.workItems) {
     const error = new Error("No local graph cache is available.");
@@ -2110,6 +2145,7 @@ async function syncPendingToElitical() {
           localId: operation.localId,
           remoteId,
         });
+        await localStateService.removeDocket(operation.localId);
         successes.push(operation);
         reconciliations.push({
           operationId: operation.operationId,
@@ -2400,7 +2436,10 @@ async function syncPendingToElitical() {
       unit: "operations",
     });
     const finalQueue = await syncQueueService.load();
-    const normalized = syncQueueService.applyPendingToGraph(saved.graph, finalQueue);
+    const normalized = syncQueueService.applyPendingToGraph(
+      await localStateService.applyGraph(saved.graph),
+      finalQueue
+    );
     const queueSummary = await syncQueueService.summary();
     const unconfirmed = failures.filter((failure) => failure.acceptedMutation && failure.retryMutation === false);
     const hardFailures = failures.filter((failure) => !failure.acceptedMutation);

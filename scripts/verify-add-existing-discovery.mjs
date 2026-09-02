@@ -25,10 +25,10 @@ const sprintEpic = {
     num: "DKT-100",
   },
 };
-const officeWorks = {
-  id: "epic-office-works",
+const crossSprintEpic = {
+  id: "epic-cross-sprint",
   type: "epic",
-  title: "Office Works",
+  title: "Reusable Cross Sprint Epic",
   sprintId: "sprint-b",
   elitical: {
     sprintId: "sprint-b",
@@ -46,10 +46,10 @@ const orphanEpic = {
   },
 };
 const referenceEpic = {
-  id: "reference-epic-office-works-sprint-a",
-  sourceItemId: officeWorks.id,
+  id: "reference-epic-cross-sprint-sprint-a",
+  sourceItemId: crossSprintEpic.id,
   type: "epic",
-  title: "Office Works Reference",
+  title: "Reusable Cross Sprint Epic Reference",
   isReference: true,
   isGhost: true,
 };
@@ -73,7 +73,7 @@ const otherStory = {
 };
 const workItems = [
   sprintEpic,
-  officeWorks,
+  crossSprintEpic,
   orphanEpic,
   referenceEpic,
   destinationStory,
@@ -91,6 +91,7 @@ const workItems = [
     parentId: "story-current-epic",
   },
 ];
+const selectedDay = "2026-07-03";
 
 const namedSprintRequest = {
   type: "epic",
@@ -107,7 +108,7 @@ const namedSprintEpicIds = ids(
 
 assert.deepEqual(
   namedSprintEpicIds,
-  ["epic-orphan", "epic-office-works"],
+  ["epic-orphan", "epic-cross-sprint"],
   "named sprint discovery includes epics from other sprints and orphan scope, but not duplicates already in the destination"
 );
 
@@ -115,9 +116,9 @@ assert.deepEqual(
   ids(discoverAddExistingItems({
     workItems,
     request: namedSprintRequest,
-    query: "office",
+    query: "cross",
   })),
-  ["epic-office-works"],
+  ["epic-cross-sprint"],
   "title search runs after global Epic discovery"
 );
 
@@ -127,7 +128,7 @@ assert.deepEqual(
     request: namedSprintRequest,
     query: "DKT-222",
   })),
-  ["epic-office-works"],
+  ["epic-cross-sprint"],
   "docket ID search runs after global Epic discovery"
 );
 
@@ -148,9 +149,9 @@ assert.deepEqual(
   ids(discoverAddExistingItems({
     workItems,
     request: orphanSprintRequest,
-    query: "office",
+    query: "cross",
   })),
-  ["epic-office-works"],
+  ["epic-cross-sprint"],
   "Orphan Sprint discovery can find an Epic from a named sprint"
 );
 
@@ -173,12 +174,12 @@ assert.deepEqual(
 
 const dayState = addDayProjectionSelection({
   state: { version: 1, days: {} },
-  selectedDate: "2026-08-20",
+  selectedDate: selectedDay,
   kind: "epic",
   sprintId: "sprint-a",
   childId: sprintEpic.id,
 });
-const daySelection = daySelectionForDate(dayState, "2026-08-20");
+const daySelection = daySelectionForDate(dayState, selectedDay);
 const dayRequest = {
   ...namedSprintRequest,
   mode: "day",
@@ -191,27 +192,27 @@ assert.deepEqual(
     daySelection,
     scopeId: "sprint-a",
   })),
-  ["epic-orphan", "epic-office-works"],
+  ["epic-orphan", "epic-cross-sprint"],
   "Day View discovery is global and only excludes items already projected into the destination"
 );
 
 const nextDayState = addDayProjectionSelection({
   state: dayState,
-  selectedDate: "2026-08-20",
+  selectedDate: selectedDay,
   kind: "epic",
   sprintId: "sprint-a",
-  childId: officeWorks.id,
+  childId: crossSprintEpic.id,
 });
 
 assert.deepEqual(
-  daySelectionForDate(nextDayState, "2026-08-20").epicsBySprint["sprint-a"],
-  [sprintEpic.id, officeWorks.id],
+  daySelectionForDate(nextDayState, selectedDay).epicsBySprint["sprint-a"],
+  [sprintEpic.id, crossSprintEpic.id],
   "Day View selection still attaches the canonical item id to the destination sprint projection"
 );
 
 assert.equal(
-  officeWorks.id,
-  "epic-office-works",
+  crossSprintEpic.id,
+  "epic-cross-sprint",
   "Add Existing discovery preserves canonical identity"
 );
 

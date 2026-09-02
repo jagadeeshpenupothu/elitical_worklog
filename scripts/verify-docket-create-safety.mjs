@@ -124,7 +124,7 @@ assert.match(appSource, /normalizeEliticalDescription\(payload\.description\)/);
 assert.match(serverSource, /function normalizeDocketCreatePayload/);
 assert.match(serverSource, /const createPayload = normalizeDocketCreatePayload\(payload\)/);
 assert.match(serverSource, /validateDocketOperation\(\{[\s\S]*\.\.\.createPayload/);
-assert.match(serverSource, /enqueueCreate\(\{[\s\S]*\.\.\.createPayload/);
+assert.match(serverSource, /enqueueCreate\(\{[\s\S]*\.\.\.canonicalCreatePayload/);
 assert.match(serverSource, /function resolveDocketCreateStateFields/);
 assert.match(serverSource, /docketStateApiId\(docketState\)/);
 assert.match(clientSource, /normalizeEliticalDescription\(/);

@@ -1,10 +1,11 @@
 import { buildFinalizedSnapshot } from "./SynchronizedSnapshotService.mjs";
 
 export class LocalDataService {
-  constructor({ cacheService, worklogService, syncQueueService } = {}) {
+  constructor({ cacheService, worklogService, syncQueueService, localStateService } = {}) {
     this.cacheService = cacheService;
     this.worklogService = worklogService;
     this.syncQueueService = syncQueueService;
+    this.localStateService = localStateService;
   }
 
   async exists() {
@@ -16,10 +17,14 @@ export class LocalDataService {
 
     if (!graph) return null;
 
+    const localState = this.localStateService ? await this.localStateService.load() : null;
+    const graphWithLocalState = localState
+      ? this.localStateService.applyToGraph(graph, localState)
+      : graph;
     const queue = this.syncQueueService ? await this.syncQueueService.load() : null;
     const normalized = queue
-      ? this.syncQueueService.applyPendingToGraph(graph, queue)
-      : graph;
+      ? this.syncQueueService.applyPendingToGraph(graphWithLocalState, queue)
+      : graphWithLocalState;
 
     return {
       status: "hit",
@@ -55,9 +60,12 @@ export class LocalDataService {
   }
 
   async saveImportedData({ graph, worklogs, syncedAt, syncIndex } = {}) {
-    const graphWithPending = this.syncQueueService
-      ? await this.syncQueueService.applyPendingGraph(graph)
+    const graphWithLocalState = this.localStateService
+      ? await this.localStateService.applyGraph(graph)
       : graph;
+    const graphWithPending = this.syncQueueService
+      ? await this.syncQueueService.applyPendingGraph(graphWithLocalState)
+      : graphWithLocalState;
     const finalized = buildFinalizedSnapshot({
       graph: graphWithPending,
       worklogs,
@@ -129,5 +137,6 @@ export class LocalDataService {
   async clear() {
     await this.cacheService.clear();
     await this.worklogService.clearImportedWorklogs();
+    if (this.localStateService) await this.localStateService.clear();
   }
 }

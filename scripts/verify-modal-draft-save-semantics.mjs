@@ -24,6 +24,16 @@ assert.match(modalSource, /commitInFlightRef\.current = false/);
 
 assert.match(modalSource, /function discardAndClose/);
 assert.match(modalSource, /editedDraftFieldsRef\.current\.clear\(\)/);
+assert.match(
+  modalSource,
+  /if \(modal\.kind === "create"\) \{[\s\S]*onClose\(\);[\s\S]*return;[\s\S]*\}[\s\S]*setDraft\(/,
+  "create-modal dismissal closes before rebuilding an edit draft"
+);
+assert.doesNotMatch(
+  modalSource.match(/if \(modal\.kind === "create"\) \{[\s\S]*?return;[\s\S]*?\}/)?.[0] || "",
+  /makeEditDraft/,
+  "create-modal dismissal must not call makeEditDraft without an active item"
+);
 assert.match(modalSource, /onClose\(\)/);
 assert.match(modalSource, /function handleBackdropMouseDown\(event\)/);
 assert.match(modalSource, /event\.target !== event\.currentTarget/);

@@ -1,4 +1,7 @@
-import { projectionScopeIdForItem } from "./hierarchyProjection.js";
+import {
+  hierarchyScopeIdForItem,
+  projectionScopeIdForItem,
+} from "./hierarchyProjection.js";
 import { ROOT_ID } from "./worklogModel.js";
 import {
   CANONICAL_DOCKET_STATES,
@@ -88,7 +91,7 @@ function itemDates(item = {}) {
 }
 
 function itemSprintId(item = {}) {
-  return projectionScopeIdForItem(item);
+  return projectionScopeIdForItem(item, hierarchyScopeIdForItem);
 }
 
 function sprintLabelById(sprints = []) {

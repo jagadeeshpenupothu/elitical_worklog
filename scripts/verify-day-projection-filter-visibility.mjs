@@ -139,6 +139,64 @@ assert.deepEqual(
 );
 assert.equal(orphanEpic.sprintId, "", "Orphan projection does not fabricate a canonical sprintId");
 
+const canonicalSprintId = "canonical-sprint";
+const projectedAcrossSprintEpic = {
+  id: "epic-cross-sprint",
+  type: "epic",
+  title: "Cross Sprint Epic",
+  parentId: ROOT_ID,
+  sprintId: "",
+  sprint: "Orphan Sprint",
+  targetScopeId: ORPHAN_SPRINT_ID,
+  targetSprintId: ORPHAN_SPRINT_ID,
+  visualParentId: ORPHAN_SPRINT_ID,
+  childSprintId: "",
+  dayContextDate: selectedDate,
+  isDayProjectionSelected: true,
+  elitical: {
+    num: "SYN-999",
+    sprintId: canonicalSprintId,
+  },
+};
+
+assert.deepEqual(
+  visibleIds([projectedAcrossSprintEpic], {
+    date: selectedDate,
+    sprint: ORPHAN_SPRINT_ID,
+  }),
+  [projectedAcrossSprintEpic.id],
+  "Day-projected Epic with a different canonical Sprint remains visible under the Day target Sprint filter"
+);
+assert.deepEqual(
+  visibleIds([projectedAcrossSprintEpic], {
+    date: selectedDate,
+    sprint: canonicalSprintId,
+  }),
+  [],
+  "Day-projected Epic no longer filters as its canonical Sprint while in Day projection"
+);
+
+const normalCrossSprintEpic = {
+  ...projectedAcrossSprintEpic,
+  sprint: "Canonical Sprint",
+  targetScopeId: "",
+  targetSprintId: "",
+  visualParentId: "",
+  dayContextDate: "",
+  isDayProjectionSelected: false,
+};
+
+assert.deepEqual(
+  visibleIds([normalCrossSprintEpic], { sprint: canonicalSprintId }),
+  [normalCrossSprintEpic.id],
+  "normal global Epic still filters by canonical elitical.sprintId"
+);
+assert.deepEqual(
+  visibleIds([normalCrossSprintEpic], { sprint: ORPHAN_SPRINT_ID }),
+  [],
+  "normal global Epic does not use stale Day target scope without Day projection metadata"
+);
+
 const projectedHierarchy = buildProjectedHierarchy({
   items: [projectedEpic],
   allItems: [existingEpic],

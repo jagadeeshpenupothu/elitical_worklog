@@ -114,6 +114,14 @@ export function normalizeDocketState(value, fallback = "concept") {
   return normalizedFallback || (CANONICAL_DOCKET_STATES.includes(fallback) ? fallback : "concept");
 }
 
+export function childDocketStateForCreate(parentState, fallback = "concept") {
+  const normalized = normalizeDocketState(parentState, fallback);
+
+  return ["artifact", "closed"].includes(normalized)
+    ? normalizeDocketState(fallback)
+    : normalized;
+}
+
 export function isCanonicalDocketState(value) {
   return CANONICAL_DOCKET_STATES.includes(value);
 }

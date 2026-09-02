@@ -12,6 +12,13 @@ const MUTATION_ACTIONABLE_STATUSES = new Set(["pending-create", "pending-update"
 const COMPLETED_STATUSES = new Set(["synced", "completed", "superseded"]);
 const LOCAL_DOCKET_PREFIX = "local-docket-";
 const LOCAL_WORKLOG_PREFIX = "local-worklog-";
+const ROOT_ID = "storyRoot";
+const DOCKET_COLLECTION_BY_TYPE = {
+  epic: "epics",
+  story: "stories",
+  task: "tasks",
+  job: "jobs",
+};
 const ACTIONABILITY = {
   MUTATION_ACTIONABLE: "mutation-actionable",
   RECONCILIATION_ACTIONABLE: "reconciliation-actionable",
@@ -497,6 +504,85 @@ function mergePendingIntoItem(item, operation) {
   }
 
   return next;
+}
+
+function itemFromPendingCreate(operation) {
+  if (
+    operation?.entityType !== "docket" ||
+    operation?.operation !== "create" ||
+    !operation.localId
+  ) {
+    return null;
+  }
+
+  const payload = operation.payload || {};
+  const type = normalizeDocketType(operation.docketType || payload.type);
+
+  if (!type) return null;
+
+  const id = firstString(payload.id, operation.localId);
+  const description = firstString(payload.description, payload.descr);
+  const sprintId = firstString(payload.sprintId);
+  const epicId = type === "epic" ? "" : firstString(payload.epicId, payload.parentId);
+  const storyId = type === "story"
+    ? id
+    : type === "job"
+    ? firstString(payload.storyId, payload.parentId)
+    : firstString(payload.storyId);
+  const docketState = normalizeDocketState(
+    firstString(payload.docketState, payload.dktStateName, payload.stateName, "concept")
+  );
+
+  return {
+    id,
+    sourceId: id,
+    title: firstString(payload.title, id),
+    description,
+    descr: description,
+    category: firstString(payload.category, "feature"),
+    priority: firstString(payload.priority, "info"),
+    sprint: firstString(payload.sprint, payload.sprintName),
+    sprintId,
+    projectId: firstString(payload.projectId),
+    docketState,
+    dktStateId: firstString(payload.dktStateId, payload.stateId),
+    dktStateName: firstString(payload.dktStateName, payload.stateName, docketStateApiName(docketState)),
+    assignee: firstString(payload.assignee, payload.assigneeName),
+    createdBy: firstString(payload.createdBy),
+    createdAt: firstString(payload.createdAt, operation.createdAt),
+    updatedBy: firstString(payload.updatedBy),
+    updatedAt: firstString(payload.updatedAt, operation.updatedAt, operation.createdAt),
+    elitical: {
+      num: firstString(payload.num, payload.docketNumber),
+      projectId: firstString(payload.projectId),
+      sprintId,
+      epicId,
+      storyId,
+      stateId: firstString(payload.dktStateId, payload.stateId),
+      assigneeId: firstString(payload.assigneeId),
+      reporterId: firstString(payload.reporterId),
+      remoteId: firstString(operation.remoteId),
+    },
+    type,
+    parentId: type === "epic" ? ROOT_ID : firstString(payload.parentId),
+    ...(type === "story"
+      ? { storyPoints: normalizedNumber(payload.storyPoints ?? payload.storyPointEst) }
+      : {}),
+    ...(["task", "job"].includes(type) ? { worklogs: [] } : {}),
+    sync: {
+      status: operation.status,
+      remoteId: firstString(operation.remoteId),
+      localId: operation.localId,
+      operationId: operation.operationId,
+      lastError: firstString(operation.lastError),
+      pendingChanges: {
+        ...payload,
+        id,
+        type,
+      },
+      remoteBaseline: operation.remoteBaseline || null,
+    },
+  };
 }
 
 function worklogFromOperation(operation, existing = null) {
@@ -1145,10 +1231,11 @@ export class LocalSyncQueueService {
   }
 
   applyPendingToGraph(graph, queue) {
+    const docketOperations = actionableOperations(queue).filter(
+      (operation) => operation.entityType === "docket"
+    );
     const pendingByLocalId = new Map(
-      actionableOperations(queue)
-        .filter((operation) => operation.entityType === "docket")
-        .map((operation) => [operation.localId, operation])
+      docketOperations.map((operation) => [operation.localId, operation])
     );
     const pendingWorklogsByDocket = new Map();
 
@@ -1173,9 +1260,32 @@ export class LocalSyncQueueService {
         workItems: (graph.appState?.workItems || []).map(overlay),
       },
     };
+    const knownItemIds = new Set(
+      (nextGraph.appState.workItems || []).map((item) => item?.id).filter(Boolean)
+    );
+    const missingPendingCreates = docketOperations
+      .filter((operation) => operation.operation === "create" && !knownItemIds.has(operation.localId))
+      .map(itemFromPendingCreate)
+      .filter(Boolean);
+
+    missingPendingCreates.forEach((item) => {
+      knownItemIds.add(item.id);
+    });
+    nextGraph.appState.workItems = [
+      ...(nextGraph.appState.workItems || []),
+      ...missingPendingCreates,
+    ];
 
     itemCollections(graph).forEach(([key, items]) => {
-      nextGraph[key] = items.map(overlay);
+      const collectionIds = new Set(items.map((item) => item?.id).filter(Boolean));
+      const collectionCreates = missingPendingCreates.filter(
+        (item) => DOCKET_COLLECTION_BY_TYPE[item.type] === key && !collectionIds.has(item.id)
+      );
+
+      nextGraph[key] = [
+        ...items.map(overlay),
+        ...collectionCreates,
+      ];
     });
 
     return nextGraph;

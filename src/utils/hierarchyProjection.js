@@ -8,6 +8,15 @@ export function sprintScopeIdForItem(item) {
   return item?.elitical?.sprintId || item?.sprintId || "";
 }
 
+export function dayProjectionScopeIdForItem(item) {
+  if (!item?.isDayProjectionSelected && !item?.isRetainedDayContext && !item?.dayContextDate) return "";
+  return item?.targetScopeId || item?.targetSprintId || item?.sprintId || "";
+}
+
+export function hierarchyScopeIdForItem(item) {
+  return dayProjectionScopeIdForItem(item) || sprintScopeIdForItem(item);
+}
+
 export function isOrphanSprintId(id) {
   return id === ORPHAN_SPRINT_ID;
 }
@@ -103,7 +112,9 @@ export function buildProjectedHierarchy({
   rootId = ROOT_ID,
   enabled = true,
   includeMissingAncestors = true,
-  scopeIdForItem = sprintScopeIdForItem,
+  missingAncestorLimit = Infinity,
+  skipRootMissingAncestors = false,
+  scopeIdForItem = hierarchyScopeIdForItem,
 } = {}) {
   if (!enabled) {
     return {
@@ -124,6 +135,9 @@ export function buildProjectedHierarchy({
   const visibleIds = new Set(items.map((item) => item.id));
   const projectedById = new Map(items.map((item) => [item.id, item]));
   const referencesById = new Map();
+  const ancestorLimit = Number.isFinite(missingAncestorLimit)
+    ? Math.max(0, missingAncestorLimit)
+    : Infinity;
 
   function ensureReference(source, scopeId, parentId) {
     const sourceId = canonicalItemId(source);
@@ -199,18 +213,37 @@ export function buildProjectedHierarchy({
     let projectedParentId = rootId;
     let nearestVisibleOrReferenceParentId = item.parentId;
 
-    chain.forEach((ancestor) => {
+    chain.forEach((ancestor, index) => {
       const ancestorScopeId = projectionScopeIdForItem(ancestor, scopeIdForItem);
       const isVisibleAncestor = visibleIds.has(ancestor.id);
+      const ancestorDistanceFromItem = chain.length - index;
+      const isRootMissingAncestor =
+        !isVisibleAncestor && (ancestor.parentId || rootId) === rootId;
+      const canIncludeMissingAncestor =
+        (ancestorLimit === Infinity || ancestorDistanceFromItem <= ancestorLimit) &&
+        !(skipRootMissingAncestors && isRootMissingAncestor);
       const needsScopeReference =
-        hasKnownScope && ancestorScopeId !== itemScopeId;
+        hasKnownScope &&
+        ancestorScopeId !== itemScopeId &&
+        (isVisibleAncestor || canIncludeMissingAncestor);
       const needsMissingAncestorReference =
-        includeMissingAncestors && !isVisibleAncestor;
+        includeMissingAncestors && !isVisibleAncestor && canIncludeMissingAncestor;
 
       if (needsScopeReference || needsMissingAncestorReference) {
         const reference = ensureReference(ancestor, itemScopeId, projectedParentId);
         projectedParentId = reference.id;
         nearestVisibleOrReferenceParentId = reference.id;
+        return;
+      }
+
+      if (!isVisibleAncestor) {
+        if (
+          !nearestVisibleOrReferenceParentId ||
+          nearestVisibleOrReferenceParentId === ancestor.id ||
+          !visibleIds.has(nearestVisibleOrReferenceParentId)
+        ) {
+          nearestVisibleOrReferenceParentId = projectedParentId;
+        }
         return;
       }
 
@@ -226,7 +259,10 @@ export function buildProjectedHierarchy({
         ...item,
         ...scopedItemFields,
         parentId: nearestVisibleOrReferenceParentId,
-        visualParentId: nearestVisibleOrReferenceParentId,
+        visualParentId:
+          nearestVisibleOrReferenceParentId === rootId && hasKnownScope
+            ? itemScopeId
+            : nearestVisibleOrReferenceParentId,
         canonicalParentId: item.parentId,
       });
     }

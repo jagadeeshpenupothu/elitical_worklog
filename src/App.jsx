@@ -108,6 +108,7 @@ import {
 import { formatWorkDuration } from "./utils/durationFormat";
 import {
   DOCKET_STATE_OPTIONS,
+  childDocketStateForCreate,
   docketStateApiId,
   docketStateApiName,
   docketStateLabel,
@@ -131,7 +132,7 @@ import {
   clearRetainedCreationContexts,
   loadRetainedCreationContextState,
   removeRetainedCreationContexts,
-  retainedNodeIdsForContext,
+  retainedRecordsForContext,
   saveRetainedCreationContextState,
 } from "./utils/retainedCreationContext";
 import {
@@ -1043,6 +1044,12 @@ function inheritedDocketState(parentId, workItems, rootDocketState) {
   return normalizeDocketState(parent?.docketState || rootDocketState);
 }
 
+function inheritedCreateDocketState(parentId, workItems, rootDocketState) {
+  return childDocketStateForCreate(
+    inheritedDocketState(parentId, workItems, rootDocketState)
+  );
+}
+
 function openChildNames(parentId, workItems) {
   return workItems
     .filter(
@@ -1506,11 +1513,29 @@ function buildContextGraph({
     const dateSprints = sprintScopesForDay(sprints, selectedDate);
     const dateSprintIds = new Set(dateSprints.map((sprint) => sprint.id));
     const daySelection = daySelectionForDate(dayProjectionSelections, selectedDate);
-    const retainedIds = retainedNodeIdsForContext({
+    const worklogSprintIds = new Set();
+    const retainedRecords = retainedRecordsForContext({
       state: retainedCreationContexts,
       viewMode: "day",
       contextId: selectedDate,
     });
+
+    if (typeof console !== "undefined") {
+      console.log("[DAY-TRACE:SCOPE]", {
+        selectedDate: selectedId,
+        dateKey: selectedDate,
+        dateSprintIds: Array.from(dateSprintIds),
+        dateSprintTitles: dateSprints.map((sprint) => sprint.title || sprint.name || sprint.id),
+        isOrphanDay: dateSprints.length === 1 && isOrphanSprintId(dateSprints[0]?.id),
+      });
+      console.log("[DAY-TRACE:PROJECTION-READ]", {
+        selectedDate,
+        dateSprintIds: Array.from(dateSprintIds),
+        daySelection,
+        epicsBySprintKeys: Object.keys(daySelection.epicsBySprint || {}),
+        storiesByEpicScopeKeys: Object.keys(daySelection.storiesByEpicScope || {}),
+      });
+    }
 
     dateSprints.forEach((sprint) => selectedSprintIds.add(sprint.id));
     if (dateSprints.length > 1 && typeof console !== "undefined") {
@@ -1537,15 +1562,68 @@ function buildContextGraph({
       dayAggregates.set(item.id, aggregate);
 
       const sprintId = displaySprintIdForItem(item);
-      if (sprintById.has(sprintId)) selectedSprintIds.add(sprintId);
+      if (sprintById.has(sprintId)) {
+        selectedSprintIds.add(sprintId);
+        worklogSprintIds.add(sprintId);
+      }
+      if (typeof console !== "undefined") {
+        console.log("[DAY-TRACE:WORKLOG]", {
+          itemId: item.id,
+          docket: item.elitical?.num || item.docketNumber || item.num || "",
+          title: item.title || "",
+          type: item.type || "",
+          worklogDate: selectedDate,
+          canonicalSprintId: item.elitical?.sprintId || item.sprintId || "",
+          displaySprint: item.sprint || "",
+          parentId: item.parentId || "",
+          automaticallyIncluded: true,
+        });
+      }
     });
 
+    if (typeof console !== "undefined") {
+      console.log("[DAY-TRACE:SPRINTS]", {
+        dateSprintIds: Array.from(dateSprintIds),
+        selectedSprintIds: Array.from(selectedSprintIds),
+        selectedSprintTitles: Array.from(selectedSprintIds).map(
+          (id) => sprintById.get(id)?.title || sprintById.get(id)?.name || id
+        ),
+        fromDateScope: Array.from(dateSprintIds),
+        fromAutomaticWorklogs: Array.from(worklogSprintIds),
+        canonicalSprintIdsNotInDateScope: Array.from(worklogSprintIds).filter(
+          (id) => !dateSprintIds.has(id)
+        ),
+      });
+    }
+
     Object.entries(daySelection.epicsBySprint || {}).forEach(([sprintId, ids]) => {
-      if (!dateSprintIds.has(sprintId)) return;
+      if (!dateSprintIds.has(sprintId)) {
+        ids.forEach((id) => {
+          const item = itemById.get(id);
+          if (typeof console !== "undefined") {
+            console.log("[DAY-TRACE:PROJECTION-REJECT]", {
+              itemId: id,
+              itemType: item?.type || "epic",
+              projectionScopeId: sprintId,
+              dateSprintIds: Array.from(dateSprintIds),
+              reason: "projection scope is not in dateSprintIds",
+            });
+          }
+        });
+        return;
+      }
 
       ids.forEach((id) => {
         const item = itemById.get(id);
         if (item?.type !== "epic") return;
+        if (typeof console !== "undefined") {
+          console.log("[DAY-TRACE:PROJECTION-ACCEPT]", {
+            itemId: id,
+            itemType: item.type,
+            projectionScopeId: sprintId,
+            dateSprintIds: Array.from(dateSprintIds),
+          });
+        }
 
         selectedIds.add(item.id);
         selectedSprintIds.add(sprintId);
@@ -1563,12 +1641,34 @@ function buildContextGraph({
     Object.entries(daySelection.storiesByEpicScope || {}).forEach(([scopeKey, ids]) => {
       const [epicId, sprintId = ""] = scopeKey.split("::");
 
-      if (!dateSprintIds.has(sprintId)) return;
+      if (!dateSprintIds.has(sprintId)) {
+        ids.forEach((id) => {
+          const item = itemById.get(id);
+          if (typeof console !== "undefined") {
+            console.log("[DAY-TRACE:PROJECTION-REJECT]", {
+              itemId: id,
+              itemType: item?.type || "story",
+              projectionScopeId: sprintId,
+              dateSprintIds: Array.from(dateSprintIds),
+              reason: "projection scope is not in dateSprintIds",
+            });
+          }
+        });
+        return;
+      }
 
       ids.forEach((id) => {
         const item = itemById.get(id);
         if (item?.type !== "story") return;
         if (item.parentId !== epicId) return;
+        if (typeof console !== "undefined") {
+          console.log("[DAY-TRACE:PROJECTION-ACCEPT]", {
+            itemId: id,
+            itemType: item.type,
+            projectionScopeId: sprintId,
+            dateSprintIds: Array.from(dateSprintIds),
+          });
+        }
 
         selectedIds.add(item.id);
         selectedSprintIds.add(sprintId);
@@ -1583,20 +1683,23 @@ function buildContextGraph({
       });
     });
 
-    retainedIds.forEach((id) => {
-      const item = itemById.get(id);
+    retainedRecords.forEach((record) => {
+      const item = itemById.get(record.nodeId);
       if (!item || item.isVirtual || isReferenceNode(item)) return;
-      if (!["epic", "story", "job", "task"].includes(item.type)) return;
-
-      const sprintId = dayScopeIdForItem(item);
+      const sprintId = record.sprintId || dayScopeIdForItem(item);
       if (!dateSprintIds.has(sprintId)) return;
 
       selectedIds.add(item.id);
-      selectedSprintIds.add(sprintId);
       dayContextMembershipById.set(item.id, {
         date: selectedDate,
         source: "retained",
       });
+      if (record.parentId) {
+        dayProjectionContextById.set(item.id, {
+          sprintId,
+          parentId: record.parentId,
+        });
+      }
     });
   } else if (viewMode === "epic") {
     if (itemById.has(selectedId)) {
@@ -1619,7 +1722,10 @@ function buildContextGraph({
   }
 
   selectedIds.forEach((id) => {
-    const sprintId = displaySprintIdForItem(itemById.get(id));
+    const dayProjectionContext =
+      viewMode === "day" ? dayProjectionContextById.get(id) : null;
+    const sprintId =
+      dayProjectionContext?.sprintId || displaySprintIdForItem(itemById.get(id));
     if (sprintById.has(sprintId)) selectedSprintIds.add(sprintId);
   });
 
@@ -4807,12 +4913,12 @@ function WorkItemModal({
   const fallbackDocketState = modal.kind === "create" && modal.docketState
     ? normalizeDocketState(modal.docketState)
     : createSprintParent
-    ? normalizeDocketState(createSprintParent.docketState || rootDocketState)
+    ? childDocketStateForCreate(createSprintParent.docketState || rootDocketState)
     : isSprint
-    ? normalizeDocketState(rootDocketState)
+    ? childDocketStateForCreate(rootDocketState)
     : isMainRoot
     ? "concept"
-    : inheritedDocketState(sprintParentId, workItems, rootDocketState);
+    : inheritedCreateDocketState(sprintParentId, workItems, rootDocketState);
   const initialDraft =
     modal.kind === "create"
       ? makeCreateDraft(modal.type, fallbackSprint, fallbackDocketState)
@@ -5193,6 +5299,16 @@ function WorkItemModal({
 
   function discardAndClose() {
     editedDraftFieldsRef.current.clear();
+    if (modal.kind === "create") {
+      setError("");
+      setSaveState("idle");
+      setMode("edit");
+      setEditingField(null);
+      commitInFlightRef.current = false;
+      onClose();
+      return;
+    }
+
     setDraft(
       isMainRoot
         ? { title: mainTitle || "Genesis" }
@@ -7675,6 +7791,21 @@ function App() {
     graphWorkItems,
     viewMode,
   ]);
+  if (viewMode === "day" && typeof console !== "undefined") {
+    console.log("[DAY-TRACE:GRAPH-INPUT]", {
+      selectedDate: selectedContextOption?.id || "",
+      graphWorkItems: graphWorkItems.map((item) => ({
+        id: item.id,
+        docket: item.elitical?.num || item.docketNumber || item.num || "",
+        type: item.type || "",
+        sprintId: item.sprintId || "",
+        targetScopeId: item.targetScopeId || "",
+        targetSprintId: item.targetSprintId || "",
+        dayContextDate: item.dayContextDate || "",
+        isDayProjectionSelected: Boolean(item.isDayProjectionSelected),
+      })),
+    });
+  }
   const searchItems = useMemo(
     () =>
       searchItemsForCurrentView({
@@ -8618,16 +8749,38 @@ function App() {
       const createdId = result.item?.id || result.docket?.id || null;
 
       if (viewMode === "day" && createdId) {
+        const dayCreateDate =
+          selectedContextOption?.id || formatDateInput(new Date());
+        const dayCreateScopeId =
+          payload.sprintId || createPayload.sprintId || ORPHAN_SPRINT_ID;
+
         persistRetainedCreationContexts((current) =>
           addRetainedCreationContext({
             state: current,
             viewMode: "day",
-            contextId: selectedContextOption?.id || formatDateInput(new Date()),
+            contextId: dayCreateDate,
             nodeId: createdId,
             parentId,
-            sprintId: createPayload.sprintId || ORPHAN_SPRINT_ID,
+            sprintId: dayCreateScopeId,
           })
         );
+
+        if (type === "story" || type === "epic") {
+          const nextProjection = addDayProjectionSelection({
+            state: dayProjectionSelections,
+            selectedDate: dayCreateDate,
+            kind: type,
+            parentId,
+            sprintId: dayCreateScopeId,
+            childId: createdId,
+          });
+
+          setDayProjectionSelections(nextProjection);
+          saveDayProjectionState(
+            typeof window === "undefined" ? null : window.localStorage,
+            nextProjection
+          );
+        }
       }
 
       setSelectedId(createdId);
@@ -8653,6 +8806,7 @@ function App() {
     }
   }, [
     applyNormalizedGraphPayload,
+    dayProjectionSelections,
     persistRetainedCreationContexts,
     selectedContextOption,
     sprints,
@@ -8678,7 +8832,7 @@ function App() {
       : sprintParent
       ? sprintParent.title
       : options.sprint || inheritedSprint(actualParentId, currentWorkItems, rootTitle);
-    const fallbackDocketState = inheritedDocketState(
+    const fallbackDocketState = inheritedCreateDocketState(
       actualParentId,
       currentWorkItems,
       sprintParent?.docketState || rootDocketState
@@ -8703,12 +8857,37 @@ function App() {
   }, []);
 
   const handleAddExistingChild = useCallback((request) => {
+    const mode = viewMode === "day" ? "day" : "canonical";
+    const selectedDate = selectedContextOption?.id || formatDateInput(new Date());
+    const parentId = request.parentId || request.sourceItemId || "";
+    const sprintId = request.isOrphanSprint ? "" : request.sprintId || "";
+    const sourceItem = resolveCanonicalWorkItem(
+      request.sourceItemId || request.parentId,
+      workItemsRef.current
+    );
+
+    if (typeof console !== "undefined") {
+      console.log("[DAY-TRACE:ADD-OPEN]", {
+        selectedDate,
+        viewMode,
+        sourceItemId: request.sourceItemId || "",
+        sourceItemDocket: sourceItem?.elitical?.num || sourceItem?.docketNumber || sourceItem?.num || "",
+        sourceItemType: sourceItem?.type || "",
+        sourceItemTitle: sourceItem?.title || "",
+        parentId,
+        sprintId,
+        sprintTitle: request.sprint || "",
+        isOrphanSprint: Boolean(request.isOrphanSprint),
+        mode,
+      });
+    }
+
     setAddExistingChildRequest({
       ...request,
-      mode: viewMode === "day" ? "day" : "canonical",
-      selectedDate: selectedContextOption?.id || formatDateInput(new Date()),
-      sprintId: request.isOrphanSprint ? "" : request.sprintId || "",
-      parentId: request.parentId || request.sourceItemId || "",
+      mode,
+      selectedDate,
+      sprintId,
+      parentId,
     });
   }, [selectedContextOption, viewMode]);
 
@@ -8722,8 +8901,26 @@ function App() {
     const scopeId = addExistingChildRequest.isOrphanSprint
       ? ORPHAN_SPRINT_ID
       : addExistingChildRequest.sprintId || ORPHAN_SPRINT_ID;
+    const selectedChild = workItemsRef.current.find((item) => item.id === childId);
+
+    if (typeof console !== "undefined") {
+      console.log("[DAY-TRACE:ADD-SELECT]", {
+        selectedItemId: childId,
+        docket: selectedChild?.elitical?.num || selectedChild?.docketNumber || selectedChild?.num || "",
+        title: selectedChild?.title || "",
+        type: selectedChild?.type || "",
+        selectedDate,
+        currentAddExistingMode: addExistingChildRequest.mode,
+        sourceParentId: addExistingChildRequest.parentId || "",
+        sourceSprintId: addExistingChildRequest.sprintId || "",
+        sourceSprintTitle: addExistingChildRequest.sprint || "",
+        computedScopeId: scopeId,
+        isOrphanSprint: Boolean(addExistingChildRequest.isOrphanSprint),
+      });
+    }
 
     if (addExistingChildRequest.mode === "day") {
+      const beforeSelection = daySelectionForDate(dayProjectionSelections, selectedDate);
       const next = addDayProjectionSelection({
         state: dayProjectionSelections,
         selectedDate,
@@ -8732,6 +8929,19 @@ function App() {
         sprintId: scopeId,
         childId,
       });
+      const afterSelection = daySelectionForDate(next, selectedDate);
+
+      if (typeof console !== "undefined") {
+        console.log("[DAY-TRACE:PROJECTION-WRITE]", {
+          date: selectedDate,
+          selectedItemId: childId,
+          itemType: addExistingChildRequest.type,
+          scopeId,
+          targetSprintScope: scopeId,
+          projectionRecordBefore: beforeSelection,
+          projectionRecordAfter: afterSelection,
+        });
+      }
 
       setDayProjectionSelections(next);
       saveDayProjectionState(

@@ -19,7 +19,9 @@ import {
 } from "../utils/dagreLayout";
 import {
   buildProjectedHierarchy,
+  hierarchyScopeIdForItem,
   isReferenceNode,
+  isOrphanSprintId,
   isOrphanSprintScope,
 } from "../utils/hierarchyProjection";
 import { canCreateChildForNode } from "../utils/nodeCapabilities";
@@ -368,6 +370,43 @@ function visualParentIdForItem(item, includeMainRoot, sprints = []) {
   );
 
   return sprint?.id || ROOT_ID;
+}
+
+function sprintTitleForNodeScope(scopeId, item, sprints = []) {
+  if (!scopeId) return item.childSprint || item.sprint || "";
+  if (isOrphanSprintId(scopeId)) return item.childSprint || item.sprint || "";
+
+  return (
+    item.childSprint ||
+    sprints.find((sprint) => sprint.id === scopeId)?.title ||
+    sprints.find((sprint) => sprint.id === scopeId)?.name ||
+    item.sprint ||
+    ""
+  );
+}
+
+function childCreateContextForItem(item, sprints = []) {
+  const scopeId =
+    item.childSprintId ||
+    item.targetSprintId ||
+    item.targetScopeId ||
+    hierarchyScopeIdForItem(item);
+  const isOrphanScope =
+    item.isOrphanSprint ||
+    item.isOrphanSprintContext ||
+    isOrphanSprintId(scopeId);
+
+  return {
+    childParentId:
+      item.childParentId ||
+      item.sourceItemId ||
+      item.sourceDocketId ||
+      item.sourceId ||
+      item.id,
+    childSprintId: isOrphanScope ? "" : scopeId || "",
+    childSprint: sprintTitleForNodeScope(scopeId, item, sprints),
+    isOrphanSprintContext: Boolean(item.isOrphanSprintContext || isOrphanScope),
+  };
 }
 
 function ParentBranchEdge({ data }) {
@@ -992,6 +1031,33 @@ function workNodePositions(nodes) {
   }, {});
 }
 
+function dayHierarchyTraceItems(items = []) {
+  return items
+    .filter(
+      (item) =>
+        item &&
+        (item.dayContextDate ||
+          item.isDayProjectionSelected ||
+          item.targetScopeId ||
+          item.targetSprintId ||
+          item.isReference ||
+          item.isGhost)
+    )
+    .map((item) => ({
+      itemId: item.id,
+      type: item.type || "",
+      parentId: item.parentId || "",
+      sprintId: item.sprintId || "",
+      targetScopeId: item.targetScopeId || "",
+      targetSprintId: item.targetSprintId || "",
+      canonicalSprintId: item.elitical?.sprintId || "",
+      resolvedHierarchyScope: hierarchyScopeIdForItem(item),
+      visualParentId: item.visualParentId || "",
+      isDayProjection: Boolean(item.isDayProjectionSelected || item.dayContextDate),
+      isAncestorReferenceNode: Boolean(item.isReference || item.isGhost),
+    }));
+}
+
 function displayDateForItem(item) {
   const primaryWorklog = Array.isArray(item.worklogs)
     ? item.worklogs[0]
@@ -1169,6 +1235,7 @@ function toFlowNodes({
       const isGhost = isReferenceNode(item);
       const metricId = item.id;
       const childActionItems = childActionItemsForNode?.(item) || [];
+      const childCreateContext = childCreateContextForItem(item, sprints);
 
       return {
         id: item.id,
@@ -1205,6 +1272,7 @@ function toFlowNodes({
             activeSearchId === (item.sourceItemId || item.sourceDocketId || item.sourceId || item.id),
           completedSummaryControls:
             completedSummaryControls.get(item.id) || [],
+          ...childCreateContext,
           childActionItems,
           allowChildActions:
             !readOnly &&
@@ -1260,20 +1328,43 @@ export default function GraphView({
   const rootNodeId = viewRootId || (showMainRoot ? MAIN_ROOT_ID : ROOT_ID);
   const appliedLayoutKeyRef = useRef("");
   const collapsedGraph = useMemo(
-    () =>
-      prepareCompletedCollapse({
-        workItems: projectHierarchy
-          ? buildProjectedHierarchy({
-              items: workItems,
-              allItems: allWorkItems,
-              scopes: sprints,
-              enabled: true,
-            }).items
-          : workItems,
+    () => {
+      let projectedWorkItems = workItems;
+
+      if (projectHierarchy) {
+        if (viewMode === "day" && typeof console !== "undefined") {
+          console.log("[DAY-TRACE:HIERARCHY]", {
+            phase: "before",
+            items: dayHierarchyTraceItems(workItems),
+          });
+        }
+
+        const projection = buildProjectedHierarchy({
+          items: workItems,
+          allItems: allWorkItems,
+          scopes: sprints,
+          enabled: true,
+          missingAncestorLimit: viewMode === "day" ? 1 : Infinity,
+          skipRootMissingAncestors: viewMode === "day",
+        });
+
+        projectedWorkItems = projection.items;
+
+        if (viewMode === "day" && typeof console !== "undefined") {
+          console.log("[DAY-TRACE:HIERARCHY]", {
+            phase: "after",
+            items: dayHierarchyTraceItems(projectedWorkItems),
+          });
+        }
+      }
+
+      return prepareCompletedCollapse({
+        workItems: projectedWorkItems,
         expandedSummaryIds,
         searchMatchIds: externalSearchMatchIds,
         storyPointTotals,
-      }),
+      });
+    },
     [
       allWorkItems,
       expandedSummaryIds,
@@ -1282,6 +1373,7 @@ export default function GraphView({
       storyPointTotals,
       workItems,
       projectHierarchy,
+      viewMode,
     ]
   );
   const renderedWorkItems = collapsedGraph.workItems;
