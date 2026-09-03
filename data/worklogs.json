@@ -1,16 +1,16 @@
 {
-  "snapshotId": "elitical-sync-1788400631432-ddbd38bc0d74",
-  "syncGenerationId": "elitical-sync-1788400631432-ddbd38bc0d74",
-  "syncGenerationSequence": 1788400631432,
+  "snapshotId": "elitical-sync-1788400693127-36035e5d4b4b",
+  "syncGenerationId": "elitical-sync-1788400693127-36035e5d4b4b",
+  "syncGenerationSequence": 1788400693127,
   "snapshot": {
     "schemaVersion": 1,
-    "snapshotId": "elitical-sync-1788400631432-ddbd38bc0d74",
-    "syncGenerationId": "elitical-sync-1788400631432-ddbd38bc0d74",
-    "syncGenerationSequence": 1788400631432,
-    "syncedAt": "2026-09-03T01:57:11.432Z",
-    "createdAt": "2026-09-03T01:57:12.721Z",
-    "graphHash": "6929061459b4704ae98bfcf97b68c0362716b46b425c1a098e6d8bfe256d5023",
-    "worklogsHash": "c454521e110920c81cad91d0e076314de88628dcbef09ac9f754e48cfc032d91",
+    "snapshotId": "elitical-sync-1788400693127-36035e5d4b4b",
+    "syncGenerationId": "elitical-sync-1788400693127-36035e5d4b4b",
+    "syncGenerationSequence": 1788400693127,
+    "syncedAt": "2026-09-03T01:58:13.127Z",
+    "createdAt": "2026-09-03T01:58:15.192Z",
+    "graphHash": "d184911f7bd105ba27e5a876a5c9f04ed625f42278ce239fdde2d4ae4096c27c",
+    "worklogsHash": "1f69217b447d6fb2814c169bcb5307afc8382e993374ab247fec76b53bdca1ca",
     "nodeCount": 789,
     "worklogCount": 734,
     "employee": {
@@ -27,7 +27,7 @@
     "source": "synchronized-worklogs"
   },
   "version": 1,
-  "lastSync": "2026-09-03T01:57:11.432Z",
+  "lastSync": "2026-09-03T01:58:13.127Z",
   "totalWorklogs": 734,
   "worklogs": [
     {
