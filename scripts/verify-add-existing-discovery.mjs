@@ -71,6 +71,24 @@ const otherStory = {
     num: "DKT-555",
   },
 };
+const destinationJob = {
+  id: "job-current-story",
+  type: "job",
+  title: "Already Under Destination Story",
+  parentId: "story-current-epic",
+  elitical: {
+    num: "DKT-666",
+  },
+};
+const otherJob = {
+  id: "job-other-story",
+  type: "job",
+  title: "Reusable Job",
+  parentId: "story-other-epic",
+  elitical: {
+    num: "DKT-777",
+  },
+};
 const workItems = [
   sprintEpic,
   crossSprintEpic,
@@ -90,6 +108,8 @@ const workItems = [
     title: "Existing Job",
     parentId: "story-current-epic",
   },
+  destinationJob,
+  otherJob,
 ];
 const selectedDay = "2026-07-03";
 
@@ -210,6 +230,33 @@ assert.deepEqual(
   "Day View selection still attaches the canonical item id to the destination sprint projection"
 );
 
+const jobDayState = addDayProjectionSelection({
+  state: { version: 1, days: {} },
+  selectedDate: selectedDay,
+  kind: "job",
+  parentId: "story-current-epic",
+  sprintId: "sprint-a",
+  childId: destinationJob.id,
+});
+const jobDayRequest = {
+  type: "job",
+  mode: "day",
+  parentId: "story-current-epic",
+  sourceItemId: "story-current-epic",
+  sprintId: "sprint-a",
+};
+
+assert.deepEqual(
+  ids(discoverAddExistingItems({
+    workItems,
+    request: jobDayRequest,
+    daySelection: daySelectionForDate(jobDayState, selectedDay),
+    scopeId: "sprint-a",
+  })),
+  ["job-1", "job-other-story"],
+  "Day View discovery excludes Jobs already projected into the destination Story scope"
+);
+
 assert.equal(
   crossSprintEpic.id,
   "epic-cross-sprint",
@@ -243,8 +290,13 @@ assert.doesNotMatch(
 );
 assert.match(
   app,
-  /return capabilityActionItemsForNode\(node\);/,
-  "App no longer hides Orphan Sprint Add Existing discovery"
+  /const actions = capabilityActionItemsForNode\(node\);/,
+  "App still starts Day View Add Existing actions from shared node capabilities"
+);
+assert.match(
+  app,
+  /if \(viewMode !== "day"\) return actions;/,
+  "App keeps extra projection-only Add Existing actions scoped to Day View"
 );
 assert.match(
   app,
@@ -255,6 +307,11 @@ assert.match(
   app,
   /addDayProjectionSelection\(/,
   "Day View attachment still uses projection selection"
+);
+assert.match(
+  app,
+  /viewMode !== "day"[\s\S]*Add Existing Job/,
+  "App exposes Add Existing Job only through the Day View projection-only action path"
 );
 
 console.log("Add Existing discovery verification PASS");

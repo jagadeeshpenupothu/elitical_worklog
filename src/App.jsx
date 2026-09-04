@@ -68,7 +68,10 @@ import {
 } from "./utils/hierarchyProjection";
 import {
   addDayProjectionSelection,
+  addDayProjectionSelectionForItem,
   dateKeyFromValue,
+  dayProjectionSprintIdForCreate,
+  dayProjectionSelectionIncludesItem,
   dayScopeIdForItem,
   daySelectionForDate,
   loadDayProjectionState,
@@ -1363,14 +1366,16 @@ function employeeScopeId(scope) {
   return String(scope?.employeeId || scope?.id || "").trim();
 }
 
-function worklogMatchesEmployeeScope(entry, scope) {
+function worklogMatchesEmployeeScope(entry, scope, item = null) {
   const scopeId = employeeScopeId(scope);
 
   if (!scopeId) return true;
 
   const entryEmployeeId = String(entry?.employeeId || "").trim();
 
-  return entryEmployeeId ? entryEmployeeId === scopeId : false;
+  if (entryEmployeeId) return entryEmployeeId === scopeId;
+
+  return entry?.sync?.status === "pending-create" && itemMatchesEmployeeScope(item, scope);
 }
 
 function itemAssigneeId(item = {}) {
@@ -1391,9 +1396,36 @@ function worklogsForDay(item, selectedDate, employeeScope = null) {
   return item.worklogs.filter(
     (entry) =>
       isRealImportedWorklog(entry) &&
-      worklogMatchesEmployeeScope(entry, employeeScope) &&
+      worklogMatchesEmployeeScope(entry, employeeScope, item) &&
       worklogDateToInput(entry.worklogDate || entry.date) === selectedDate
   );
+}
+
+function normalizeSprintTitle(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function dayScopeIdForPersistedItem(item, dateSprints = []) {
+  const canonicalScopeId = dayScopeIdForItem(item);
+
+  if (canonicalScopeId && !isOrphanSprintId(canonicalScopeId)) {
+    return canonicalScopeId;
+  }
+
+  const itemSprintTitle = normalizeSprintTitle(item?.sprint);
+  const matchingSprint = itemSprintTitle
+    ? dateSprints.find((sprint) =>
+        normalizeSprintTitle(sprint?.title || sprint?.name || sprint?.id) === itemSprintTitle
+      )
+    : null;
+
+  return matchingSprint?.id || ORPHAN_SPRINT_ID;
+}
+
+function isLocalCreatedForDay(item, selectedDate) {
+  if (item?.sync?.status !== "pending-create") return false;
+
+  return dateKeyFromValue(item.createdAt || item.updatedAt) === selectedDate;
 }
 
 function aggregateDayWorklogs(item, selectedDate, employeeScope = null) {
@@ -1431,6 +1463,34 @@ function normalizedImportedWorklog(entry = {}) {
   };
 }
 
+function worklogIdentityKey(entry = {}) {
+  const id = String(entry.remoteId || entry.id || entry.worklogId || entry.localId || "").trim();
+
+  if (id) return `id:${id}`;
+
+  const docketId = String(entry.docketId || "").trim();
+  const date = String(entry.worklogDate || entry.date || "").trim();
+  const comment = String(entry.comment || entry.description || "").trim();
+  const minutes = Number(entry.durationMinutes ?? entry.timeMinutes ?? 0);
+
+  return `value:${docketId}:${date}:${comment}:${Number.isFinite(minutes) ? minutes : 0}`;
+}
+
+function mergeWorklogsForDisplay(localWorklogs = [], importedWorklogs = []) {
+  const merged = [];
+  const seen = new Set();
+
+  [...importedWorklogs, ...localWorklogs].forEach((entry) => {
+    const key = worklogIdentityKey(entry);
+
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push(entry);
+  });
+
+  return merged;
+}
+
 function applyImportedWorklogs(workItems = [], importedWorklogs = []) {
   if (!Array.isArray(importedWorklogs) || importedWorklogs.length === 0) {
     return workItems;
@@ -1449,9 +1509,14 @@ function applyImportedWorklogs(workItems = [], importedWorklogs = []) {
   return workItems.map((item) => {
     if (!["story", "job", "task"].includes(item.type)) return item;
 
+    const localWorklogs = Array.isArray(item.worklogs) ? item.worklogs : [];
+    const importedForItem = byDocket.get(item.id) || [];
+
+    if (importedForItem.length === 0 && localWorklogs.length === 0) return item;
+
     return {
       ...item,
-      worklogs: byDocket.get(item.id) || [],
+      worklogs: mergeWorklogsForDisplay(localWorklogs, importedForItem),
     };
   });
 }
@@ -1513,29 +1578,11 @@ function buildContextGraph({
     const dateSprints = sprintScopesForDay(sprints, selectedDate);
     const dateSprintIds = new Set(dateSprints.map((sprint) => sprint.id));
     const daySelection = daySelectionForDate(dayProjectionSelections, selectedDate);
-    const worklogSprintIds = new Set();
     const retainedRecords = retainedRecordsForContext({
       state: retainedCreationContexts,
       viewMode: "day",
       contextId: selectedDate,
     });
-
-    if (typeof console !== "undefined") {
-      console.log("[DAY-TRACE:SCOPE]", {
-        selectedDate: selectedId,
-        dateKey: selectedDate,
-        dateSprintIds: Array.from(dateSprintIds),
-        dateSprintTitles: dateSprints.map((sprint) => sprint.title || sprint.name || sprint.id),
-        isOrphanDay: dateSprints.length === 1 && isOrphanSprintId(dateSprints[0]?.id),
-      });
-      console.log("[DAY-TRACE:PROJECTION-READ]", {
-        selectedDate,
-        dateSprintIds: Array.from(dateSprintIds),
-        daySelection,
-        epicsBySprintKeys: Object.keys(daySelection.epicsBySprint || {}),
-        storiesByEpicScopeKeys: Object.keys(daySelection.storiesByEpicScope || {}),
-      });
-    }
 
     dateSprints.forEach((sprint) => selectedSprintIds.add(sprint.id));
     if (dateSprints.length > 1 && typeof console !== "undefined") {
@@ -1564,72 +1611,71 @@ function buildContextGraph({
       const sprintId = displaySprintIdForItem(item);
       if (sprintById.has(sprintId)) {
         selectedSprintIds.add(sprintId);
-        worklogSprintIds.add(sprintId);
-      }
-      if (typeof console !== "undefined") {
-        console.log("[DAY-TRACE:WORKLOG]", {
-          itemId: item.id,
-          docket: item.elitical?.num || item.docketNumber || item.num || "",
-          title: item.title || "",
-          type: item.type || "",
-          worklogDate: selectedDate,
-          canonicalSprintId: item.elitical?.sprintId || item.sprintId || "",
-          displaySprint: item.sprint || "",
-          parentId: item.parentId || "",
-          automaticallyIncluded: true,
-        });
       }
     });
 
-    if (typeof console !== "undefined") {
-      console.log("[DAY-TRACE:SPRINTS]", {
-        dateSprintIds: Array.from(dateSprintIds),
-        selectedSprintIds: Array.from(selectedSprintIds),
-        selectedSprintTitles: Array.from(selectedSprintIds).map(
-          (id) => sprintById.get(id)?.title || sprintById.get(id)?.name || id
-        ),
-        fromDateScope: Array.from(dateSprintIds),
-        fromAutomaticWorklogs: Array.from(worklogSprintIds),
-        canonicalSprintIdsNotInDateScope: Array.from(worklogSprintIds).filter(
-          (id) => !dateSprintIds.has(id)
-        ),
+    function includePersistedDayItem(item, sprintId, { role = "direct" } = {}) {
+      const previousMembership = dayContextMembershipById.get(item.id);
+      const contextRole = previousMembership?.role === "direct" ? "direct" : role;
+
+      selectedIds.add(item.id);
+      selectedSprintIds.add(sprintId);
+      dayContextMembershipById.set(item.id, {
+        date: selectedDate,
+        source: previousMembership?.source || "persisted",
+        role: contextRole,
+      });
+      dayProjectionContextById.set(item.id, {
+        sprintId,
+        parentId: item.parentId || ROOT_ID,
       });
     }
 
-    Object.entries(daySelection.epicsBySprint || {}).forEach(([sprintId, ids]) => {
-      if (!dateSprintIds.has(sprintId)) {
-        ids.forEach((id) => {
-          const item = itemById.get(id);
-          if (typeof console !== "undefined") {
-            console.log("[DAY-TRACE:PROJECTION-REJECT]", {
-              itemId: id,
-              itemType: item?.type || "epic",
-              projectionScopeId: sprintId,
-              dateSprintIds: Array.from(dateSprintIds),
-              reason: "projection scope is not in dateSprintIds",
-            });
-          }
-        });
-        return;
+    function includePersistedDayAncestors(item, sprintId) {
+      let parentId = item.parentId;
+      const visited = new Set();
+
+      while (parentId && parentId !== ROOT_ID && !visited.has(parentId)) {
+        visited.add(parentId);
+        const parent = itemById.get(parentId);
+
+        if (!parent || parent.isVirtual || isReferenceNode(parent)) return;
+
+        includePersistedDayItem(parent, sprintId, { role: "ancestor" });
+        parentId = parent.parentId;
       }
+    }
+
+    workItems.forEach((item) => {
+      if (item.isVirtual || isReferenceNode(item)) return;
+      if (!["epic", "story", "job", "task"].includes(item.type)) return;
+
+      const aggregate = dayAggregates.get(item.id);
+      const hasDayWorklog = Boolean(aggregate?.count);
+      const hasLocalCreatedDate = isLocalCreatedForDay(item, selectedDate);
+
+      if (!hasDayWorklog && !hasLocalCreatedDate) return;
+
+      const sprintId = dayScopeIdForPersistedItem(item, dateSprints);
+      if (!dateSprintIds.has(sprintId)) return;
+
+      includePersistedDayItem(item, sprintId);
+      includePersistedDayAncestors(item, sprintId);
+    });
+
+    Object.entries(daySelection.epicsBySprint || {}).forEach(([sprintId, ids]) => {
+      if (!dateSprintIds.has(sprintId)) return;
 
       ids.forEach((id) => {
         const item = itemById.get(id);
         if (item?.type !== "epic") return;
-        if (typeof console !== "undefined") {
-          console.log("[DAY-TRACE:PROJECTION-ACCEPT]", {
-            itemId: id,
-            itemType: item.type,
-            projectionScopeId: sprintId,
-            dateSprintIds: Array.from(dateSprintIds),
-          });
-        }
 
         selectedIds.add(item.id);
         selectedSprintIds.add(sprintId);
         dayContextMembershipById.set(item.id, {
           date: selectedDate,
           source: "projection",
+          role: "direct",
         });
         dayProjectionContextById.set(item.id, {
           sprintId,
@@ -1641,44 +1687,47 @@ function buildContextGraph({
     Object.entries(daySelection.storiesByEpicScope || {}).forEach(([scopeKey, ids]) => {
       const [epicId, sprintId = ""] = scopeKey.split("::");
 
-      if (!dateSprintIds.has(sprintId)) {
-        ids.forEach((id) => {
-          const item = itemById.get(id);
-          if (typeof console !== "undefined") {
-            console.log("[DAY-TRACE:PROJECTION-REJECT]", {
-              itemId: id,
-              itemType: item?.type || "story",
-              projectionScopeId: sprintId,
-              dateSprintIds: Array.from(dateSprintIds),
-              reason: "projection scope is not in dateSprintIds",
-            });
-          }
-        });
-        return;
-      }
+      if (!dateSprintIds.has(sprintId)) return;
 
       ids.forEach((id) => {
         const item = itemById.get(id);
         if (item?.type !== "story") return;
         if (item.parentId !== epicId) return;
-        if (typeof console !== "undefined") {
-          console.log("[DAY-TRACE:PROJECTION-ACCEPT]", {
-            itemId: id,
-            itemType: item.type,
-            projectionScopeId: sprintId,
-            dateSprintIds: Array.from(dateSprintIds),
-          });
-        }
 
         selectedIds.add(item.id);
         selectedSprintIds.add(sprintId);
         dayContextMembershipById.set(item.id, {
           date: selectedDate,
           source: "projection",
+          role: "direct",
         });
         dayProjectionContextById.set(item.id, {
           sprintId,
           parentId: epicId,
+        });
+      });
+    });
+
+    Object.entries(daySelection.jobsByStoryScope || {}).forEach(([scopeKey, ids]) => {
+      const [storyId, sprintId = ""] = scopeKey.split("::");
+
+      if (!dateSprintIds.has(sprintId)) return;
+
+      ids.forEach((id) => {
+        const item = itemById.get(id);
+        if (item?.type !== "job") return;
+        if (item.parentId !== storyId) return;
+
+        selectedIds.add(item.id);
+        selectedSprintIds.add(sprintId);
+        dayContextMembershipById.set(item.id, {
+          date: selectedDate,
+          source: "projection",
+          role: "direct",
+        });
+        dayProjectionContextById.set(item.id, {
+          sprintId,
+          parentId: storyId,
         });
       });
     });
@@ -1693,6 +1742,7 @@ function buildContextGraph({
       dayContextMembershipById.set(item.id, {
         date: selectedDate,
         source: "retained",
+        role: "direct",
       });
       if (record.parentId) {
         dayProjectionContextById.set(item.id, {
@@ -1784,6 +1834,10 @@ function buildContextGraph({
               dayContextMembership?.source === "projection" || Boolean(contextItem.isDayProjectionSelected),
             isRetainedDayContext:
               dayContextMembership?.source === "retained" || Boolean(contextItem.isRetainedDayContext),
+            dayContextSource: dayContextMembership?.source || contextItem.dayContextSource || "",
+            dayContextRole: dayContextMembership?.role || contextItem.dayContextRole || "",
+            isDayContextAncestor:
+              dayContextMembership?.role === "ancestor" || Boolean(contextItem.isDayContextAncestor),
             isContextPrimary: true,
           }
         : contextItem;
@@ -2018,7 +2072,7 @@ function buildDayTimelineModel({ workItems = [], sprints = [], selectedDate, tod
   workItems.forEach((item) => {
     (item.worklogs || []).forEach((entry) => {
       if (!isRealImportedWorklog(entry)) return;
-      if (!worklogMatchesEmployeeScope(entry, employeeScope)) return;
+      if (!worklogMatchesEmployeeScope(entry, employeeScope, item)) return;
 
       const dateKey = dateKeyForTimelineWorklog(entry);
       if (!dateKey) return;
@@ -2161,6 +2215,18 @@ function mergeGraphState(currentState, nextState) {
     sprints: mergeByStableIdentity(currentState.sprints, nextState.sprints),
     workItems: mergeByStableIdentity(currentState.workItems, nextState.workItems),
   };
+}
+
+function graphPayloadTime(result = {}) {
+  const value =
+    result.normalized?.generatedAt ||
+    result.generatedAt ||
+    result.metadata?.lastSyncTime ||
+    result.cache?.metadata?.lastSyncTime ||
+    "";
+  const time = new Date(value).getTime();
+
+  return Number.isFinite(time) ? time : 0;
 }
 
 function descendantCount(items, id) {
@@ -2582,7 +2648,7 @@ function DashboardView({ workItems, sprints, rootTitle, totals, lastSyncedAt, em
       total +
       (item.worklogs || [])
         .filter((entry) => formatDateInput(entry.date) === todayKey)
-        .filter((entry) => worklogMatchesEmployeeScope(entry, employeeScope))
+        .filter((entry) => worklogMatchesEmployeeScope(entry, employeeScope, item))
         .reduce((sum, entry) => sum + Number(entry.timeMinutes || 0), 0),
     0
   );
@@ -2595,7 +2661,7 @@ function DashboardView({ workItems, sprints, rootTitle, totals, lastSyncedAt, em
           return (
             !Number.isNaN(date.getTime()) &&
             date >= weekStart &&
-            worklogMatchesEmployeeScope(entry, employeeScope)
+            worklogMatchesEmployeeScope(entry, employeeScope, item)
           );
         })
         .reduce((sum, entry) => sum + Number(entry.timeMinutes || 0), 0),
@@ -7583,6 +7649,7 @@ function App() {
   );
   const workItemsRef = useRef(workItems);
   const storyStateRef = useRef(storyState);
+  const latestGraphPayloadTimeRef = useRef(0);
   const saveRequestIdRef = useRef(0);
   const hasCheckedLegacyRef = useRef(false);
   const preserveSearchOnNextContextChangeRef = useRef(false);
@@ -7791,21 +7858,6 @@ function App() {
     graphWorkItems,
     viewMode,
   ]);
-  if (viewMode === "day" && typeof console !== "undefined") {
-    console.log("[DAY-TRACE:GRAPH-INPUT]", {
-      selectedDate: selectedContextOption?.id || "",
-      graphWorkItems: graphWorkItems.map((item) => ({
-        id: item.id,
-        docket: item.elitical?.num || item.docketNumber || item.num || "",
-        type: item.type || "",
-        sprintId: item.sprintId || "",
-        targetScopeId: item.targetScopeId || "",
-        targetSprintId: item.targetSprintId || "",
-        dayContextDate: item.dayContextDate || "",
-        isDayProjectionSelected: Boolean(item.isDayProjectionSelected),
-      })),
-    });
-  }
   const searchItems = useMemo(
     () =>
       searchItemsForCurrentView({
@@ -8286,6 +8338,21 @@ function App() {
     preserveView = true,
     updateSummary = false,
   } = {}) => {
+    const payloadTime = graphPayloadTime(result);
+
+    if (
+      payloadTime > 0 &&
+      latestGraphPayloadTimeRef.current > 0 &&
+      payloadTime < latestGraphPayloadTimeRef.current
+    ) {
+      return {
+        ignored: true,
+        reason: "stale-graph-payload",
+        payloadTime,
+        latestPayloadTime: latestGraphPayloadTimeRef.current,
+      };
+    }
+
     const normalizedState = normalizeStoryStateArtifactRollup(
       result.normalized.appState
     );
@@ -8322,6 +8389,12 @@ function App() {
     setSyncQueueSummary(normalizeSyncQueueSummary(result.syncQueue));
     setMessage(nextMessage);
     setLayoutNonce((value) => value + 1);
+    if (payloadTime > 0) {
+      latestGraphPayloadTimeRef.current = Math.max(
+        latestGraphPayloadTimeRef.current,
+        payloadTime
+      );
+    }
 
     if (updateSummary) {
       setLiveSyncSummary({
@@ -8370,7 +8443,7 @@ function App() {
 
         const [result, worklogCache] = await Promise.all([
           loadLocalGraphCache({
-            skipBackgroundSync: isBrowserRefreshStartup,
+            skipBackgroundSync: true,
           }),
           loadLocalWorklogsCache().catch(() => null),
         ]);
@@ -8751,8 +8824,11 @@ function App() {
       if (viewMode === "day" && createdId) {
         const dayCreateDate =
           selectedContextOption?.id || formatDateInput(new Date());
-        const dayCreateScopeId =
-          payload.sprintId || createPayload.sprintId || ORPHAN_SPRINT_ID;
+        const dayCreateScopeId = dayProjectionSprintIdForCreate({
+          isOrphanSprintCreate,
+          payloadSprintId: payload.sprintId,
+          createPayloadSprintId: createPayload.sprintId,
+        });
 
         persistRetainedCreationContexts((current) =>
           addRetainedCreationContext({
@@ -8765,21 +8841,24 @@ function App() {
           })
         );
 
-        if (type === "story" || type === "epic") {
-          const nextProjection = addDayProjectionSelection({
-            state: dayProjectionSelections,
-            selectedDate: dayCreateDate,
-            kind: type,
-            parentId,
-            sprintId: dayCreateScopeId,
-            childId: createdId,
-          });
+        if (type === "story" || type === "epic" || type === "job") {
+          setDayProjectionSelections((currentProjection) => {
+            const nextProjection = addDayProjectionSelection({
+              state: currentProjection,
+              selectedDate: dayCreateDate,
+              kind: type,
+              parentId,
+              sprintId: dayCreateScopeId,
+              childId: createdId,
+            });
 
-          setDayProjectionSelections(nextProjection);
-          saveDayProjectionState(
-            typeof window === "undefined" ? null : window.localStorage,
-            nextProjection
-          );
+            saveDayProjectionState(
+              typeof window === "undefined" ? null : window.localStorage,
+              nextProjection
+            );
+
+            return nextProjection;
+          });
         }
       }
 
@@ -8806,7 +8885,6 @@ function App() {
     }
   }, [
     applyNormalizedGraphPayload,
-    dayProjectionSelections,
     persistRetainedCreationContexts,
     selectedContextOption,
     sprints,
@@ -8853,35 +8931,36 @@ function App() {
   const childActionItemsForNode = useCallback((node) => {
     if (!node) return [];
 
-    return capabilityActionItemsForNode(node);
-  }, []);
+    const actions = capabilityActionItemsForNode(node);
+
+    if (viewMode !== "day") return actions;
+    if (node.type !== "story") return actions;
+    if (actions.some((action) => action.kind === "add-existing" && action.type === "job")) {
+      return actions;
+    }
+
+    const next = [];
+
+    actions.forEach((action) => {
+      if (action.kind === "create" && action.type === "job") {
+        next.push({
+          kind: "add-existing",
+          type: "job",
+          label: "Add Existing Job",
+        });
+      }
+
+      next.push(action);
+    });
+
+    return next;
+  }, [viewMode]);
 
   const handleAddExistingChild = useCallback((request) => {
     const mode = viewMode === "day" ? "day" : "canonical";
     const selectedDate = selectedContextOption?.id || formatDateInput(new Date());
     const parentId = request.parentId || request.sourceItemId || "";
     const sprintId = request.isOrphanSprint ? "" : request.sprintId || "";
-    const sourceItem = resolveCanonicalWorkItem(
-      request.sourceItemId || request.parentId,
-      workItemsRef.current
-    );
-
-    if (typeof console !== "undefined") {
-      console.log("[DAY-TRACE:ADD-OPEN]", {
-        selectedDate,
-        viewMode,
-        sourceItemId: request.sourceItemId || "",
-        sourceItemDocket: sourceItem?.elitical?.num || sourceItem?.docketNumber || sourceItem?.num || "",
-        sourceItemType: sourceItem?.type || "",
-        sourceItemTitle: sourceItem?.title || "",
-        parentId,
-        sprintId,
-        sprintTitle: request.sprint || "",
-        isOrphanSprint: Boolean(request.isOrphanSprint),
-        mode,
-      });
-    }
-
     setAddExistingChildRequest({
       ...request,
       mode,
@@ -8903,54 +8982,53 @@ function App() {
       : addExistingChildRequest.sprintId || ORPHAN_SPRINT_ID;
     const selectedChild = workItemsRef.current.find((item) => item.id === childId);
 
-    if (typeof console !== "undefined") {
-      console.log("[DAY-TRACE:ADD-SELECT]", {
-        selectedItemId: childId,
-        docket: selectedChild?.elitical?.num || selectedChild?.docketNumber || selectedChild?.num || "",
-        title: selectedChild?.title || "",
-        type: selectedChild?.type || "",
-        selectedDate,
-        currentAddExistingMode: addExistingChildRequest.mode,
-        sourceParentId: addExistingChildRequest.parentId || "",
-        sourceSprintId: addExistingChildRequest.sprintId || "",
-        sourceSprintTitle: addExistingChildRequest.sprint || "",
-        computedScopeId: scopeId,
-        isOrphanSprint: Boolean(addExistingChildRequest.isOrphanSprint),
-      });
-    }
-
     if (addExistingChildRequest.mode === "day") {
-      const beforeSelection = daySelectionForDate(dayProjectionSelections, selectedDate);
-      const next = addDayProjectionSelection({
+      if (!selectedChild) {
+        setMessage("Unable to add existing item to Day View.");
+        return;
+      }
+
+      const next = addDayProjectionSelectionForItem({
         state: dayProjectionSelections,
         selectedDate,
-        kind: addExistingChildRequest.type,
-        parentId: addExistingChildRequest.parentId,
+        item: selectedChild,
         sprintId: scopeId,
-        childId,
       });
-      const afterSelection = daySelectionForDate(next, selectedDate);
+      const accepted = dayProjectionSelectionIncludesItem({
+        state: next,
+        selectedDate,
+        item: selectedChild,
+        sprintId: scopeId,
+      });
+      if (!accepted) {
+        setMessage("Unable to add existing item to Day View.");
+        return;
+      }
 
-      if (typeof console !== "undefined") {
-        console.log("[DAY-TRACE:PROJECTION-WRITE]", {
-          date: selectedDate,
-          selectedItemId: childId,
-          itemType: addExistingChildRequest.type,
-          scopeId,
-          targetSprintScope: scopeId,
-          projectionRecordBefore: beforeSelection,
-          projectionRecordAfter: afterSelection,
-        });
+      const storage = typeof window === "undefined" ? null : window.localStorage;
+
+      try {
+        saveDayProjectionState(storage, next);
+        if (
+          storage &&
+          !dayProjectionSelectionIncludesItem({
+            state: loadDayProjectionState(storage),
+            selectedDate,
+            item: selectedChild,
+            sprintId: scopeId,
+          })
+        ) {
+          throw new Error("Day View projection was not persisted.");
+        }
+      } catch (error) {
+        setMessage("Unable to save existing item to Day View.");
+        return;
       }
 
       setDayProjectionSelections(next);
-      saveDayProjectionState(
-        typeof window === "undefined" ? null : window.localStorage,
-        next
-      );
       setAddExistingChildRequest(null);
       setSelectedId(childId);
-      setMessage("Added existing item to Day View");
+      setMessage(`Added existing ${formatType(selectedChild.type)} to Day View`);
       setLayoutNonce((value) => value + 1);
       return;
     }

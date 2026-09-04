@@ -5,6 +5,7 @@ import {
 import {
   dayEpicScopeKey,
   dayScopeIdForItem,
+  dayStoryScopeKey,
 } from "./dayViewProjection.js";
 
 function normalizedText(value) {
@@ -38,6 +39,10 @@ function canonicalDuplicateForDestination(item, request, scopeId) {
     return Boolean(request.parentId && item.parentId === request.parentId);
   }
 
+  if (request?.type === "job") {
+    return Boolean(request.parentId && item.parentId === request.parentId);
+  }
+
   return false;
 }
 
@@ -52,6 +57,14 @@ function dayDuplicateIdsForDestination({ request, daySelection, scopeId }) {
 
   if (request?.type === "epic") {
     return new Set(daySelection?.epicsBySprint?.[scopeId] || []);
+  }
+
+  if (request?.type === "job") {
+    return new Set(
+      daySelection?.jobsByStoryScope?.[
+        dayStoryScopeKey(request.parentId, scopeId)
+      ] || []
+    );
   }
 
   return new Set();

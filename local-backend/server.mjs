@@ -3177,10 +3177,14 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/cache") {
     const skipBackgroundSync = url.searchParams.get("skipBackgroundSync") === "1";
+    const allowBackgroundSync =
+      !skipBackgroundSync && url.searchParams.get("backgroundSync") === "1";
+    const allowRebuildFromElitical =
+      !skipBackgroundSync && url.searchParams.get("rebuildFromElitical") === "1";
     const cache = await localData.loadGraphCache();
 
     if (!cache) {
-      if (storageInitialization.resetDetected && !skipBackgroundSync) {
+      if (storageInitialization.resetDetected && allowRebuildFromElitical) {
         try {
           const rebuilt = await syncService.run({ providerId: "elitical" });
           sendJson(res, 200, {
@@ -3219,7 +3223,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     sendJson(res, 200, cache);
-    if (!skipBackgroundSync) syncService.startBackground({ providerId: "elitical" });
+    if (allowBackgroundSync) syncService.startBackground({ providerId: "elitical" });
     return;
   }
 

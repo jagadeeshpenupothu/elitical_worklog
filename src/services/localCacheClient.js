@@ -47,7 +47,7 @@ async function parseCacheResponse(response) {
   return payload;
 }
 
-export async function loadLocalGraphCache({ skipBackgroundSync = false } = {}) {
+export async function loadLocalGraphCache({ skipBackgroundSync = true } = {}) {
   const url = skipBackgroundSync
     ? `${cacheEndpoint()}?skipBackgroundSync=1`
     : cacheEndpoint();

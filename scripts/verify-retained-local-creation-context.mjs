@@ -210,7 +210,7 @@ assert.match(
 );
 assert.match(
   appSource,
-  /retainedNodeIdsForContext\(\{[\s\S]*viewMode: "day"[\s\S]*contextId: selectedDate/,
+  /retainedRecordsForContext\(\{[\s\S]*viewMode: "day"[\s\S]*contextId: selectedDate/,
   "Day View composes retained IDs into context graph selection"
 );
 assert.match(

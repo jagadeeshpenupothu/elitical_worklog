@@ -115,9 +115,18 @@ export function normalizeDayProjectionState(value) {
       if (values.length > 0) storiesByEpicScope[scopeKey] = [...new Set(values)];
     });
 
+    const jobsByStoryScope = {};
+    Object.entries(day.jobsByStoryScope || {}).forEach(([scopeKey, ids]) => {
+      const values = Array.isArray(ids)
+        ? ids.map((id) => String(id || "").trim()).filter(Boolean)
+        : [];
+      if (values.length > 0) jobsByStoryScope[scopeKey] = [...new Set(values)];
+    });
+
     normalizedDays[dateKey] = {
       epicsBySprint,
       storiesByEpicScope,
+      jobsByStoryScope,
     };
   });
 
@@ -152,10 +161,15 @@ export function dayEpicScopeKey(epicId, sprintId) {
   return `${epicId || ""}::${sprintId || ORPHAN_SPRINT_ID}`;
 }
 
+export function dayStoryScopeKey(storyId, sprintId) {
+  return `${storyId || ""}::${sprintId || ORPHAN_SPRINT_ID}`;
+}
+
 export function emptyDaySelection() {
   return {
     epicsBySprint: {},
     storiesByEpicScope: {},
+    jobsByStoryScope: {},
   };
 }
 
@@ -163,6 +177,16 @@ export function daySelectionForDate(state, selectedDate) {
   const dateKey = dateKeyFromValue(selectedDate);
 
   return normalizeDayProjectionState(state).days[dateKey] || emptyDaySelection();
+}
+
+export function dayProjectionSprintIdForCreate({
+  isOrphanSprintCreate = false,
+  payloadSprintId = "",
+  createPayloadSprintId = "",
+} = {}) {
+  if (isOrphanSprintCreate) return ORPHAN_SPRINT_ID;
+
+  return payloadSprintId || createPayloadSprintId || ORPHAN_SPRINT_ID;
 }
 
 export function addDayProjectionSelection({
@@ -204,6 +228,16 @@ export function addDayProjectionSelection({
     };
   }
 
+  if (kind === "job") {
+    const scopeKey = dayStoryScopeKey(parentId, sprintId);
+    const current = day.jobsByStoryScope[scopeKey] || [];
+
+    day.jobsByStoryScope = {
+      ...day.jobsByStoryScope,
+      [scopeKey]: [...new Set([...current, id])],
+    };
+  }
+
   return {
     ...normalized,
     days: {
@@ -211,6 +245,90 @@ export function addDayProjectionSelection({
       [dateKey]: day,
     },
   };
+}
+
+export function dayProjectionSelectionTargetForItem({ item, sprintId } = {}) {
+  const id = String(item?.id || "").trim();
+  const kind = String(item?.type || "").trim().toLowerCase();
+  const scopeId = sprintId || ORPHAN_SPRINT_ID;
+
+  if (!id) return null;
+
+  if (kind === "epic") {
+    return {
+      kind,
+      parentId: item?.parentId || ROOT_ID,
+      sprintId: scopeId,
+      childId: id,
+    };
+  }
+
+  if (kind === "story" || kind === "job") {
+    const parentId = String(item?.parentId || "").trim();
+
+    if (!parentId || parentId === ROOT_ID) return null;
+
+    return {
+      kind,
+      parentId,
+      sprintId: scopeId,
+      childId: id,
+    };
+  }
+
+  return null;
+}
+
+export function addDayProjectionSelectionForItem({
+  state,
+  selectedDate,
+  item,
+  sprintId,
+}) {
+  const target = dayProjectionSelectionTargetForItem({ item, sprintId });
+
+  if (!target) return normalizeDayProjectionState(state);
+
+  return addDayProjectionSelection({
+    state,
+    selectedDate,
+    ...target,
+  });
+}
+
+export function dayProjectionSelectionIncludesItem({
+  state,
+  selectedDate,
+  item,
+  sprintId,
+}) {
+  const target = dayProjectionSelectionTargetForItem({ item, sprintId });
+
+  if (!target) return false;
+
+  const selection = daySelectionForDate(state, selectedDate);
+
+  if (target.kind === "epic") {
+    return Boolean(selection.epicsBySprint?.[target.sprintId]?.includes(target.childId));
+  }
+
+  if (target.kind === "story") {
+    return Boolean(
+      selection.storiesByEpicScope?.[
+        dayEpicScopeKey(target.parentId, target.sprintId)
+      ]?.includes(target.childId)
+    );
+  }
+
+  if (target.kind === "job") {
+    return Boolean(
+      selection.jobsByStoryScope?.[
+        dayStoryScopeKey(target.parentId, target.sprintId)
+      ]?.includes(target.childId)
+    );
+  }
+
+  return false;
 }
 
 export function sprintTitleForScope(sprintId, sprints = []) {

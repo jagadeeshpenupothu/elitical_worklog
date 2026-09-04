@@ -328,9 +328,11 @@ function JiraNode({ data }) {
               <div className="node-meta-pill">
                 {formatWorkDuration(timeValue)}
               </div>
-              <div className="node-meta-pill node-updated">
-                {formatShortDate(data.updatedAt || data.createdAt)}
-              </div>
+              {!data.hideDisplayDate && (
+                <div className="node-meta-pill node-updated">
+                  {formatShortDate(data.updatedAt || data.createdAt)}
+                </div>
+              )}
             </>
           )}
         </div>

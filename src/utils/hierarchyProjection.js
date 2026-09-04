@@ -105,6 +105,18 @@ function scopeTitle(scopeById, scopeId) {
   return scopeById.get(scopeId)?.title || scopeById.get(scopeId)?.name || "";
 }
 
+function isDirectDayContextItem(item) {
+  if (item?.dayContextRole === "ancestor" || item?.isDayContextAncestor) {
+    return false;
+  }
+
+  return Boolean(
+    item?.isDayProjectionSelected ||
+      item?.isRetainedDayContext ||
+      item?.dayContextRole === "direct"
+  );
+}
+
 export function buildProjectedHierarchy({
   items = [],
   allItems = items,
@@ -214,8 +226,11 @@ export function buildProjectedHierarchy({
     let nearestVisibleOrReferenceParentId = item.parentId;
 
     chain.forEach((ancestor, index) => {
-      const ancestorScopeId = projectionScopeIdForItem(ancestor, scopeIdForItem);
       const isVisibleAncestor = visibleIds.has(ancestor.id);
+      const projectedAncestor = isVisibleAncestor
+        ? projectedById.get(ancestor.id) || ancestor
+        : ancestor;
+      const ancestorScopeId = projectionScopeIdForItem(projectedAncestor, scopeIdForItem);
       const ancestorDistanceFromItem = chain.length - index;
       const isRootMissingAncestor =
         !isVisibleAncestor && (ancestor.parentId || rootId) === rootId;
@@ -279,6 +294,7 @@ export function buildProjectedHierarchy({
       .filter(Boolean)
   );
   const visibleCanonicalItems = projectedItems.filter((item) => {
+    if (isDirectDayContextItem(item)) return true;
     if (!referenceSourceIds.has(item.id)) return true;
     if (projectionScopeIdForItem(item, scopeIdForItem) === ORPHAN_SPRINT_ID) {
       return true;

@@ -1031,37 +1031,21 @@ function workNodePositions(nodes) {
   }, {});
 }
 
-function dayHierarchyTraceItems(items = []) {
-  return items
-    .filter(
-      (item) =>
-        item &&
-        (item.dayContextDate ||
-          item.isDayProjectionSelected ||
-          item.targetScopeId ||
-          item.targetSprintId ||
-          item.isReference ||
-          item.isGhost)
-    )
-    .map((item) => ({
-      itemId: item.id,
-      type: item.type || "",
-      parentId: item.parentId || "",
-      sprintId: item.sprintId || "",
-      targetScopeId: item.targetScopeId || "",
-      targetSprintId: item.targetSprintId || "",
-      canonicalSprintId: item.elitical?.sprintId || "",
-      resolvedHierarchyScope: hierarchyScopeIdForItem(item),
-      visualParentId: item.visualParentId || "",
-      isDayProjection: Boolean(item.isDayProjectionSelected || item.dayContextDate),
-      isAncestorReferenceNode: Boolean(item.isReference || item.isGhost),
-    }));
+function isDayContextAncestorItem(item, viewMode) {
+  return Boolean(
+    viewMode === "day" &&
+      (item.isDayContextAncestor || isReferenceNode(item))
+  );
 }
 
-function displayDateForItem(item) {
+function displayDateForItem(item, viewMode) {
   const primaryWorklog = Array.isArray(item.worklogs)
     ? item.worklogs[0]
     : null;
+
+  if (viewMode === "day" && item.dayContextDate && !isDayContextAncestorItem(item, viewMode)) {
+    return item.dayContextDate;
+  }
 
   return (
     primaryWorklog?.date ||
@@ -1167,6 +1151,7 @@ function toFlowNodes({
             searchActive: activeSearchId === ROOT_ID,
             isRoot: true,
             isProjectNode: true,
+            hideDisplayDate: viewMode === "day",
             allowChildActions: false,
             completedSummaryControls:
               completedSummaryControls.get(ROOT_ID) || [],
@@ -1214,6 +1199,7 @@ function toFlowNodes({
                 isVirtual: true,
                 isSprintNode: true,
                 isOrphanSprint,
+                hideDisplayDate: viewMode === "day",
                 allowChildActions: !readOnly,
                 childParentId: isOrphanSprint ? ROOT_ID : sprint.id,
                 childSprintId: isOrphanSprint ? "" : sprint.id,
@@ -1249,7 +1235,8 @@ function toFlowNodes({
         deletable: !isGhost,
         data: {
           ...item,
-          updatedAt: displayDateForItem(item),
+          updatedAt: displayDateForItem(item, viewMode),
+          hideDisplayDate: isDayContextAncestorItem(item, viewMode),
           position: existingPositions[item.id] || {
             x: 0,
             y: 64,
@@ -1332,13 +1319,6 @@ export default function GraphView({
       let projectedWorkItems = workItems;
 
       if (projectHierarchy) {
-        if (viewMode === "day" && typeof console !== "undefined") {
-          console.log("[DAY-TRACE:HIERARCHY]", {
-            phase: "before",
-            items: dayHierarchyTraceItems(workItems),
-          });
-        }
-
         const projection = buildProjectedHierarchy({
           items: workItems,
           allItems: allWorkItems,
@@ -1349,13 +1329,6 @@ export default function GraphView({
         });
 
         projectedWorkItems = projection.items;
-
-        if (viewMode === "day" && typeof console !== "undefined") {
-          console.log("[DAY-TRACE:HIERARCHY]", {
-            phase: "after",
-            items: dayHierarchyTraceItems(projectedWorkItems),
-          });
-        }
       }
 
       return prepareCompletedCollapse({

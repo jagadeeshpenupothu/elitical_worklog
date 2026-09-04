@@ -54,6 +54,7 @@
     "verify:report-renderers": "node scripts/verify-report-renderers.mjs",
     "verify:sync-activity-progress": "node scripts/verify-sync-activity-progress.mjs",
     "verify:storage-architecture": "node scripts/verify-storage-architecture.mjs",
+    "verify:local-cache-no-auto-sync": "node scripts/verify-local-cache-no-auto-sync.mjs",
     "verify:snapshot-convergence": "node scripts/verify-snapshot-convergence-architecture.mjs",
     "verify:github-publication-config": "node scripts/verify-github-publication-config.mjs",
     "verify:github-publication-transport": "node scripts/verify-github-publication-transport.mjs",
